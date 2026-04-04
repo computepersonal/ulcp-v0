@@ -1,0 +1,157 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: ulcp-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ulcp_user
+      POSTGRES_PASSWORD: ulcp_pass
+      POSTGRES_DB: ulcp
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ulcp_user -d ulcp"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: ulcp-redis
+    restart: unless-stopped
+    ports:
+      - "6380:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  catalogue-service:
+    build:
+      context: ./services/catalogue-service
+      dockerfile: Dockerfile
+    container_name: ulcp-catalogue
+    restart: unless-stopped
+    ports:
+      - "3003:3003"
+    environment:
+      PORT: 3003
+      DATABASE_URL: postgresql://ulcp_user:ulcp_pass@postgres:5432/ulcp?schema=catalogue
+      REDIS_URL: redis://redis:6379
+      NODE_ENV: development
+      JWT_SECRET: dev_jwt_secret_must_be_32_chars_long!!
+      INTERNAL_API_SECRET: dev_internal_secret_ulcp_services
+      TENANT_SERVICE_URL: http://ulcp-tenant:3002
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  order-service:
+    build:
+      context: ./services/order-service
+      dockerfile: Dockerfile
+    container_name: ulcp-order
+    restart: unless-stopped
+    ports:
+      - "3004:3004"
+    environment:
+      PORT: 3004
+      DATABASE_URL: postgresql://ulcp_user:ulcp_pass@postgres:5432/ulcp?schema=order_svc
+      REDIS_URL: redis://redis:6379
+      NODE_ENV: development
+      JWT_SECRET: dev_jwt_secret_must_be_32_chars_long!!
+      INTERNAL_API_SECRET: dev_internal_secret_ulcp_services
+      CATALOGUE_SERVICE_URL: http://ulcp-catalogue:3003
+      TENANT_SERVICE_URL: http://ulcp-tenant:3002
+      COMMISSION_FREE: 3
+      COMMISSION_STARTER: 2
+      COMMISSION_PRO: 1.5
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  notification-service:
+    build:
+      context: ./services/notification-service
+      dockerfile: Dockerfile
+    container_name: ulcp-notification
+    restart: unless-stopped
+    ports:
+      - "3007:3007"
+    environment:
+      PORT: 3007
+      REDIS_URL: redis://redis:6379
+      NODE_ENV: development
+      INTERNAL_API_SECRET: dev_internal_secret_ulcp_services
+      DEV_MODE: "true"
+      APP_NAME: LocalCommerce
+      # Production values (set in .env.prod):
+      # SENDGRID_API_KEY:
+      # MSG91_API_KEY:
+      # MSG91_SENDER_ID:
+      # FIREBASE_PROJECT_ID:
+      # FIREBASE_PRIVATE_KEY:
+      # INTERAKT_API_KEY:
+    depends_on:
+      redis:
+        condition: service_healthy
+
+  realtime-service:
+    build:
+      context: ./services/realtime-service
+      dockerfile: Dockerfile
+    container_name: ulcp-realtime
+    restart: unless-stopped
+    ports:
+      - "3008:3008"
+    environment:
+      PORT: 3008
+      REDIS_URL: redis://redis:6379
+      NODE_ENV: development
+      JWT_SECRET: dev_jwt_secret_must_be_32_chars_long!!
+      INTERNAL_API_SECRET: dev_internal_secret_ulcp_services
+      CORS_ORIGINS: http://localhost:5173,http://localhost:5174,http://localhost:5175,http://localhost:5176,http://localhost:5177
+    depends_on:
+      redis:
+        condition: service_healthy
+
+  media-service:
+    build:
+      context: ./services/media-service
+      dockerfile: Dockerfile
+    container_name: ulcp-media
+    restart: unless-stopped
+    ports:
+      - "3010:3010"
+    volumes:
+      - media_uploads:/app/uploads
+    environment:
+      PORT: 3010
+      REDIS_URL: redis://redis:6379
+      NODE_ENV: development
+      INTERNAL_API_SECRET: dev_internal_secret_ulcp_services
+      DEV_MODE: "true"
+      # Production values (set in .env.prod):
+      # CLOUDFLARE_R2_ACCOUNT_ID:
+      # CLOUDFLARE_R2_ACCESS_KEY:
+      # CLOUDFLARE_R2_SECRET_KEY:
+      # CLOUDFLARE_R2_BUCKET:
+      # CLOUDFLARE_API_TOKEN:
+    depends_on:
+      redis:
+        condition: service_healthy
+
+volumes:
+  postgres_data:
+  redis_data:
+  media_uploads:

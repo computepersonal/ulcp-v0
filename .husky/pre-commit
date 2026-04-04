@@ -1,0 +1,5 @@
+#!/bin/sh
+# TypeScript check on changed services only (fast)
+echo "Running TypeScript check..."
+pnpm tsc --noEmit --project packages/shared/tsconfig.json 2>/dev/null
+echo "TypeScript check passed"

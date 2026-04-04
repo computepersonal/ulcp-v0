@@ -1,0 +1,50 @@
+import { Provider } from 'react-redux';
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { store } from './store';
+import Login from './pages/Login';
+import Layout from './components/Layout';
+import ProtectedRoute from './components/ProtectedRoute';
+import FloorMap from './pages/FloorMap';
+import Orders from './pages/Orders';
+import Catalogue from './pages/Catalogue';
+import Reports from './pages/Reports';
+import Staff from './pages/Staff';
+import Procurement from './pages/Procurement';
+import Settings from './pages/Settings';
+import ToastContainer from './components/ToastContainer';
+
+function AppRoutes() {
+  return (
+    <Routes>
+      <Route path="/login" element={<Login />} />
+      <Route
+        element={
+          <ProtectedRoute>
+            <Layout />
+          </ProtectedRoute>
+        }
+      >
+        <Route path="/floor-map" element={<FloorMap />} />
+        <Route path="/orders" element={<Orders />} />
+        <Route path="/catalogue" element={<Catalogue />} />
+        <Route path="/reports" element={<Reports />} />
+        <Route path="/staff" element={<Staff />} />
+        <Route path="/procurement" element={<Procurement />} />
+        <Route path="/settings" element={<Settings />} />
+        <Route path="/" element={<Navigate to="/floor-map" replace />} />
+      </Route>
+      <Route path="*" element={<Navigate to="/floor-map" replace />} />
+    </Routes>
+  );
+}
+
+export default function App() {
+  return (
+    <Provider store={store}>
+      <BrowserRouter>
+        <AppRoutes />
+        <ToastContainer />
+      </BrowserRouter>
+    </Provider>
+  );
+}

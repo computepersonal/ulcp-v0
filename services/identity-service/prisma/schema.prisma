@@ -1,0 +1,114 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── Staff / Business Users ──────────────────────────────────────────────────
+
+model User {
+  id            String   @id @default(cuid())
+  email         String
+  password_hash String
+  name          String
+  mobile        String?
+  tenant_id     String?  // null until tenant is created (pending_onboarding state)
+  role          String   @default("pending_onboarding")
+  permissions   String[] @default([])
+  branch_id     String?
+  is_partner    Boolean  @default(false)
+  is_active     Boolean  @default(true)
+  pin_hash      String?  // for shared-tablet PIN unlock
+  created_at    DateTime @default(now())
+  updated_at    DateTime @updatedAt
+
+  refresh_tokens RefreshToken[]
+  security_logs  SecurityLog[]
+
+  // PostgreSQL treats NULLs as distinct in unique constraints, so
+  // (email, NULL) rows can repeat. Duplicate pending users are
+  // prevented at the application layer in auth.service.ts.
+  @@unique([email, tenant_id])
+  @@index([tenant_id])
+  @@map("users")
+}
+
+model RefreshToken {
+  id         String   @id @default(cuid())
+  user_id    String
+  token_hash String   @unique
+  expires_at DateTime
+  created_at DateTime @default(now())
+
+  user User @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@index([user_id])
+  @@map("refresh_tokens")
+}
+
+// ─── Platform Customers ──────────────────────────────────────────────────────
+
+model PlatformCustomer {
+  id             String   @id @default(cuid())
+  mobile         String   @unique
+  name           String?
+  email          String?
+  is_active      Boolean  @default(true)
+  social_profile Json?    // { bio, interests, looking_for, prepared_qa, show_profile, emoji_avatar }
+  created_at     DateTime @default(now())
+  updated_at     DateTime @updatedAt
+
+  @@map("platform_customers")
+}
+
+model OtpCode {
+  id         String   @id @default(cuid())
+  mobile     String
+  otp_hash   String   // SHA-256 hash — never store raw OTP
+  attempts   Int      @default(0)
+  is_used    Boolean  @default(false)
+  expires_at DateTime
+  created_at DateTime @default(now())
+
+  @@index([mobile])
+  @@map("otp_codes")
+}
+
+// ─── KDS Devices ─────────────────────────────────────────────────────────────
+
+model KdsDevice {
+  id                   String    @id @default(cuid())
+  tenant_id            String
+  branch_id            String
+  station              String    // kitchen | bar
+  setup_code           String    @unique
+  setup_code_expires_at DateTime
+  is_activated         Boolean   @default(false)
+  activated_at         DateTime?
+  created_at           DateTime  @default(now())
+
+  @@index([tenant_id, branch_id])
+  @@map("kds_devices")
+}
+
+// ─── Security Logging ────────────────────────────────────────────────────────
+
+model SecurityLog {
+  id         String   @id @default(cuid())
+  user_id    String?
+  event      String
+  ip         String?
+  user_agent String?
+  metadata   Json?
+  created_at DateTime @default(now())
+
+  user User? @relation(fields: [user_id], references: [id], onDelete: SetNull)
+
+  @@index([user_id])
+  @@index([event])
+  @@map("security_logs")
+}

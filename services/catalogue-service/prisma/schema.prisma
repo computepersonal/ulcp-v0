@@ -1,0 +1,248 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── Catalogue Sections ───────────────────────────────────────────────────────
+
+model CatalogueSection {
+  id          String  @id @default(cuid())
+  tenant_id   String
+  branch_id   String? // null = applies to all branches of the tenant
+  name        String
+  description String?
+  position    Int     @default(0)
+  is_available Boolean @default(true)
+
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+
+  items CatalogueItem[]
+
+  @@index([tenant_id])
+  @@index([branch_id])
+  @@map("catalogue_sections")
+}
+
+// ─── Catalogue Items ──────────────────────────────────────────────────────────
+
+model CatalogueItem {
+  id         String  @id @default(cuid())
+  tenant_id  String
+  branch_id  String?
+  section_id String?
+
+  name        String
+  description String?
+  sku         String?
+
+  // Images: [{ url: string, isPrimary: boolean }]
+  images Json @default("[]")
+
+  // Pricing — all integers in paise (₹1 = 100 paise)
+  mrp              Int  @default(0)
+  price            Int  @default(0)
+  offer_price      Int?
+  offer_valid_till DateTime?
+
+  unit String? // "plate", "kg", "piece", "litre"
+
+  // Variants: [{ name, sku, price, mrp, stock, isAvailable }]
+  has_variants Boolean @default(false)
+  variants     Json    @default("[]")
+
+  // Attributes: [{ name, value }]  e.g. [{ name: "Spice Level", value: "Medium" }]
+  attributes Json @default("[]")
+
+  // Stock tracking
+  track_stock     Boolean @default(false)
+  stock           Int     @default(0)
+  low_stock_alert Int     @default(10)
+
+  // Availability
+  is_available       Boolean @default(true)
+  unavailable_reason String? // sold_out | ingredient_missing | quality_issue | custom
+  availability_type  String  @default("temporary") // temporary | permanent
+
+  // Food classification
+  veg_type  String? // "veg" | "vegan" | "non_veg" | "egg"
+  meal_type String? // "breakfast" | "lunch" | "dinner" | "snacks" | "all_day"
+  item_type String? // "food" | "beverage" | "dessert" | "merchandise" | "service"
+  course    String? // "starter" | "main" | "dessert" | "sides" | "beverages"
+
+  // Nutrition / media
+  prep_time_mins Int?
+  calories       Int?
+  video_url      String?
+
+  // Rating (computed from reviews, stored for fast reads)
+  rating       Float?
+  rating_count Int   @default(0)
+
+  // Catalogue flags
+  is_food          Boolean @default(false)
+  is_daily_special Boolean @default(false)
+
+  // Today price override: { price, original_price, reason, set_by, set_at, resets_at }
+  today_price_override Json?
+
+  sort_order Int @default(0)
+
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+
+  section      CatalogueSection? @relation(fields: [section_id], references: [id], onDelete: SetNull)
+  option_groups ItemOptionGroup[]
+  addon_groups  ItemAddonGroup[]
+  ingredients  ItemIngredient[]
+  combo_items  ComboItem[]
+
+  @@index([tenant_id])
+  @@index([branch_id])
+  @@index([section_id])
+  @@map("catalogue_items")
+}
+
+// ─── Item Option Groups (customizations) ──────────────────────────────────────
+// e.g. "Egg Type" with choices [Boiled +₹10, Fried +₹20]
+
+model ItemOptionGroup {
+  id          String  @id @default(cuid())
+  tenant_id   String
+  item_id     String
+  name        String
+  is_required Boolean @default(false)
+  min_select  Int     @default(0)
+  max_select  Int     @default(1)
+  sort_order  Int     @default(0)
+
+  choices ItemOptionChoice[]
+  item    CatalogueItem      @relation(fields: [item_id], references: [id], onDelete: Cascade)
+
+  @@index([tenant_id])
+  @@index([item_id])
+  @@map("item_option_groups")
+}
+
+model ItemOptionChoice {
+  id              String  @id @default(cuid())
+  option_group_id String
+  name            String
+  add_on_price    Int     @default(0)
+  is_available    Boolean @default(true)
+  sort_order      Int     @default(0)
+
+  option_group ItemOptionGroup @relation(fields: [option_group_id], references: [id], onDelete: Cascade)
+
+  @@index([option_group_id])
+  @@map("item_option_choices")
+}
+
+// ─── Addon Groups (tenant-level reusable add-ons) ─────────────────────────────
+// e.g. "Extra Sauces", "Beverages", "Sides" — linked to many items
+
+model AddonGroup {
+  id           String  @id @default(cuid())
+  tenant_id    String
+  name         String
+  is_available Boolean @default(true)
+  sort_order   Int     @default(0)
+
+  items      AddonGroupItem[]
+  item_links ItemAddonGroup[]
+
+  @@index([tenant_id])
+  @@map("addon_groups")
+}
+
+model AddonGroupItem {
+  id             String  @id @default(cuid())
+  addon_group_id String
+  name           String
+  price          Int     @default(0)
+  mrp            Int     @default(0)
+  is_available   Boolean @default(true)
+  sort_order     Int     @default(0)
+
+  addon_group AddonGroup @relation(fields: [addon_group_id], references: [id], onDelete: Cascade)
+
+  @@index([addon_group_id])
+  @@map("addon_group_items")
+}
+
+// Junction: which addon groups are linked to which items
+model ItemAddonGroup {
+  item_id        String
+  addon_group_id String
+
+  item        CatalogueItem @relation(fields: [item_id], references: [id], onDelete: Cascade)
+  addon_group AddonGroup    @relation(fields: [addon_group_id], references: [id], onDelete: Cascade)
+
+  @@id([item_id, addon_group_id])
+  @@map("item_addon_groups")
+}
+
+// ─── Combos ────────────────────────────────────────────────────────────────────
+// Bundle deals: buy item A + item B together at a special price
+
+model Combo {
+  id          String    @id @default(cuid())
+  tenant_id   String
+  branch_id   String?
+  name        String
+  description String?
+  image_url   String?
+  price       Int // combo deal price in paise
+  mrp         Int       @default(0) // sum of individual prices (for strikethrough)
+  is_available Boolean  @default(true)
+  sort_order  Int       @default(0)
+  valid_from  DateTime?
+  valid_till  DateTime?
+
+  items ComboItem[]
+
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+
+  @@index([tenant_id])
+  @@index([branch_id])
+  @@map("combos")
+}
+
+model ComboItem {
+  id           String  @id @default(cuid())
+  combo_id     String
+  item_id      String
+  quantity     Int     @default(1)
+  variant_name String? // optional — which variant is included
+
+  combo Combo         @relation(fields: [combo_id], references: [id], onDelete: Cascade)
+  item  CatalogueItem @relation(fields: [item_id], references: [id], onDelete: Cascade)
+
+  @@index([combo_id])
+  @@map("combo_items")
+}
+
+// ─── Item Ingredients ──────────────────────────────────────────────────────────
+// For allergen display + inventory recipe linking
+
+model ItemIngredient {
+  id          String  @id @default(cuid())
+  tenant_id   String
+  item_id     String
+  name        String
+  calories    Int?
+  allergens   Json    @default("[]") // ["gluten", "dairy", "nuts", "soy", "eggs"]
+  is_critical Boolean @default(false) // if stock = 0 → auto-disable item
+
+  item CatalogueItem @relation(fields: [item_id], references: [id], onDelete: Cascade)
+
+  @@index([tenant_id])
+  @@index([item_id])
+  @@map("item_ingredients")
+}

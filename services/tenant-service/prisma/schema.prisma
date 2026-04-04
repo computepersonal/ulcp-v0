@@ -1,0 +1,269 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── Tenants ──────────────────────────────────────────────────────────────────
+
+model Tenant {
+  id           String  @id @default(cuid())
+  name         String
+  slug         String  @unique
+  business_type String
+  // self_service_cafe | seated_food_only | seated_full_service | seated_self_order |
+  // home_kitchen | cloud_kitchen | restaurant_plus_delivery | catering | food_truck |
+  // gated_community | kirana | boutique | nursery | pharmacy | handicrafts |
+  // bakery | stationery | custom
+  plan         String  @default("free") // free | starter | pro | enterprise
+  country      String  @default("IN")
+  currency     String  @default("INR")
+  timezone     String  @default("Asia/Kolkata")
+  is_active    Boolean @default(true)
+  is_chain     Boolean @default(false)
+  chain_config Json?   // { sharedCatalogue, allowBranchPricing, unifiedLoyalty }
+
+  gst_registered   Boolean @default(false)
+  gstin            String?
+  gst_state_code   String?
+  gst_default_rate Int     @default(0)
+
+  logo_url  String?
+  cover_url String?
+  address   String?
+  city      String?
+  state     String?
+  pincode   String?
+  phone     String?
+  email     String?
+  website   String?
+
+  owner_user_id String // references identity-service user.id (cross-service, no FK)
+
+  // KOT acknowledgment mode — how kitchen acknowledges a new KOT
+  // "auto"    → auto-ack after kot_ack_delay_secs (default for free plan)
+  // "kds"     → manual tap on KDS screen (default for starter+)
+  // "printer" → auto-ack on successful thermal print job
+  kot_ack_mode       String @default("auto") // auto | kds | printer
+  kot_ack_delay_secs Int    @default(60)     // seconds before auto-ack (mode=auto only)
+
+  onboarding_step      Int      @default(1)
+  onboarding_completed Boolean  @default(false)
+  trial_ends_at        DateTime?
+
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+
+  branches       Branch[]
+  partners       Partner[]
+  staff_invites  StaffInvite[]
+  subscriptions  Subscription[]
+  kds_setup_codes KdsSetupCode[]
+
+  @@index([slug])
+  @@index([owner_user_id])
+  @@map("tenants")
+}
+
+// ─── Branches ─────────────────────────────────────────────────────────────────
+
+model Branch {
+  id         String  @id @default(cuid())
+  tenant_id  String
+  name       String
+  address    String?
+  phone      String?
+  is_active  Boolean @default(true)
+  is_primary Boolean @default(false)
+  lat        Float?
+  lng        Float?
+  timezone   String  @default("Asia/Kolkata")
+  printer_ip String?
+  delivery_radius_km Float @default(5)
+
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+
+  tenant          Tenant         @relation(fields: [tenant_id], references: [id], onDelete: Cascade)
+  tables          Table[]
+  sections        Section[]
+  kds_setup_codes KdsSetupCode[]
+
+  @@index([tenant_id])
+  @@map("branches")
+}
+
+// ─── Partners ─────────────────────────────────────────────────────────────────
+
+model Partner {
+  id                String    @id @default(cuid())
+  tenant_id         String
+  user_id           String    // identity-service user.id
+  role              String
+  // managing_partner | silent_partner | operations_partner | branch_partner | custom_partner
+  permissions       Json      @default("{}")
+  assigned_branches String[]  @default([])
+  invited_by        String    // user_id of inviter
+  invite_token      String?   @unique
+  invite_expires_at DateTime?
+  accepted_at       DateTime?
+  is_active         Boolean   @default(false) // false until invite accepted
+
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+
+  tenant Tenant @relation(fields: [tenant_id], references: [id], onDelete: Cascade)
+
+  @@index([tenant_id])
+  @@index([user_id])
+  @@map("partners")
+}
+
+// ─── Staff Invites ────────────────────────────────────────────────────────────
+
+model StaffInvite {
+  id           String    @id @default(cuid())
+  tenant_id    String
+  branch_id    String?
+  email        String
+  role         String
+  permissions  String[]  @default([])
+  invited_by   String    // user_id
+  invite_token String    @unique
+  expires_at   DateTime
+  accepted_at  DateTime?
+
+  created_at DateTime @default(now())
+
+  tenant Tenant @relation(fields: [tenant_id], references: [id], onDelete: Cascade)
+
+  @@index([tenant_id])
+  @@index([email])
+  @@map("staff_invites")
+}
+
+// ─── Sections ─────────────────────────────────────────────────────────────────
+
+model Section {
+  id        String  @id @default(cuid())
+  tenant_id String
+  branch_id String
+  name      String  // e.g. "Rooftop", "Lakeside", "Indoor"
+  color     String  @default("#6366F1") // hex color for floor map
+  position  Int     @default(0)
+  is_active Boolean @default(true)
+
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+
+  branch Branch  @relation(fields: [branch_id], references: [id], onDelete: Cascade)
+  tables Table[]
+
+  @@index([tenant_id])
+  @@index([branch_id])
+  @@map("sections")
+}
+
+// ─── Tables ───────────────────────────────────────────────────────────────────
+
+model Table {
+  id         String  @id @default(cuid())
+  tenant_id  String
+  branch_id  String
+  section_id String?
+  name       String
+  capacity   Int     @default(2)
+  qr_code    String
+  is_active  Boolean @default(true)
+  position   Int     @default(0)
+  status     String  @default("available")
+  // available | pending_confirmation | occupied | billed
+
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+
+  branch   Branch         @relation(fields: [branch_id], references: [id], onDelete: Cascade)
+  section  Section?       @relation(fields: [section_id], references: [id], onDelete: SetNull)
+  sessions TableSession[]
+
+  @@index([tenant_id])
+  @@index([branch_id])
+  @@map("tables")
+}
+
+// ─── Table Sessions ───────────────────────────────────────────────────────────
+
+model TableSession {
+  id             String    @id @default(cuid())
+  tenant_id      String
+  branch_id      String
+  table_id       String
+  customer_id    String?
+  customer_phone String?
+  customer_name  String?
+  pax            Int       @default(1)
+
+  status         String    @default("pending_confirmation")
+  // pending_confirmation | open | billed | closed
+
+  confirmed_at   DateTime?
+  confirmed_by   String?   // staff user_id; null = auto-confirmed
+
+  opened_at      DateTime  @default(now())
+  closed_at      DateTime?
+
+  created_at     DateTime  @default(now())
+  updated_at     DateTime  @updatedAt
+
+  table Table @relation(fields: [table_id], references: [id], onDelete: Cascade)
+
+  @@index([tenant_id])
+  @@index([branch_id])
+  @@index([table_id])
+  @@index([status])
+  @@map("table_sessions")
+}
+
+// ─── Subscriptions ────────────────────────────────────────────────────────────
+
+model Subscription {
+  id                       String    @id @default(cuid())
+  tenant_id                String
+  plan                     String    // free | starter | pro | enterprise
+  started_at               DateTime  @default(now())
+  expires_at               DateTime?
+  razorpay_subscription_id String?
+  is_active                Boolean   @default(true)
+
+  created_at DateTime @default(now())
+
+  tenant Tenant @relation(fields: [tenant_id], references: [id], onDelete: Cascade)
+
+  @@index([tenant_id])
+  @@map("subscriptions")
+}
+
+// ─── KDS Setup Codes ──────────────────────────────────────────────────────────
+
+model KdsSetupCode {
+  id         String    @id @default(cuid())
+  code       String    @unique
+  tenant_id  String
+  branch_id  String
+  station    String    // kitchen | bar
+  expires_at DateTime
+  used_at    DateTime?
+
+  created_at DateTime @default(now())
+
+  tenant Tenant @relation(fields: [tenant_id], references: [id], onDelete: Cascade)
+  branch Branch @relation(fields: [branch_id], references: [id], onDelete: Cascade)
+
+  @@index([tenant_id])
+  @@index([code])
+  @@map("kds_setup_codes")
+}

@@ -1,0 +1,244 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── Enums ────────────────────────────────────────────────────────────────────
+
+enum BidRequestStatus {
+  draft
+  open
+  closed
+  awarded
+  cancelled
+}
+
+enum RecurrenceType {
+  one_time
+  daily
+  weekly
+  fortnightly
+  monthly
+  on_demand
+}
+
+enum BidStatus {
+  submitted
+  withdrawn
+  awarded
+  rejected
+}
+
+enum DirectOrderStatus {
+  pending
+  confirmed
+  dispatched
+  delivered
+  cancelled
+}
+
+// ─── Vendor ───────────────────────────────────────────────────────────────────
+
+model Vendor {
+  id               String             @id @default(cuid())
+  tenant_id        String
+  name             String
+  contact_name     String
+  contact_email    String
+  contact_phone    String
+  contact_whatsapp String?
+  address          String?
+  city             String?
+  state            String?
+  pincode          String?
+  gstin            String?
+  categories       String[]
+  rating           Float              @default(5.0)
+  rating_count     Int                @default(0)
+  is_active        Boolean            @default(true)
+  is_verified      Boolean            @default(false)
+  notes            String?
+
+  vendor_items     VendorItem[]
+  bids             Bid[]
+  bid_invites      BidRequestVendor[]
+  direct_orders    DirectOrder[]
+  preferred_by     VendorPreference[]
+
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+
+  @@index([tenant_id])
+  @@map("vendors")
+}
+
+// ─── VendorItem ───────────────────────────────────────────────────────────────
+
+model VendorItem {
+  id                 String   @id @default(cuid())
+  vendor_id          String
+  tenant_id          String
+  ingredient_id      String
+  ingredient_name    String
+  unit               String
+  unit_price         Int
+  min_order_quantity Float
+  lead_time_days     Int
+  is_available       Boolean  @default(true)
+  last_updated_at    DateTime @updatedAt
+
+  vendor Vendor @relation(fields: [vendor_id], references: [id], onDelete: Cascade)
+
+  @@index([vendor_id])
+  @@index([tenant_id])
+  @@index([ingredient_id])
+  @@map("vendor_items")
+}
+
+// ─── VendorPreference ─────────────────────────────────────────────────────────
+
+model VendorPreference {
+  id            String  @id @default(cuid())
+  tenant_id     String
+  vendor_id     String
+  ingredient_id String
+  is_preferred  Boolean @default(true)
+
+  vendor Vendor @relation(fields: [vendor_id], references: [id], onDelete: Cascade)
+
+  @@unique([tenant_id, vendor_id, ingredient_id])
+  @@index([tenant_id, ingredient_id])
+  @@map("vendor_preferences")
+}
+
+// ─── BidRequest ───────────────────────────────────────────────────────────────
+
+model BidRequest {
+  id                String           @id @default(cuid())
+  tenant_id         String
+  branch_id         String
+  title             String
+  description       String?
+  status            BidRequestStatus @default(draft)
+  items             Json[]
+  recurrence        RecurrenceType   @default(one_time)
+  recurrence_day    String?
+  delivery_location String?
+  delivery_notes    String?
+  bid_open_at       DateTime?
+  bid_close_at      DateTime?
+  ranking_weights   Json             @default("{\"price\":40,\"lead_time\":30,\"rating\":20,\"payment\":10}")
+  awarded_vendor_id String?
+  awarded_bid_id    String?
+  created_by        String
+
+  bids           Bid[]
+  vendor_invites BidRequestVendor[]
+  vendor_tokens  VendorToken[]
+
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+
+  @@index([tenant_id])
+  @@index([status])
+  @@map("bid_requests")
+}
+
+// ─── BidRequestVendor ─────────────────────────────────────────────────────────
+
+model BidRequestVendor {
+  id                   String     @id @default(cuid())
+  bid_request_id       String
+  vendor_id            String
+  notified_at          DateTime?
+  notification_channel String     @default("email")
+
+  bid_request BidRequest @relation(fields: [bid_request_id], references: [id], onDelete: Cascade)
+  vendor      Vendor     @relation(fields: [vendor_id], references: [id], onDelete: Cascade)
+
+  @@unique([bid_request_id, vendor_id])
+  @@map("bid_request_vendors")
+}
+
+// ─── Bid ──────────────────────────────────────────────────────────────────────
+
+model Bid {
+  id                String    @id @default(cuid())
+  bid_request_id    String
+  vendor_id         String
+  tenant_id         String
+  status            BidStatus @default(submitted)
+  items             Json[]
+  total_amount      Int
+  lead_time_days    Int
+  valid_until       DateTime
+  payment_terms     String
+  delivery_included Boolean   @default(false)
+  delivery_charge   Int       @default(0)
+  notes             String?
+  submitted_at      DateTime  @default(now())
+
+  bid_request BidRequest @relation(fields: [bid_request_id], references: [id], onDelete: Cascade)
+  vendor      Vendor     @relation(fields: [vendor_id], references: [id], onDelete: Cascade)
+
+  @@index([bid_request_id])
+  @@index([vendor_id])
+  @@map("bids")
+}
+
+// ─── VendorToken ──────────────────────────────────────────────────────────────
+
+model VendorToken {
+  id             String    @id @default(cuid())
+  vendor_id      String
+  bid_request_id String?
+  direct_order_id String?
+  token          String    @unique @default(cuid())
+  token_type     String    @default("bid")  // bid | direct_order
+  expires_at     DateTime
+  used_at        DateTime?
+
+  bid_request BidRequest? @relation(fields: [bid_request_id], references: [id], onDelete: Cascade)
+
+  created_at DateTime @default(now())
+
+  @@index([token])
+  @@map("vendor_tokens")
+}
+
+// ─── DirectOrder ──────────────────────────────────────────────────────────────
+
+model DirectOrder {
+  id                     String            @id @default(cuid())
+  tenant_id              String
+  branch_id              String
+  vendor_id              String
+  status                 DirectOrderStatus @default(pending)
+  items                  Json[]
+  total_amount           Int
+  payment_terms          String
+  expected_delivery_date DateTime?
+  delivery_notes         String?
+  purchase_order_id      String?
+  confirmed_at           DateTime?
+  dispatched_at          DateTime?
+  delivered_at           DateTime?
+  cancelled_at           DateTime?
+  cancelled_reason       String?
+  created_by             String
+
+  vendor Vendor @relation(fields: [vendor_id], references: [id])
+
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+
+  @@index([tenant_id])
+  @@index([vendor_id])
+  @@index([status])
+  @@map("direct_orders")
+}
