@@ -1,7 +1,7 @@
 import { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { apiSuccess, apiError, AppError } from "@ulcp/shared";
-import { authenticateStaff } from "../middleware/authenticate";
+import { authenticateStaffOrKds } from "../middleware/authenticate";
 import { formatZodError } from "../lib/zodError";
 import {
   findKOTs,
@@ -84,7 +84,7 @@ export async function kotRoutes(fastify: FastifyInstance): Promise<void> {
         },
         response: { 200: genericOk, ...errResponses },
       },
-      preHandler: [authenticateStaff],
+      preHandler: [authenticateStaffOrKds],
     },
     async (req, reply) => {
       const { tenant_id, branch_id } = req.params;
@@ -116,7 +116,7 @@ export async function kotRoutes(fastify: FastifyInstance): Promise<void> {
         },
         response: { 200: genericOk, ...errResponses },
       },
-      preHandler: [authenticateStaff],
+      preHandler: [authenticateStaffOrKds],
     },
     async (req, reply) => {
       const parsed = kotStatusSchema.safeParse(req.body);
@@ -177,7 +177,7 @@ export async function kotRoutes(fastify: FastifyInstance): Promise<void> {
         },
         response: { 200: genericOk, ...errResponses },
       },
-      preHandler: [authenticateStaff],
+      preHandler: [authenticateStaffOrKds],
     },
     async (req, reply) => {
       const bodySchema = z.object({
@@ -235,7 +235,7 @@ export async function kotRoutes(fastify: FastifyInstance): Promise<void> {
         },
         response: { 200: genericOk, ...errResponses },
       },
-      preHandler: [authenticateStaff],
+      preHandler: [authenticateStaffOrKds],
     },
     async (req, reply) => {
       const parsed = itemStatusSchema.safeParse(req.body);

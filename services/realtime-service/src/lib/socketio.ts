@@ -85,11 +85,13 @@ export function createSocketServer(
   io.use((socket, next) => {
     const token = socket.handshake.auth?.token as string | undefined;
     if (!token) {
+      logger.warn({ origin: socket.handshake.headers.origin }, "Socket auth rejected: no token");
       return next(new Error("Authentication required"));
     }
 
     const user = verifyToken(token);
     if (!user) {
+      logger.warn({ tokenPrefix: token.slice(0, 20) }, "Socket auth rejected: invalid token");
       return next(new Error("Invalid or expired token"));
     }
 

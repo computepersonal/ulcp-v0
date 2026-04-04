@@ -97,7 +97,7 @@ function KotCard({
           {kot.table_name && (
             <div className="text-gray-300 text-sm">{kot.table_name}</div>
           )}
-          <div className="text-xs text-gray-400 capitalize">{kot.order_type.replace(/_/g, ' ')}</div>
+          <div className="text-xs text-gray-400 capitalize">{(kot.order_type ?? 'dine_in').replace(/_/g, ' ')}</div>
         </div>
         <div className="text-right">
           <div className={`text-sm font-medium ${isOverdue ? 'text-red-400' : elapsed >= targetMins ? 'text-yellow-400' : 'text-gray-400'}`}>
@@ -196,8 +196,8 @@ export default function KdsScreen({ config, onReset }: KdsScreenProps) {
           { headers: { Authorization: `Bearer ${config.device_token}` } }
         );
         if (res.ok) {
-          const data = (await res.json()) as { success: boolean; data?: Kot[] };
-          if (data.success && data.data) setKots(data.data);
+          const data = (await res.json()) as { success: boolean; data?: { kots: Kot[] } };
+          if (data.success && data.data?.kots) setKots(data.data.kots);
         }
       } catch {
         // API not available yet
