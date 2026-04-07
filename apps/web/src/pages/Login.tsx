@@ -14,7 +14,7 @@ interface LoginResponse {
   success: boolean;
   data?: {
     access_token: string;
-    user: { user_id: string; tenant_id: string; role: string; name: string; email: string };
+    user: { user_id: string; tenant_id: string; role: string; name: string; email: string; permissions: string[] };
   };
   error?: string;
 }

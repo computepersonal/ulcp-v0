@@ -12,6 +12,7 @@ import {
   ChevronRight,
   Package
 } from 'lucide-react';
+
 import { useAppSelector, useAppDispatch } from '../hooks/redux';
 import { clearAuth } from '../store/authSlice';
 import { useSocket } from '../hooks/useSocket';
@@ -22,11 +23,18 @@ interface NavItem {
   label: string;
 }
 
-const navItems: NavItem[] = [
+const OWNER_ROLES = new Set(['tenant_owner', 'primary_owner', 'managing_partner', 'platform_superadmin']);
+
+function canViewReports(user: { role: string; permissions: string[] } | null): boolean {
+  if (!user) return false;
+  if (OWNER_ROLES.has(user.role)) return true;
+  return user.permissions.includes('reports:view');
+}
+
+const BASE_NAV_ITEMS: NavItem[] = [
   { to: '/floor-map', icon: <Map size={20} />, label: 'Floor Map' },
   { to: '/orders', icon: <ClipboardList size={20} />, label: 'Orders' },
   { to: '/catalogue', icon: <BookOpen size={20} />, label: 'Catalogue' },
-  { to: '/reports', icon: <BarChart3 size={20} />, label: 'Reports' },
   { to: '/staff', icon: <Users size={20} />, label: 'Staff' },
   { to: '/procurement', icon: <ShoppingCart size={20} />, label: 'Procurement' },
   { to: '/settings', icon: <Settings size={20} />, label: 'Settings' }
@@ -38,6 +46,12 @@ export default function Layout() {
   const dispatch = useAppDispatch();
   const navigate = useNavigate();
   useSocket(); // Initialize socket connection
+
+  const navItems: NavItem[] = [
+    ...BASE_NAV_ITEMS.slice(0, 3), // floor-map, orders, catalogue
+    ...(canViewReports(user) ? [{ to: '/reports', icon: <BarChart3 size={20} />, label: 'Reports' }] : []),
+    ...BASE_NAV_ITEMS.slice(3), // staff, procurement, settings
+  ];
 
   const handleLogout = () => {
     dispatch(clearAuth());
@@ -110,7 +124,15 @@ export default function Layout() {
           </div>
           <div className="flex items-center gap-3">
             <Package size={20} className="text-gray-400" />
-            <div className="w-8 h-8 bg-brand-100 rounded-full flex items-center justify-center text-brand-600 text-sm font-bold cursor-pointer">
+            <button
+              onClick={handleLogout}
+              title="Logout"
+              className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm text-gray-500 hover:bg-red-50 hover:text-red-600 transition-colors"
+            >
+              <LogOut size={16} />
+              <span className="hidden sm:inline">Logout</span>
+            </button>
+            <div className="w-8 h-8 bg-brand-100 rounded-full flex items-center justify-center text-brand-600 text-sm font-bold">
               {user?.name?.[0]?.toUpperCase() ?? 'S'}
             </div>
           </div>

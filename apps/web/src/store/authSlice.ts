@@ -6,6 +6,7 @@ interface StaffUser {
   role: string;
   name: string;
   email: string;
+  permissions: string[];
 }
 
 interface AuthState {

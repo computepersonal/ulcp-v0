@@ -52,3 +52,12 @@ export async function updateKOTItems(
     data: { items: items as Prisma.InputJsonValue },
   });
 }
+
+export async function findKOTsByOrderId(order_id: string, tenant_id: string) {
+  return prisma.kOT.findMany({ where: { order_id, tenant_id } });
+}
+
+export async function allKotsRejected(order_id: string, tenant_id: string) {
+  const kots = await findKOTsByOrderId(order_id, tenant_id);
+  return kots.length > 0 && kots.every((k) => k.status === "rejected");
+}

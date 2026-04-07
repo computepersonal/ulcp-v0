@@ -251,6 +251,9 @@ export async function placeOrder(input: CreateOrderInput) {
   await createStatusHistory(order.id, "pending", input.placed_by);
 
   // Publish event — non-blocking
+  const orderItems = input.items as Array<{ quantity?: number }>;
+  const item_count = orderItems.reduce((sum, i) => sum + (i.quantity ?? 1), 0);
+
   await redisPublish(
     "ORDER_CREATED",
     JSON.stringify({
@@ -258,6 +261,18 @@ export async function placeOrder(input: CreateOrderInput) {
       tenant_id: input.tenant_id,
       branch_id: input.branch_id,
       order_number,
+      // Full snapshot so staff portal can add to kanban without a refetch
+      order: {
+        id: order.id,
+        order_number,
+        type: order.type,
+        status: "pending",
+        total: order.total,
+        item_count,
+        created_at: order.created_at,
+        table_id: order.table_id ?? null,
+        kots: kots.map((k) => ({ id: k.id, kot_number: k.kot_number, status: k.status, station: k.station, items: k.items })),
+      },
       kots: kots.map((k) => ({
         id: k.id,
         station: k.station,
@@ -357,13 +372,28 @@ export async function recordPayment(
   const order = await findOrderById(order_id, tenant_id);
   if (!order) throw new AppError("Order not found", 404);
 
-  const updated = await updatePaymentStatus(order_id, "paid", payment_method);
+  // Mark payment paid
+  await updatePaymentStatus(order_id, "paid", payment_method);
+
+  // Mark order completed
+  const updated = await updateOrderStatus(order_id, "completed");
+  await createStatusHistory(order_id, "completed", "staff", `Payment received via ${payment_method}`);
+
+  // Commission calculation on completion
+  await handleOrderCompleted(order_id, tenant_id, order.total);
 
   await redisPublish(
     "PAYMENT_COMPLETED",
-    JSON.stringify({ order_id, tenant_id, payment_method })
+    JSON.stringify({ order_id, tenant_id, branch_id: order.branch_id, payment_method, total: order.total })
   ).catch((err: unknown) =>
     logger.warn({ err }, "Failed to publish PAYMENT_COMPLETED")
+  );
+
+  await redisPublish(
+    "ORDER_STATUS_CHANGED",
+    JSON.stringify({ order_id, tenant_id, branch_id: order.branch_id, status: "completed" })
+  ).catch((err: unknown) =>
+    logger.warn({ err }, "Failed to publish ORDER_STATUS_CHANGED after payment")
   );
 
   return updated;

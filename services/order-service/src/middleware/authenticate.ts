@@ -26,6 +26,31 @@ export async function authenticateStaff(
   }
 }
 
+const OWNER_ROLES = new Set(["tenant_owner", "primary_owner", "managing_partner", "platform_superadmin"]);
+
+/**
+ * Returns a preHandler that allows tenant owners unconditionally,
+ * and requires the given permission for all other staff roles.
+ */
+export function requirePermission(permission: string) {
+  return async function (req: FastifyRequest, reply: FastifyReply): Promise<void> {
+    const auth = req.headers.authorization;
+    if (!auth?.startsWith("Bearer ")) {
+      return reply.code(401).send({ success: false, error: "Unauthorized" });
+    }
+    try {
+      req.staff = verifyStaffAccessToken(auth.slice(7));
+    } catch {
+      return reply.code(401).send({ success: false, error: "Invalid or expired token" });
+    }
+    const { role, permissions } = req.staff;
+    if (OWNER_ROLES.has(role)) return; // owners bypass all permission checks
+    if (!(permissions as string[]).includes(permission)) {
+      return reply.code(403).send({ success: false, error: `Forbidden — requires ${permission}` });
+    }
+  };
+}
+
 /** Accepts either staff JWT or KDS device JWT — used on KOT routes */
 export async function authenticateStaffOrKds(
   req: FastifyRequest,

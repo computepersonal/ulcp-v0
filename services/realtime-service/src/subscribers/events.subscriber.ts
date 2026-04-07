@@ -23,6 +23,8 @@ const EVENT_CHANNELS = [
   "JUKEBOX_SONG_STARTED",
   "JUKEBOX_SONG_ENDED",
   "JUKEBOX_QUEUE_UPDATED",
+  "KOT_REJECTED",
+  "ORDER_UNBILLED_ALERT",
 ];
 
 interface EventPayload {
@@ -75,6 +77,27 @@ function handleEvent(io: SocketServer, channel: string, payload: EventPayload): 
         // Route to kitchen or bar based on station in payload
         const station = (payload.station as string) ?? "kitchen";
         broadcast(io, `kitchen:${tenant_id}:${branch_id}:${station}`, "kot:created", payload);
+      }
+      break;
+    }
+
+    case "ORDER_UNBILLED_ALERT": {
+      if (tenant_id) {
+        // Alert owner/managers — order was in-progress but never billed
+        broadcast(io, `tenant:${tenant_id}:owner`, "order:unbilled_alert", payload);
+        if (branch_id) {
+          broadcast(io, `tenant:${tenant_id}:branch:${branch_id}`, "order:unbilled_alert", payload);
+        }
+      }
+      break;
+    }
+
+    case "KOT_REJECTED": {
+      if (tenant_id && branch_id) {
+        // Notify branch staff (waiters/managers) — shown as alert in portal
+        broadcast(io, `tenant:${tenant_id}:branch:${branch_id}`, "kot:rejected", payload);
+        // Also notify tenant room in case manager is on a different branch view
+        broadcast(io, `tenant:${tenant_id}`, "kot:rejected", payload);
       }
       break;
     }

@@ -19,10 +19,16 @@ export interface ListOrdersFilter {
 }
 
 export async function findOrders(filter: ListOrdersFilter) {
+  const statusFilter = filter.status
+    ? filter.status.includes(",")
+      ? { status: { in: filter.status.split(",").map((s) => s.trim()) } }
+      : { status: filter.status }
+    : {};
+
   const where: Prisma.OrderWhereInput = {
     tenant_id: filter.tenant_id,
     ...(filter.branch_id ? { branch_id: filter.branch_id } : {}),
-    ...(filter.status ? { status: filter.status } : {}),
+    ...statusFilter,
     ...(filter.type ? { type: filter.type } : {}),
     ...(filter.date
       ? {
@@ -45,7 +51,13 @@ export async function findOrders(filter: ListOrdersFilter) {
     prisma.order.count({ where }),
   ]);
 
-  return { orders, total };
+  const shaped = orders.map((o) => {
+    const items = o.items as Array<{ quantity?: number }>;
+    const item_count = items.reduce((sum, i) => sum + (i.quantity ?? 1), 0);
+    return { ...o, item_count, gst_amount: o.tax_amount };
+  });
+
+  return { orders: shaped, total };
 }
 
 export async function findOrderById(id: string, tenant_id: string) {

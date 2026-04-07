@@ -1,7 +1,8 @@
 import { FastifyInstance } from "fastify";
+import { prisma } from "../lib/prisma";
 import { z } from "zod";
 import { apiSuccess, apiError, AppError } from "@ulcp/shared";
-import { authenticateStaff, authenticateCustomer } from "../middleware/authenticate";
+import { authenticateStaff, authenticateCustomer, requirePermission } from "../middleware/authenticate";
 import { formatZodError } from "../lib/zodError";
 import {
   placeOrder,
@@ -294,6 +295,101 @@ export async function orderRoutes(fastify: FastifyInstance): Promise<void> {
           kot_ack_delay_secs: kotConfig.kot_ack_delay_secs,
         });
         return reply.code(201).send(apiSuccess({ order }));
+      } catch (err) {
+        if (err instanceof AppError) {
+          return reply.code(err.statusCode).send(apiError(err.message));
+        }
+        throw err;
+      }
+    }
+  );
+
+  // GET /:tenant_id/summary/daily — daily sales summary + unbilled orders
+  fastify.get<{ Params: TenantParams; Querystring: { date?: string; branch_id?: string } }>(
+    "/:tenant_id/summary/daily",
+    {
+      schema: {
+        summary: "Daily sales summary with unbilled orders",
+        tags: ["Orders"],
+        response: { 200: genericOk, ...errResponses },
+      },
+      preHandler: [requirePermission("reports:view")],
+    },
+    async (req, reply) => {
+      const { tenant_id } = req.params;
+      const { date, branch_id } = req.query;
+
+      // Default to today in UTC
+      const targetDate = date ?? new Date().toISOString().slice(0, 10);
+      const dayStart = new Date(`${targetDate}T00:00:00.000Z`);
+      const dayEnd = new Date(`${targetDate}T23:59:59.999Z`);
+
+      const branchFilter = branch_id ? { branch_id } : {};
+
+      try {
+        const [completed, cancelled, unbilled, active] = await Promise.all([
+          // Completed (paid) orders for the day
+          prisma.order.findMany({
+            where: { tenant_id, ...branchFilter, status: "completed", created_at: { gte: dayStart, lte: dayEnd } },
+            select: { id: true, order_number: true, total: true, payment_method: true, created_at: true, type: true, items: true },
+          }),
+          // Cancelled orders for the day
+          prisma.order.findMany({
+            where: { tenant_id, ...branchFilter, status: "cancelled", created_at: { gte: dayStart, lte: dayEnd } },
+            select: { id: true, order_number: true, total: true, cancelled_reason: true, created_at: true },
+          }),
+          // Unbilled: auto-cancelled with reason containing "unbilled" or "never billed"
+          prisma.order.findMany({
+            where: {
+              tenant_id, ...branchFilter,
+              status: "cancelled",
+              cancelled_reason: { contains: "never billed" },
+              created_at: { gte: dayStart, lte: dayEnd },
+            },
+            select: { id: true, order_number: true, total: true, cancelled_reason: true, created_at: true, items: true },
+          }),
+          // Still active orders right now (not yet completed/cancelled)
+          prisma.order.findMany({
+            where: { tenant_id, ...branchFilter, status: { in: ["pending", "confirmed", "preparing", "ready"] } },
+            select: { id: true, order_number: true, total: true, status: true, created_at: true },
+          }),
+        ]);
+
+        const totalRevenue = completed.reduce((s, o) => s + o.total, 0);
+        const totalOrders = completed.length;
+        const avgOrder = totalOrders > 0 ? Math.round(totalRevenue / totalOrders) : 0;
+
+        // Payment method breakdown
+        const paymentBreakdown = completed.reduce<Record<string, number>>((acc, o) => {
+          const method = o.payment_method ?? "unknown";
+          acc[method] = (acc[method] ?? 0) + 1;
+          return acc;
+        }, {});
+
+        // Top items by quantity
+        const itemMap = new Map<string, { name: string; quantity: number; revenue: number }>();
+        for (const order of completed) {
+          const items = order.items as Array<{ name?: string; price?: number; quantity?: number }>;
+          for (const item of items) {
+            const name = item.name ?? "Unknown";
+            const existing = itemMap.get(name) ?? { name, quantity: 0, revenue: 0 };
+            existing.quantity += item.quantity ?? 1;
+            existing.revenue += (item.price ?? 0) * (item.quantity ?? 1);
+            itemMap.set(name, existing);
+          }
+        }
+        const topItems = [...itemMap.values()]
+          .sort((a, b) => b.quantity - a.quantity)
+          .slice(0, 10);
+
+        return reply.send(apiSuccess({
+          date: targetDate,
+          summary: { totalRevenue, totalOrders, avgOrder, paymentBreakdown },
+          unbilled,
+          active,
+          cancelled_count: cancelled.length,
+          topItems,
+        }));
       } catch (err) {
         if (err instanceof AppError) {
           return reply.code(err.statusCode).send(apiError(err.message));

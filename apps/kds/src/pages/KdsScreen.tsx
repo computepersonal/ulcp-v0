@@ -34,6 +34,7 @@ interface KotCardProps {
   onStatusChange: (kotId: string, status: Kot['status']) => void;
   onItemStatusChange: (kotId: string, itemId: string, status: KotItem['status']) => void;
   onServed: (kotId: string) => void;
+  onRejected: (kotId: string) => void;
   deviceToken: string;
   tenantId: string;
 }
@@ -44,6 +45,7 @@ function KotCard({
   onStatusChange,
   onItemStatusChange,
   onServed,
+  onRejected,
   deviceToken,
   tenantId
 }: KotCardProps) {
@@ -79,6 +81,20 @@ function KotCard({
       }
     } catch {
       // Network error — swallow silently
+    }
+  };
+
+  const rejectKot = async () => {
+    const reason = window.prompt('Reason for rejection (optional):') ?? 'Kitchen unable to fulfill';
+    try {
+      const res = await fetch(`${orderServiceUrl}/api/v1/kots/${tenantId}/${kot.id}/reject`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${deviceToken}` },
+        body: JSON.stringify({ reason })
+      });
+      if (res.ok) onRejected(kot.id);
+    } catch {
+      // Network error
     }
   };
 
@@ -136,12 +152,21 @@ function KotCard({
       {/* Action buttons */}
       <div className="flex gap-2 mt-auto">
         {kot.status === 'pending' && (
-          <button
-            onClick={() => { void patchStatus('acknowledged'); }}
-            className="flex-1 py-2 bg-brand-500 hover:bg-brand-600 text-white text-sm font-semibold rounded-lg transition-colors"
-          >
-            ACKNOWLEDGE
-          </button>
+          <>
+            <button
+              onClick={() => { void patchStatus('acknowledged'); }}
+              className="flex-1 py-2 bg-brand-500 hover:bg-brand-600 text-white text-sm font-semibold rounded-lg transition-colors"
+            >
+              ACKNOWLEDGE
+            </button>
+            <button
+              onClick={() => { void rejectKot(); }}
+              className="py-2 px-3 bg-red-800 hover:bg-red-700 text-white text-sm font-semibold rounded-lg transition-colors"
+              title="Reject KOT"
+            >
+              ✕
+            </button>
+          </>
         )}
         {(kot.status === 'acknowledged' || kot.status === 'preparing') && allItemsReady && (
           <button
@@ -149,6 +174,15 @@ function KotCard({
             className="flex-1 py-2 bg-green-600 hover:bg-green-700 text-white text-sm font-semibold rounded-lg transition-colors"
           >
             ALL READY
+          </button>
+        )}
+        {(kot.status === 'acknowledged' || kot.status === 'preparing') && (
+          <button
+            onClick={() => { void rejectKot(); }}
+            className="py-2 px-3 bg-red-800 hover:bg-red-700 text-white text-sm font-semibold rounded-lg transition-colors"
+            title="Reject KOT"
+          >
+            ✕
           </button>
         )}
         {kot.status === 'ready' && (
@@ -277,6 +311,10 @@ export default function KdsScreen({ config, onReset }: KdsScreenProps) {
     setKots(prev => prev.filter(k => k.id !== kotId));
   }, []);
 
+  const handleRejected = useCallback((kotId: string) => {
+    setKots(prev => prev.filter(k => k.id !== kotId));
+  }, []);
+
   const handleReset = () => {
     clearConfig();
     onReset();
@@ -320,6 +358,7 @@ export default function KdsScreen({ config, onReset }: KdsScreenProps) {
                 onStatusChange={handleStatusChange}
                 onItemStatusChange={handleItemStatusChange}
                 onServed={handleServed}
+                onRejected={handleRejected}
                 deviceToken={config.device_token}
                 tenantId={config.tenant_id}
               />

@@ -67,7 +67,7 @@ model KOT {
 
   kot_number String @default("KOT-001") // KOT-001, sequential per branch per day
   station    String @default("kitchen") // kitchen | bar
-  status     String @default("pending") // pending | acknowledged | preparing | ready | served
+  status     String @default("pending") // pending | acknowledged | preparing | ready | served | rejected
 
   // Items for this station (snapshot from order items filtered by station)
   // Each item: { id, name, price, quantity, variant_name?, options?, addons?, status? }

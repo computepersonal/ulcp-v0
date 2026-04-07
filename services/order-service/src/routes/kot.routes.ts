@@ -9,6 +9,7 @@ import {
   updateKOTStatus,
   updateKOTItems,
 } from "../repositories/kot.repository";
+import { findKOTsByOrderId, allKotsRejected } from "../repositories/kot.repository";
 import { acknowledgeKot } from "../services/order.service";
 import { redisPublish } from "../lib/redis";
 import { logger } from "../lib/logger";
@@ -37,7 +38,7 @@ const errResponses = { 400: errSchema, 401: errSchema, 403: errSchema, 404: errS
 // ─── Zod schemas ──────────────────────────────────────────────────────────────
 
 const kotStatusSchema = z.object({
-  status: z.enum(["pending", "acknowledged", "preparing", "ready", "served"]),
+  status: z.enum(["pending", "acknowledged", "preparing", "ready", "served", "rejected"]),
 });
 
 const itemStatusSchema = z.object({
@@ -210,6 +211,87 @@ export async function kotRoutes(fastify: FastifyInstance): Promise<void> {
       try {
         const updated = await acknowledgeKot(id, tenant_id);
         return reply.send(apiSuccess({ acknowledged: true, kot: updated }));
+      } catch (err) {
+        if (err instanceof AppError) {
+          return reply.code(err.statusCode).send(apiError(err.message));
+        }
+        throw err;
+      }
+    }
+  );
+
+  // POST /:tenant_id/:id/reject — kitchen rejects a KOT
+  fastify.post<{ Params: KotParams; Body: unknown }>(
+    "/:tenant_id/:id/reject",
+    {
+      schema: {
+        summary: "Kitchen rejects a KOT",
+        tags: ["KOT"],
+        body: {
+          type: "object" as const,
+          properties: {
+            reason: { type: "string" as const, description: "Why the kitchen rejected this KOT" },
+          },
+        },
+        response: { 200: genericOk, ...errResponses },
+      },
+      preHandler: [authenticateStaffOrKds],
+    },
+    async (req, reply) => {
+      const { tenant_id, id } = req.params;
+      const body = req.body as { reason?: string } | null;
+      const reason = body?.reason ?? "Kitchen unable to fulfill";
+
+      const kot = await findKOTById(id, tenant_id);
+      if (!kot) return reply.code(404).send(apiError("KOT not found"));
+
+      if (kot.status === "rejected") {
+        return reply.send(apiSuccess({ kot, already_rejected: true }));
+      }
+
+      try {
+        const updated = await updateKOTStatus(id, "rejected");
+
+        // Publish KOT_REJECTED so realtime-service can forward to staff
+        await redisPublish(
+          "KOT_REJECTED",
+          JSON.stringify({
+            kot_id: id,
+            kot_number: kot.kot_number,
+            order_id: kot.order_id,
+            tenant_id,
+            branch_id: kot.branch_id,
+            reason,
+          })
+        ).catch((err: unknown) =>
+          logger.warn({ err }, "Failed to publish KOT_REJECTED")
+        );
+
+        // If ALL KOTs for this order are now rejected → auto-cancel the order
+        const allRejected = await allKotsRejected(kot.order_id, tenant_id);
+        if (allRejected) {
+          const { updateOrderStatus, createStatusHistory } = await import("../repositories/order.repository");
+          await updateOrderStatus(kot.order_id, "cancelled", {
+            cancelled_reason: `Kitchen rejected: ${reason}`,
+            cancelled_by: "kitchen",
+          });
+          await createStatusHistory(kot.order_id, "cancelled", "kitchen", `KOT rejected: ${reason}`);
+
+          await redisPublish(
+            "ORDER_STATUS_CHANGED",
+            JSON.stringify({
+              order_id: kot.order_id,
+              tenant_id,
+              branch_id: kot.branch_id,
+              status: "cancelled",
+              reason: `Kitchen rejected: ${reason}`,
+            })
+          ).catch((err: unknown) =>
+            logger.warn({ err }, "Failed to publish ORDER_STATUS_CHANGED after kitchen reject")
+          );
+        }
+
+        return reply.send(apiSuccess({ kot: updated, order_cancelled: allRejected }));
       } catch (err) {
         if (err instanceof AppError) {
           return reply.code(err.statusCode).send(apiError(err.message));
