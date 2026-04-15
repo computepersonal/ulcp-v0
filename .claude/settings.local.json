@@ -20,7 +20,8 @@
       "Bash(for svc:*)",
       "Bash(do)",
       "Bash(echo \"=== $svc ===\")",
-      "Bash(done)"
+      "Bash(done)",
+      "Bash(xargs grep:*)"
     ]
   }
 }
