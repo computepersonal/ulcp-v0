@@ -2,6 +2,8 @@ import { useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useAppDispatch, useAppSelector } from '../hooks/redux';
 import { clearCart } from '../store/cartSlice';
+import { NativeAdCard } from '../components/ads/NativeAdCard';
+import { useAds } from '../components/ads/useAds';
 
 type PaymentMethod = 'upi' | 'card' | 'cod';
 
@@ -15,6 +17,14 @@ export default function Checkout() {
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('upi');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [confirmedOrderId, setConfirmedOrderId] = useState<string | null>(null);
+
+  const { ads: postCheckoutAds } = useAds({
+    placement: 'post_checkout',
+    tenant_id: cart.tenant_id ?? undefined,
+    limit: 3,
+    enabled: !!confirmedOrderId,
+  });
 
   const orderServiceUrl = import.meta.env.VITE_ORDER_SERVICE_URL ?? 'http://localhost:3004';
   const subtotal = cart.items.reduce((sum, i) => sum + i.price * i.quantity, 0);
@@ -49,22 +59,69 @@ export default function Checkout() {
       const data = (await res.json()) as { success: boolean; data?: { id: string }; error?: string };
       if (res.ok && data.success && data.data) {
         dispatch(clearCart());
-        navigate(`/place/${slug}/order/${data.data.id}`);
+        setConfirmedOrderId(data.data.id);
       } else {
         // Dev fallback — simulate order placement
         const mockId = `ORD-${Date.now()}`;
         dispatch(clearCart());
-        navigate(`/place/${slug}/order/${mockId}`);
+        setConfirmedOrderId(mockId);
       }
     } catch {
       // Dev fallback
       const mockId = `ORD-${Date.now()}`;
       dispatch(clearCart());
-      navigate(`/place/${slug}/order/${mockId}`);
+      setConfirmedOrderId(mockId);
     } finally {
       setLoading(false);
     }
   };
+
+  // Post-checkout success screen with ads
+  if (confirmedOrderId) {
+    return (
+      <div className="min-h-screen bg-gray-50 pb-8">
+        <div className="max-w-lg mx-auto px-4 py-8 space-y-6">
+          {/* Success state */}
+          <div className="bg-white rounded-2xl p-8 border border-gray-100 text-center">
+            <div className="text-5xl mb-3">🎉</div>
+            <div className="font-bold text-gray-900 text-xl mb-1">Order Confirmed!</div>
+            <div className="text-gray-500 text-sm">Your order is being prepared ⏱ ~15 mins</div>
+          </div>
+
+          {/* Post-checkout ads — horizontal scroll */}
+          {postCheckoutAds.length > 0 && (
+            <div>
+              <div className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3">Explore nearby while you wait</div>
+              <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-hide">
+                {postCheckoutAds.map(ad => (
+                  <div key={ad.campaign_id} className="min-w-[200px] max-w-[200px]">
+                    <NativeAdCard
+                      ad={ad}
+                      onClick={() => { window.open(ad.cta_url, '_blank', 'noreferrer'); }}
+                    />
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Track order button */}
+          <button
+            onClick={() => navigate(`/place/${slug}/order/${confirmedOrderId}`)}
+            className="w-full py-4 bg-brand-500 hover:bg-brand-600 text-white font-bold rounded-2xl transition-colors"
+          >
+            Track My Order →
+          </button>
+          <button
+            onClick={() => navigate('/')}
+            className="w-full py-3 bg-gray-100 hover:bg-gray-200 text-gray-700 font-medium rounded-2xl transition-colors"
+          >
+            Back to Home
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   const paymentMethods: Array<{ id: PaymentMethod; icon: string; label: string }> = [
     { id: 'upi', icon: '⚡', label: 'UPI' },

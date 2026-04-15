@@ -1,7 +1,8 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useAppSelector } from '../hooks/redux';
+import { apiFetch } from '../lib/apiFetch';
 
-type SettingsTab = 'business' | 'branches' | 'qr' | 'subscription';
+type SettingsTab = 'business' | 'branches' | 'qr' | 'subscription' | 'promotions';
 
 const PLAN_LIMITS = {
   free: { items: 200, staff: 5, branches: 1, price: 0 },
@@ -31,6 +32,258 @@ function UsageMeter({ label, used, max }: { label: string; used: number; max: nu
   );
 }
 
+interface Promotion {
+  id: string;
+  name: string;
+  status: string;
+  placements: string[];
+  starts_at: string;
+  ends_at: string;
+  creatives: Array<{ headline: string; cta_text: string }>;
+}
+
+const VALID_PLACEMENTS = [
+  { id: 'order_tracking', label: 'Order Tracking (while customers wait)' },
+  { id: 'post_checkout', label: 'Post-checkout (after they pay)' },
+  { id: 'social_room', label: 'Social Room' },
+  { id: 'explore_nearby', label: 'Explore Tab (attract new customers)' },
+];
+
+const ADS_URL = import.meta.env.VITE_ADS_SERVICE_URL ?? 'http://localhost:3015';
+
+function PromotionsTab({ tenantId, token }: { tenantId: string; token: string }) {
+  const [promos, setPromos] = useState<Promotion[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [showForm, setShowForm] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [form, setForm] = useState({
+    name: '',
+    headline: '',
+    body: '',
+    cta_text: 'Learn More',
+    cta_url: 'https://',
+    placements: ['order_tracking', 'post_checkout'] as string[],
+    starts_at: new Date().toISOString().slice(0, 10),
+    ends_at: new Date(Date.now() + 30 * 86400000).toISOString().slice(0, 10),
+  });
+
+  useEffect(() => {
+    void apiFetch(`${ADS_URL}/api/v1/ads/in-house/${tenantId}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+      .then(r => r.json())
+      .then((d: { success: boolean; data?: Promotion[] }) => { if (d.success && d.data) setPromos(d.data); })
+      .catch(() => undefined)
+      .finally(() => setLoading(false));
+  }, [tenantId, token]);
+
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      const res = await apiFetch(`${ADS_URL}/api/v1/ads/in-house/${tenantId}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({
+          name: form.name,
+          headline: form.headline,
+          body: form.body || undefined,
+          cta_text: form.cta_text,
+          cta_url: form.cta_url,
+          placements: form.placements,
+          starts_at: new Date(form.starts_at).toISOString(),
+          ends_at: new Date(form.ends_at).toISOString(),
+        }),
+      });
+      const d = await res.json() as { success: boolean; data?: Promotion };
+      if (d.success && d.data) {
+        setPromos(p => [d.data!, ...p]);
+        setShowForm(false);
+      }
+    } catch { /* ignore */ }
+    finally { setSaving(false); }
+  };
+
+  const togglePlacement = (id: string) => {
+    setForm(f => ({
+      ...f,
+      placements: f.placements.includes(id)
+        ? f.placements.filter(p => p !== id)
+        : [...f.placements, id],
+    }));
+  };
+
+  const pausePromo = async (promoId: string, status: string) => {
+    await apiFetch(`${ADS_URL}/api/v1/ads/in-house/${tenantId}/${promoId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ status: status === 'active' ? 'paused' : 'active' }),
+    });
+    setPromos(p => p.map(pr => pr.id === promoId ? { ...pr, status: status === 'active' ? 'paused' : 'active' } : pr));
+  };
+
+  if (loading) return <div className="text-sm text-gray-400 py-8 text-center">Loading...</div>;
+
+  return (
+    <div className="max-w-xl space-y-4">
+      <div className="flex items-center justify-between">
+        <div>
+          <h3 className="font-semibold text-gray-900">Active Promotions</h3>
+          <p className="text-sm text-gray-500 mt-0.5">Show your own promotions to customers while they wait</p>
+        </div>
+        <button
+          onClick={() => setShowForm(true)}
+          className="px-4 py-2 bg-brand-500 hover:bg-brand-600 text-white text-sm font-semibold rounded-xl"
+        >
+          + Create Promotion
+        </button>
+      </div>
+
+      {promos.length === 0 && !showForm && (
+        <div className="text-center py-10 text-gray-400 text-sm border-2 border-dashed border-gray-200 rounded-2xl">
+          No promotions yet. Create your first one to reach customers!
+        </div>
+      )}
+
+      {promos.map(promo => (
+        <div key={promo.id} className="bg-white border border-gray-100 rounded-2xl p-4 shadow-sm">
+          <div className="flex items-start justify-between gap-3">
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2">
+                <span className="font-semibold text-gray-900 truncate">{promo.name}</span>
+                <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
+                  promo.status === 'active' ? 'bg-green-100 text-green-700' :
+                  promo.status === 'paused' ? 'bg-yellow-100 text-yellow-700' :
+                  'bg-gray-100 text-gray-500'
+                }`}>{promo.status}</span>
+              </div>
+              {promo.creatives[0] && (
+                <div className="text-sm text-gray-500 mt-1 truncate">{promo.creatives[0].headline}</div>
+              )}
+              <div className="flex gap-1 mt-2 flex-wrap">
+                {promo.placements.map(p => (
+                  <span key={p} className="text-xs bg-brand-50 text-brand-700 px-2 py-0.5 rounded-full">
+                    {p.replace(/_/g, ' ')}
+                  </span>
+                ))}
+              </div>
+            </div>
+            <button
+              onClick={() => void pausePromo(promo.id, promo.status)}
+              className="text-xs text-gray-500 hover:text-gray-700 px-3 py-1.5 border border-gray-200 rounded-lg shrink-0"
+            >
+              {promo.status === 'active' ? 'Pause' : 'Activate'}
+            </button>
+          </div>
+        </div>
+      ))}
+
+      {showForm && (
+        <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm space-y-4">
+          <h4 className="font-semibold text-gray-900">New Promotion</h4>
+          <div>
+            <label className="text-xs font-medium text-gray-500 uppercase tracking-wide">Name</label>
+            <input
+              value={form.name}
+              onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
+              placeholder="Summer special offer"
+              className="mt-1 w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-brand-500"
+            />
+          </div>
+          <div>
+            <label className="text-xs font-medium text-gray-500 uppercase tracking-wide">Headline <span className="text-gray-400">(60 chars)</span></label>
+            <input
+              value={form.headline}
+              maxLength={60}
+              onChange={e => setForm(f => ({ ...f, headline: e.target.value }))}
+              placeholder="20% off all desserts today!"
+              className="mt-1 w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-brand-500"
+            />
+          </div>
+          <div>
+            <label className="text-xs font-medium text-gray-500 uppercase tracking-wide">Body <span className="text-gray-400">(optional, 150 chars)</span></label>
+            <input
+              value={form.body}
+              maxLength={150}
+              onChange={e => setForm(f => ({ ...f, body: e.target.value }))}
+              placeholder="Valid today only. Use code DESSERT20."
+              className="mt-1 w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-brand-500"
+            />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-xs font-medium text-gray-500 uppercase tracking-wide">CTA Text</label>
+              <input
+                value={form.cta_text}
+                onChange={e => setForm(f => ({ ...f, cta_text: e.target.value }))}
+                className="mt-1 w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-brand-500"
+              />
+            </div>
+            <div>
+              <label className="text-xs font-medium text-gray-500 uppercase tracking-wide">CTA Link</label>
+              <input
+                value={form.cta_url}
+                onChange={e => setForm(f => ({ ...f, cta_url: e.target.value }))}
+                className="mt-1 w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-brand-500"
+              />
+            </div>
+          </div>
+          <div>
+            <label className="text-xs font-medium text-gray-500 uppercase tracking-wide">Show on</label>
+            <div className="mt-2 space-y-2">
+              {VALID_PLACEMENTS.map(p => (
+                <label key={p.id} className="flex items-center gap-3 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={form.placements.includes(p.id)}
+                    onChange={() => togglePlacement(p.id)}
+                    className="accent-brand-500"
+                  />
+                  <span className="text-sm text-gray-700">{p.label}</span>
+                </label>
+              ))}
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-xs font-medium text-gray-500 uppercase tracking-wide">Start Date</label>
+              <input
+                type="date"
+                value={form.starts_at}
+                onChange={e => setForm(f => ({ ...f, starts_at: e.target.value }))}
+                className="mt-1 w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-brand-500"
+              />
+            </div>
+            <div>
+              <label className="text-xs font-medium text-gray-500 uppercase tracking-wide">End Date</label>
+              <input
+                type="date"
+                value={form.ends_at}
+                onChange={e => setForm(f => ({ ...f, ends_at: e.target.value }))}
+                className="mt-1 w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-brand-500"
+              />
+            </div>
+          </div>
+          <div className="flex gap-3 pt-2">
+            <button
+              onClick={() => void handleSave()}
+              disabled={saving || !form.name || !form.headline || form.placements.length === 0}
+              className="flex-1 py-2.5 bg-brand-500 hover:bg-brand-600 disabled:opacity-50 text-white font-semibold rounded-xl text-sm"
+            >
+              {saving ? 'Publishing...' : 'Publish'}
+            </button>
+            <button
+              onClick={() => setShowForm(false)}
+              className="flex-1 py-2.5 border border-gray-200 hover:bg-gray-50 text-gray-700 font-semibold rounded-xl text-sm"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function Settings() {
   const auth = useAppSelector((s) => s.auth);
   const [tab, setTab] = useState<SettingsTab>('business');
@@ -42,7 +295,8 @@ export default function Settings() {
     { id: 'business', label: 'Business' },
     { id: 'branches', label: 'Branches' },
     { id: 'qr', label: 'QR Codes' },
-    { id: 'subscription', label: 'Subscription' }
+    { id: 'subscription', label: 'Subscription' },
+    { id: 'promotions', label: '📢 Promotions' },
   ];
 
   return (
@@ -120,6 +374,10 @@ export default function Settings() {
             </div>
           ))}
         </div>
+      )}
+
+      {tab === 'promotions' && auth.user?.tenant_id && auth.token && (
+        <PromotionsTab tenantId={auth.user.tenant_id} token={auth.token} />
       )}
 
       {tab === 'subscription' && (

@@ -1,0 +1,200 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Advertiser {
+  id                String         @id @default(cuid())
+  type              AdvertiserType
+  name              String
+  contact_email     String
+  contact_phone     String?
+  business_category String?
+  logo_url          String?
+  address           String?
+  city              String?
+  lat               Float?
+  lng               Float?
+  tenant_id         String?
+  plan              AdPlan         @default(starter)
+  plan_starts_at    DateTime?
+  plan_ends_at      DateTime?
+  is_active         Boolean        @default(true)
+  monthly_budget    Int            @default(0)
+  spent_this_month  Int            @default(0)
+  campaigns         AdCampaign[]
+  created_at        DateTime       @default(now())
+  updated_at        DateTime       @updatedAt
+
+  @@map("advertisers")
+}
+
+model AdCampaign {
+  id                 String         @id @default(cuid())
+  advertiser_id      String?
+  tenant_id          String?
+  name               String
+  status             CampaignStatus @default(draft)
+  type               CampaignType
+  placements         String[]
+  target_radius_m    Int            @default(500)
+  target_lat         Float?
+  target_lng         Float?
+  target_mall_id     String?
+  target_tenant_ids  String[]
+  starts_at          DateTime
+  ends_at            DateTime
+  active_hours_start Int            @default(0)
+  active_hours_end   Int            @default(23)
+  active_days        Int[]
+  pricing_model      PricingModel
+  cpm_rate           Int            @default(0)
+  cpc_rate           Int            @default(0)
+  flat_rate          Int            @default(0)
+  daily_budget       Int            @default(0)
+  platform_share_pct Int            @default(40)
+  venue_share_pct    Int            @default(60)
+  priority           Int            @default(5)
+  explore_headline   String?
+  explore_distance_m Int?
+  explore_offer_expiry DateTime?
+  creatives          AdCreative[]
+  impressions        AdImpression[]
+  clicks             AdClick[]
+  advertiser         Advertiser?    @relation(fields: [advertiser_id], references: [id])
+  created_at         DateTime       @default(now())
+  updated_at         DateTime       @updatedAt
+
+  @@map("ad_campaigns")
+}
+
+model AdCreative {
+  id             String     @id @default(cuid())
+  campaign_id    String
+  format         AdFormat
+  headline       String
+  body           String?
+  cta_text       String
+  cta_url        String
+  image_url      String?
+  logo_url       String?
+  brand_color    String?
+  video_url      String?
+  skip_after_secs Int       @default(5)
+  is_active      Boolean    @default(true)
+  campaign       AdCampaign @relation(fields: [campaign_id], references: [id])
+
+  @@map("ad_creatives")
+}
+
+model AdImpression {
+  id               String     @id @default(cuid())
+  campaign_id      String
+  creative_id      String
+  tenant_id        String?
+  branch_id        String?
+  customer_id      String?
+  placement        String
+  duration_secs    Int?
+  revenue          Int        @default(0)
+  venue_revenue    Int        @default(0)
+  platform_revenue Int        @default(0)
+  created_at       DateTime   @default(now())
+  campaign         AdCampaign @relation(fields: [campaign_id], references: [id])
+
+  @@map("ad_impressions")
+}
+
+model AdClick {
+  id               String     @id @default(cuid())
+  campaign_id      String
+  creative_id      String
+  impression_id    String
+  tenant_id        String?
+  customer_id      String?
+  revenue          Int        @default(0)
+  venue_revenue    Int        @default(0)
+  platform_revenue Int        @default(0)
+  created_at       DateTime   @default(now())
+  campaign         AdCampaign @relation(fields: [campaign_id], references: [id])
+
+  @@map("ad_clicks")
+}
+
+model Mall {
+  id         String   @id @default(cuid())
+  name       String
+  address    String
+  city       String
+  lat        Float
+  lng        Float
+  radius_m   Int      @default(200)
+  tenant_ids String[]
+  created_at DateTime @default(now())
+
+  @@map("malls")
+}
+
+model VenueAdRevenue {
+  id            String    @id @default(cuid())
+  tenant_id     String
+  branch_id     String
+  month         String
+  impressions   Int       @default(0)
+  clicks        Int       @default(0)
+  gross_revenue Int       @default(0)
+  platform_cut  Int       @default(0)
+  venue_payout  Int       @default(0)
+  settled       Boolean   @default(false)
+  settled_at    DateTime?
+
+  @@unique([tenant_id, branch_id, month])
+  @@map("venue_ad_revenue")
+}
+
+enum AdvertiserType {
+  in_house
+  nearby
+  mall
+  platform
+}
+
+enum AdPlan {
+  starter
+  growth
+  premium
+  mall_package
+}
+
+enum CampaignStatus {
+  draft
+  active
+  paused
+  ended
+}
+
+enum CampaignType {
+  in_house
+  nearby
+  mall
+  google_fallback
+}
+
+enum PricingModel {
+  cpm
+  cpc
+  flat
+}
+
+enum AdFormat {
+  native_card
+  banner
+  pre_roll
+  explore_card
+  jukebox_card
+}

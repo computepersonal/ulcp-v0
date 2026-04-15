@@ -2,6 +2,8 @@ import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { io } from 'socket.io-client';
 import { useAppSelector } from '../hooks/redux';
+import { NativeAdCard } from '../components/ads/NativeAdCard';
+import { useAds } from '../components/ads/useAds';
 
 type OrderStatus = 'pending' | 'confirmed' | 'preparing' | 'ready' | 'served' | 'delivered';
 
@@ -27,10 +29,24 @@ function getStepIndex(status: OrderStatus): number {
 }
 
 export default function OrderTracking() {
-  const { id } = useParams<{ slug: string; id: string }>();
+  const { slug, id } = useParams<{ slug: string; id: string }>();
   const navigate = useNavigate();
   const auth = useAppSelector(s => s.auth);
   const realtimeUrl = import.meta.env.VITE_REALTIME_SERVICE_URL ?? 'http://localhost:3008';
+
+  // Load tenant_id from saved places for ad targeting
+  const savedPlaces = (() => {
+    try { return JSON.parse(localStorage.getItem('saved_places') ?? '[]') as Array<{ slug: string; tenantId: string }>; }
+    catch { return []; }
+  })();
+  const tenantId = savedPlaces.find(p => p.slug === slug)?.tenantId;
+
+  const { ads: trackingAds } = useAds({
+    placement: 'order_tracking',
+    tenant_id: tenantId,
+    limit: 1,
+    enabled: !!id,
+  });
 
   const [order, setOrder] = useState<OrderData>({
     id: id ?? '',
@@ -155,6 +171,17 @@ export default function OrderTracking() {
                 </div>
               ))}
             </div>
+          </div>
+        )}
+
+        {/* While you wait — order_tracking ad */}
+        {trackingAds.length > 0 && (
+          <div>
+            <div className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">While you wait nearby...</div>
+            <NativeAdCard
+              ad={trackingAds[0]!}
+              onClick={() => { window.open(trackingAds[0]!.cta_url, '_blank', 'noreferrer'); }}
+            />
           </div>
         )}
 

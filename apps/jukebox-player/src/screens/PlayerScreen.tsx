@@ -9,6 +9,62 @@ import {
   type QueueItem,
 } from "../api";
 
+const ADS_URL =
+  (import.meta as unknown as { env?: Record<string, string> }).env
+    ?.VITE_ADS_SERVICE_URL ?? "http://localhost:3015";
+
+interface JukeboxAd {
+  campaign_id: string;
+  creative_id: string;
+  headline: string;
+  body: string | null;
+  image_url: string | null;
+  logo_url: string | null;
+  brand_color: string | null;
+  advertiser_name: string;
+  cta_text: string;
+  cta_url: string;
+}
+
+function useJukeboxAds(tenant_id: string, branch_id: string) {
+  const [ads, setAds] = useState<JukeboxAd[]>([]);
+  const [currentIdx, setCurrentIdx] = useState(0);
+
+  useEffect(() => {
+    const load = async () => {
+      try {
+        const qs = new URLSearchParams({
+          placement: "jukebox_player",
+          tenant_id,
+          branch_id,
+          limit: "5",
+        });
+        const res = await fetch(`${ADS_URL}/api/v1/ads/serve?${qs.toString()}`);
+        if (!res.ok) return;
+        const data = await res.json() as { success: boolean; data?: { ads: JukeboxAd[] } };
+        if (data.success && data.data) setAds(data.data.ads);
+      } catch {
+        // fail silently
+      }
+    };
+    void load();
+    // Refresh ads every 10 minutes
+    const interval = setInterval(() => void load(), 600000);
+    return () => clearInterval(interval);
+  }, [tenant_id, branch_id]);
+
+  // Rotate ad every 30 seconds
+  useEffect(() => {
+    if (ads.length < 2) return;
+    const interval = setInterval(() => {
+      setCurrentIdx(i => (i + 1) % ads.length);
+    }, 30000);
+    return () => clearInterval(interval);
+  }, [ads.length]);
+
+  return ads.length > 0 ? ads[currentIdx] ?? null : null;
+}
+
 interface Props {
   tenant_id: string;
   branch_id: string;
@@ -76,6 +132,8 @@ export default function PlayerScreen({
       ?.VITE_JUKEBOX_SERVICE_URL ?? "http://localhost:3014";
   // QR links to customer web social room
   const qrUrl = `http://localhost:5174/place/${tenant_id}?jukebox=1`;
+
+  const jukeboxAd = useJukeboxAds(tenant_id, branch_id);
 
   // Load YouTube IFrame API script
   useEffect(() => {
@@ -386,14 +444,40 @@ export default function PlayerScreen({
           </div>
         </div>
 
-        {/* Right: QR Code */}
-        <div className="w-48 flex flex-col items-center gap-4 shrink-0">
+        {/* Right: Ad zone + QR Code */}
+        <div className="w-56 flex flex-col items-center gap-4 shrink-0">
           <div className="bg-white rounded-2xl p-4 overflow-hidden">
             <QRDisplay value={qrUrl} size={160} />
           </div>
           <p className="text-gray-500 text-sm text-center leading-relaxed">
             Scan to add songs to the queue
           </p>
+
+          {/* Jukebox player ad — rotates every 30s */}
+          {jukeboxAd && (
+            <div
+              className="w-full rounded-2xl overflow-hidden border border-[#252B3B] transition-all duration-500"
+              style={jukeboxAd.brand_color ? { borderColor: jukeboxAd.brand_color } : undefined}
+            >
+              {jukeboxAd.image_url && (
+                <img
+                  src={jukeboxAd.image_url}
+                  alt={jukeboxAd.advertiser_name}
+                  className="w-full aspect-video object-cover"
+                />
+              )}
+              <div className="p-3 bg-[#1A1F2E]">
+                <div className="text-[10px] font-bold uppercase tracking-widest text-gray-600 mb-1">
+                  Featured
+                </div>
+                <div className="font-bold text-white text-sm leading-tight mb-0.5 truncate">
+                  {jukeboxAd.advertiser_name}
+                </div>
+                <div className="text-xs text-gray-400 truncate">{jukeboxAd.headline}</div>
+              </div>
+            </div>
+          )}
+
           <div className="mt-auto">
             <button
               onClick={onUnpair}

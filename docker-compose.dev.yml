@@ -151,6 +151,28 @@ services:
       redis:
         condition: service_healthy
 
+  ads-service:
+    build:
+      context: ./services/ads-service
+      dockerfile: Dockerfile
+    container_name: ulcp-ads
+    restart: unless-stopped
+    ports:
+      - "3015:3015"
+    environment:
+      PORT: 3015
+      DATABASE_URL: postgresql://ulcp_user:ulcp_pass@postgres:5432/ulcp?schema=ads
+      REDIS_URL: redis://redis:6379
+      NODE_ENV: development
+      INTERNAL_API_SECRET: dev_internal_secret_ulcp_services
+      TENANT_SERVICE_URL: http://ulcp-tenant:3002
+      DEV_MODE: "true"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
 volumes:
   postgres_data:
   redis_data:
