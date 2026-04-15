@@ -1,4 +1,4 @@
-import { FastifyInstance } from "fastify";
+import { FastifyInstance, FastifyRequest, FastifyReply } from "fastify";
 import { z } from "zod";
 import { deductStockForOrder, receiveStock } from "../services/stock.service";
 import { createPurchaseOrder, getNextPoNumber, updatePurchaseOrder, findPurchaseOrderById } from "../repositories/purchaseOrder.repository";
@@ -6,9 +6,10 @@ import { logger } from "../lib/logger";
 
 const INTERNAL_SECRET = process.env.INTERNAL_API_SECRET ?? "";
 
-function requireInternal(req: any, reply: any) {
+function requireInternal(req: FastifyRequest, reply: FastifyReply): true | undefined {
   if (req.headers["x-internal-secret"] !== INTERNAL_SECRET) {
-    return reply.status(403).send({ success: false, error: "Forbidden" });
+    void reply.status(403).send({ success: false, error: "Forbidden" });
+    return true;
   }
 }
 

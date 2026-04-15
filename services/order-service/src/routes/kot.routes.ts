@@ -8,8 +8,8 @@ import {
   findKOTById,
   updateKOTStatus,
   updateKOTItems,
+  allKotsRejected,
 } from "../repositories/kot.repository";
-import { findKOTsByOrderId, allKotsRejected } from "../repositories/kot.repository";
 import { acknowledgeKot } from "../services/order.service";
 import { redisPublish } from "../lib/redis";
 import { logger } from "../lib/logger";

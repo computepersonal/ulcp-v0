@@ -12,6 +12,7 @@ import {
 import { findUserByIdOnly, updateUserTenant, findUsersByTenant } from "../repositories/user.repository";
 import { authenticateStaff } from "../middleware/authenticate";
 import { storeOtp, verifyOtp } from "../repositories/otp.repository";
+import { logger } from "../lib/logger";
 import { signCustomerToken, verifyCustomerToken } from "../lib/jwt";
 import { prisma } from "../lib/prisma";
 
@@ -539,7 +540,7 @@ export async function authRoutes(fastify: FastifyInstance): Promise<void> {
 
       // In production: send via MSG91. For now log it.
       if (process.env["NODE_ENV"] !== "production") {
-        console.log(`[DEV] OTP for ${phone}: ${otp}`);
+        logger.info({ phone }, `[DEV] OTP: ${otp}`);
       }
 
       return reply.send(apiSuccess({ message: "OTP sent" }));

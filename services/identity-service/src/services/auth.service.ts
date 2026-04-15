@@ -12,7 +12,6 @@ import {
   findUserById,
   findUserByIdOnly,
   findPendingUserByEmail,
-  findAnyUserByEmail,
   findAllUsersByEmail,
   updateUserTenant,
 } from "../repositories/user.repository";

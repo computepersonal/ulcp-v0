@@ -2,7 +2,7 @@
 
 # Complete Architecture Reference for Claude Code Sessions
 
-# Last Updated: February 25, 2026
+# Last Updated: April 16, 2026
 
 ---
 
@@ -37,7 +37,7 @@ built for small/medium businesses globally.
 5. Lightweight = small Docker images, minimal deps per service
 6. Fail gracefully — one service down doesn't crash everything
 
-### 13 Services
+### 15 Services
 
 ```
 1.  identity    (3001) — auth, JWT, OTP, RBAC, KDS device tokens
@@ -53,6 +53,8 @@ built for small/medium businesses globally.
 11. loyalty     (3011) — points, tiers, offers engine, coupons, wishlist
 12. superadmin  (3012) — platform management, commission settlement
 13. procurement (3013) — vendor management, bidding, direct purchase orders, market view
+14. jukebox     (3014) — jukebox queue, song requests, player management
+15. ads         (3015) — ad campaigns, placement engine, venue revenue, explore feed
 ```
 
 ### Communication
@@ -1538,6 +1540,38 @@ CHANGE LOG ADDITIONS:
 2026-03-03: Customer PWA navigation (2 contexts, floating cart, data scoping)
 2026-03-03: Customer PWA all 7 screens designed
 2026-03-03: Staff POS web all 6 screens designed
+2026-04-08: KDS: ErrorBoundary prevents blank screen crash on null order_type field
+2026-04-08: KDS: ✕ reject button on KOT cards — POST /kots/:id/reject, auto-cancels order if all KOTs rejected
+2026-04-08: order-service: KOT reject flow — updates status to "rejected", publishes KOT_REJECTED, allKotsRejected() cancels parent order
+2026-04-08: order-service: requirePermission(permission) middleware — owner roles bypass, others checked against JWT permissions[]
+2026-04-08: order-service: GET /summary/daily — real daily report (revenue, orders, top items, payment breakdown, unbilled, active) gated behind reports:view
+2026-04-08: order-service: recordPayment() now completes full lifecycle — status→completed, commission, ORDER_STATUS_CHANGED event
+2026-04-08: order-service: startup + midnight stale order sweep — pending→silent cancel; confirmed/preparing/ready→ORDER_UNBILLED_ALERT
+2026-04-08: realtime-service: KOT_REJECTED → kot:rejected (branch room), ORDER_UNBILLED_ALERT → order:unbilled_alert (owner room)
+2026-04-08: apps/web: apiFetch() wrapper — auto-dispatches clearAuth() + redirects /login on any 401
+2026-04-08: apps/web: always-visible Logout button in top bar header
+2026-04-08: apps/web: permissions[] added to StaffUser, Login response, and authSlice
+2026-04-08: apps/web: Orders page — live kanban via Socket.io (order:new, order:status:changed), real API data, billing/checkout modal
+2026-04-08: apps/web: Reports page — real daily summary API, today/yesterday/custom tabs, unbilled alert section, payment BarChart, top items table
+2026-04-08: apps/web: Layout — Reports nav item hidden for roles without reports:view permission
+2026-04-08: apps/web: useSocket — kot:rejected and order:unbilled_alert listeners dispatch error toasts
+2026-04-15: Added .claude/agents/ — 14 service-specific agent markdown files for accelerated development
+2026-04-15: Added AGENT_CONTEXT.md to each service directory for agent bootstrap context
+2026-04-16: ads-service built (port 3015) — Advertiser, AdCampaign, AdCreative, AdImpression, AdClick, Mall, VenueAdRevenue models
+2026-04-16: ads-service: getAdsForContext() ad engine — validates placement, filters by schedule/geo/plan, sorts priority DESC
+2026-04-16: ads-service: 7 valid placements ONLY — platform_home, order_tracking, post_checkout, social_room, explore_nearby, jukebox_queue, jukebox_player
+2026-04-16: ads-service: plan-gated placements — starter(explore_nearby), growth(+order_tracking/post_checkout), premium(all 7), mall_package(all 7)
+2026-04-16: ads-service: in-house campaigns always priority 10, bypass plan gates, tenant-scoped
+2026-04-16: ads-service: impression tracking (async, revenue split), click tracking (returns redirect_url)
+2026-04-16: ads-service: GET /explore — geo-sorted explore feed, featured(priority 8-10) + standard cards
+2026-04-16: ads-service: venue revenue aggregates per month (VenueAdRevenue), admin overview endpoint
+2026-04-16: customer-web: /explore page — GPS location permission, featured + standard ad cards, distance-sorted feed
+2026-04-16: customer-web: NativeAdCard, FeaturedAdCard, StandardAdCard, PreRollAd, HomeAdBanner components in src/components/ads/
+2026-04-16: customer-web: useAds() hook — async fetch, fail-silently, IntersectionObserver impression tracking (1s visible)
+2026-04-16: customer-web: OrderTracking — 1 NativeAdCard below order steps (placement=order_tracking)
+2026-04-16: customer-web: Checkout — post-checkout success screen with horizontal scroll of 3 nearby ads before tracking redirect
+2026-04-16: jukebox-player: useJukeboxAds() — fetches 5 ads, rotates every 30s, refreshes every 10min; ad zone in right column of TV screen
+2026-04-16: apps/web: Settings → 📢 Promotions tab — create/list/pause in-house promotions, placement checkboxes, POSTs to ads-service
 
 ---
 

@@ -2,7 +2,7 @@
 
 ## Status
 
-Last updated: 2026-03-29
+Last updated: 2026-04-16
 
 ---
 
@@ -94,19 +94,22 @@ Last updated: 2026-03-29
 - **Models:** Order, KOT, OrderStatusHistory, CommissionRecord, DailyCounter
 - **Order routes:**
   - `POST   /api/v1/orders/` — place order (bill calc, KOT generation, Redis events)
-  - `GET    /api/v1/orders/:tenant_id` — list orders (filter by branch/status/type/date)
+  - `GET    /api/v1/orders/:tenant_id` — list orders (filter by branch/status/type/date, comma-separated status)
   - `GET    /api/v1/orders/:tenant_id/:id` — order detail
   - `PATCH  /api/v1/orders/:tenant_id/:id/status` — update status (triggers commission on completed)
   - `POST   /api/v1/orders/:tenant_id/:id/cancel` — cancel with role-based rules
   - `GET    /api/v1/orders/:tenant_id/:id/bill` — bill summary
-  - `POST   /api/v1/orders/:tenant_id/:id/payment` — record payment method
+  - `POST   /api/v1/orders/:tenant_id/:id/payment` — record payment + completes order lifecycle (status→completed, commission, events)
+  - `GET    /api/v1/orders/:tenant_id/summary/daily` — daily report (revenue, orders, top items, payment breakdown, unbilled, active) — **requires reports:view permission**
 - **KOT routes:**
   - `GET    /api/v1/kots/:tenant_id/:branch_id` — list KOTs for branch (filter by status)
   - `PATCH  /api/v1/kots/:tenant_id/:id/status` — update KOT status (acknowledged routes through acknowledgeKot())
   - `POST   /api/v1/kots/:tenant_id/:id/printer-ack` — printer confirms print job
   - `PATCH  /api/v1/kots/:tenant_id/:id/items/:item_id/status` — update individual item status
+  - `POST   /api/v1/kots/:tenant_id/:id/reject` — kitchen rejects KOT; if all KOTs rejected → order auto-cancelled
 - **KOT numbering:** sequential per branch per day (KOT-001...) via DailyCounter atomic upsert, resets naturally at midnight
 - **KOT auto-split:** `seated_full_service` → food→kitchen KOT, drink→bar KOT; all others → single kitchen KOT
+- **KOT reject flow:** POST /reject updates status → "rejected", publishes KOT_REJECTED event; `allKotsRejected()` auto-cancels order if all KOTs rejected
 - **GST calculation:** inclusive (extract tax) + exclusive (add tax), CGST+SGST split
 - **Commission:** calculated on order.completed — `Math.round((total × rate) / 100)` paise, stored in CommissionRecord
 - **Three KOT ack modes** (configured per tenant):
@@ -115,7 +118,9 @@ Last updated: 2026-03-29
   - `printer` — POST printer-ack on successful print; KOT stays pending on failure
   - All funnel through `acknowledgeKot()` — idempotent, cancels pending BullMQ job
 - **kot_ack_mode fetched** from tenant-service at order placement (cached 30min)
-- **Redis events:** ORDER_CREATED, ORDER_STATUS_CHANGED, ORDER_COMPLETED, KOT_STATUS_CHANGED, PAYMENT_COMPLETED, KOT_PRINT_FAILED
+- **requirePermission(permission)** middleware — owner roles (tenant_owner, managing_partner etc.) bypass all checks; others verified against JWT permissions[]
+- **Stale order sweep** — runs on startup + midnight cron: pending→silent cancel ("never accepted"); confirmed/preparing/ready→ORDER_UNBILLED_ALERT event
+- **Redis events:** ORDER_CREATED, ORDER_STATUS_CHANGED, ORDER_COMPLETED, KOT_STATUS_CHANGED, PAYMENT_COMPLETED, KOT_PRINT_FAILED, KOT_REJECTED, ORDER_UNBILLED_ALERT
 - **Swagger body schemas:** all POST/PATCH routes show body form in /docs
 - **BullMQ worker** started in index.ts with graceful shutdown via stopWorker()
 
@@ -247,6 +252,8 @@ Last updated: 2026-03-29
   - ITEM_BACK_IN_STOCK → `menu:item:available`, MENU_ITEM_UNAVAILABLE → `menu:item:unavailable`
   - DASHBOARD_UPDATE → `dashboard:update`, TOKEN_DISPLAY_UPDATE → `token:update`
   - PAYMENT_COMPLETED → `payment:completed`, TENANT_PLAN_CHANGED → `tenant:plan:changed`
+  - KOT_REJECTED → `kot:rejected` (branch room — notifies floor staff + owner)
+  - ORDER_UNBILLED_ALERT → `order:unbilled:alert` (owner room — stale confirmed/preparing/ready orders)
 - **HTTP routes:**
   - `GET /health` — includes live `connections` count
   - `GET /api/v1/realtime/stats` — total connections + room list with sizes + uptime
@@ -290,44 +297,107 @@ Last updated: 2026-03-29
   - Live clock (1s update), elapsed time (30s update per card)
   - Card colors: white < 70% target → blue < 100% → orange < 150% → red+pulse overdue
   - Per-item status toggle (tap row to cycle pending→preparing→ready)
-  - ACKNOWLEDGE / ALL READY / SERVED action buttons
+  - ACKNOWLEDGE / ALL READY / SERVED / **REJECT** action buttons
+  - REJECT button — PATCHes `/kots/:tenant_id/:id/reject`, removes card from view
   - SERVED removes card with animation
   - Web Audio API tones: newKot (3-note ascending), overdue (2-note descending), allClear (single tone)
   - Settings overlay (3s long-press gear icon): sound toggle, target time, Reset Device, Reload
   - Empty state "All clear!" with allClear sound
+  - **ErrorBoundary** wraps the full KDS screen — crash shows "KDS Error" message with Reload button instead of blank screen
 - **TypeScript:** strict, clean compile (noUnusedLocals + noUnusedParameters)
 
 ### apps/customer-web — Customer PWA (port 5174)
 - React 19 + Vite v8 + TypeScript + Tailwind CSS v4 (`@tailwindcss/vite` plugin, CSS-first config)
 - **vite-plugin-pwa:** autoUpdate, manifest, service worker with StaleWhileRevalidate for catalogue + CacheFirst for images
 - **Redux:** auth slice (OTP token + customer profile, localStorage persist) + cart slice (multi-tenant clear)
+- **Ad components** (`src/components/ads/`):
+  - `useAds(ctx)` — React hook, fetches from ads-service, AbortController cleanup, fails silently
+  - `NativeAdCard` — IntersectionObserver impression (1s at 50% visibility), brand color left border, dismissable
+  - `ExploreAdCard` (`FeaturedAdCard` + `StandardAdCard`) — geo-aware cards with distance badge
+  - `PreRollAd` — full-screen overlay, countdown timer, skip button after `skip_after_secs`, auto-complete
 - **Screens:**
   - `Home` — greeting, saved places horizontal scroll (from localStorage), business type chips, bottom nav
   - `Catalogue` — fetches tenant by slug → fetches public catalogue, section collapse, veg filter, ADD button, FloatingCart, auto-saves to saved_places
   - `ItemDetail` — full image, variants selector, option groups, special instructions, sticky add to cart
   - `Cart` — qty controls, coupon (mock reject), bill summary (subtotal + 5% GST), OTP modal trigger
-  - `Checkout` — UPI/Card/COD selection, POST to order-service (dev fallback for mock order ID)
-  - `OrderTracking` — vertical timeline steps, Socket.io live order:status:changed updates
+  - `Checkout` — UPI/Card/COD selection, POST to order-service; on success shows **post-checkout success screen** (🎉 Order Confirmed! + 3 `post_checkout` NativeAdCards horizontal scroll + "Track My Order →" button)
+  - `OrderTracking` — vertical timeline steps, Socket.io live order:status:changed, **`order_tracking` NativeAdCard** shown below steps
+  - `Explore` — `navigator.geolocation` on mount, fetches `GET /api/v1/ads/explore?lat=&lng=&limit=20`, renders up to 2 `FeaturedAdCard` + `StandardAdCard` list; added to React Router at `/explore`
 - **OtpModal:** phone → 6-digit input, 45s resend countdown, sets Redux auth on success
 - **FloatingCart:** fixed above bottom nav, bounce on add, hidden when cart empty
+- **Ad placement policy enforced:** NEVER on catalogue/cart/checkout form/OTP/login; ONLY on 7 specific approved placements
 - **TypeScript:** strict, clean compile
 
 ### apps/web — Staff POS (port 5173)
 - React 19 + Vite v8 + TypeScript + Tailwind CSS v4
-- **Redux:** auth slice (staff JWT + user profile) + ui slice (notifications + sidebar)
+- **Redux:** auth slice (staff JWT + user profile + `permissions: string[]`) + ui slice (notifications + sidebar)
+- **`apiFetch` wrapper:** auto-attaches `Authorization: Bearer <token>` from Redux store to all fetch calls
 - **Layout:** 64px collapsed / 240px hover sidebar (lucide-react icons), top bar with branch info, `<Outlet />` routing
+  - **Permission-gated Reports nav:** `canViewReports(user)` helper — owner roles bypass check, others need `reports:view` in JWT `permissions[]`; Reports link hidden from cashier/waiter/etc.
 - **ProtectedRoute:** redirects to /login if no token
 - **ToastContainer:** fixed top-right, auto-dismiss 4s, info/success/warning/error colors
 - **useSocket hook:** Socket.io connects on login, dispatches toasts for order:new, kot:ready, inventory:critical
 - **Screens:**
-  - `Login` — email + password + optional tenant_id, POSTs to identity-service
+  - `Login` — email + password + optional tenant_id, POSTs to identity-service; `permissions[]` captured from JWT and stored in Redux
   - `FloorMap` — stats bar, section tabs, table grid (color coded), right panel detail + actions, demo data fallback
-  - `Orders` — 4-column Kanban (pending/confirmed/preparing/ready), PATCH status with optimistic update, demo data fallback
-  - `Catalogue` — view/edit toggle (permission-gated), live editing banner, item availability toggle, demo data fallback
-  - `Reports` — date tabs, metric cards, Recharts LineChart (revenue trend), top items table, mock PDF/Excel export
+  - `Orders` — 4-column Kanban (pending/confirmed/preparing/ready), live via Socket.io `order:new` + `order:status:changed`, PATCH status via order-service, optimistic update, demo data fallback
+  - `Catalogue` — view/edit toggle (permission-gated), live editing banner, item availability toggle, fetches real data from catalogue-service
+  - `Reports` — fetches real daily summary from order-service `/orders/:tenant_id/summary/daily`, date tabs, metric cards, Recharts LineChart (revenue trend), top items table, PDF/Excel export buttons
   - `Staff` — table with status badges, Invite Staff modal (email + role)
   - `Procurement` — 4 tabs: Market View (ingredient list + vendor comparison), Vendors, Bid Requests, Direct Orders — all fetch from procurement-service with demo data fallback
-  - `Settings` — 4 tabs: Business (profile from Redux), Branches, QR Codes (placeholder grid), Subscription (plan usage meters + upgrade)
+  - `Settings` — 5 tabs: Business (profile from Redux), Branches, QR Codes (placeholder grid), Subscription (plan usage meters + upgrade), **Promotions** (in-house ad campaigns — list, create, pause/activate)
+- **TypeScript:** strict, clean compile
+
+---
+
+---
+
+## ✅ apps/jukebox-player (port 5177) — Complete
+
+- React 18 + Vite + TypeScript + Tailwind CSS
+- **Screens:** PlayerScreen (now-playing, queue, QR tip code)
+- **Ad zone** (right column, below QR code):
+  - `useJukeboxAds(tenant_id, branch_id)` hook — fetches `placement=jukebox_player&limit=5`
+  - Rotates through ads every 30 seconds via `setInterval`
+  - Refreshes from API every 10 minutes
+  - Shows: ad image, advertiser name, headline with brand-color left border
+- **vite.config.ts** — configured for port 5177
+
+---
+
+## ✅ ads-service (port 3015) — Complete
+
+- **Prisma schema:** Advertiser, AdCampaign, AdCreative, AdImpression, AdClick, Mall, VenueAdRevenue
+- **Enums:** AdvertiserType (external/in_house/mall_operator), AdPlan (starter/growth/premium/mall_package), CampaignStatus, CampaignType, PricingModel, AdFormat (banner/native/video/pre_roll/explore_card)
+- **7 valid placements:** `platform_home`, `order_tracking`, `post_checkout`, `social_room`, `explore_nearby`, `jukebox_queue`, `jukebox_player`
+- **Ad engine (`ad-engine.service.ts`):**
+  - `getAdsForContext(ctx)` — validates placement, queries active campaigns, filters by active_hours/active_days, plan-gated placements (starter→explore_nearby only; premium/mall→all), geo-filter via Haversine, sorts priority DESC + cpm_rate DESC
+  - `recordImpression()` — computes platform_share_pct / venue_share_pct split, upserts VenueAdRevenue monthly aggregate
+  - `recordClick()` — records click with revenue split, returns creative cta_url
+  - `PLAN_PLACEMENTS` map: starter→[explore_nearby], growth→[explore, post_checkout, order_tracking], premium/mall→all
+  - Priority: in_house=10, mall_package=9, premium=8, growth=6, starter=4
+- **Routes** (all under `/api/v1/ads`):
+  - `GET  /serve?placement=&tenant_id=&branch_id=&customer_id=&format=&limit=` — serves ads, fires recordImpression() async
+  - `POST /click` — records click, returns `{ redirect_url }`
+  - `GET  /explore?lat=&lng=&limit=` — geo-sorted explore_nearby ads (FeaturedAdCard if priority≥8, StandardAdCard otherwise)
+  - **In-house routes** (tenant-scoped, JWT required):
+    - `POST/GET /in-house/:tenant_id` — create/list in-house promos (type always "in_house", priority 10)
+    - `GET/PATCH/DELETE /in-house/:tenant_id/:id` — detail, pause/activate, delete
+  - **Advertiser routes** (X-Internal-Secret):
+    - `POST/GET /advertisers` — create/list advertisers
+    - `POST /advertisers/:advertiser_id/campaigns` — create campaign with creative
+    - `GET/PATCH/DELETE /campaigns/:id` — manage campaign
+  - **Analytics routes** (X-Internal-Secret or reports:view):
+    - `GET /analytics/venue/:tenant_id?month=` — VenueAdRevenue records
+    - `GET /analytics/campaign/:campaign_id` — impressions, clicks, CTR, revenue split
+    - `GET /revenue/venue/:tenant_id` — summary + 12-month history
+    - `GET /admin/overview` — platform-wide (X-Internal-Secret)
+  - **Mall routes** (X-Internal-Secret):
+    - `POST/GET /malls` — create/list malls
+    - `PATCH /malls/:id` — update name/radius
+    - `POST /malls/:id/tenants` — add tenant to mall
+- **Ad placement golden rule:** NEVER on catalogue, cart, checkout form, OTP, login, or any staff screen; ONLY on 7 approved placements
+- **Docker:** ads-service container added to docker-compose.dev.yml (port 3015, schema=ads, DEV_MODE=true)
 - **TypeScript:** strict, clean compile
 
 ---
@@ -342,9 +412,12 @@ Last updated: 2026-03-29
 ## ⏳ Not Started
 
 - delivery-service (3006)
-- Phase 5: analytics-service (3009), loyalty-service (3011)
-- Phase 6: Production infra (Docker prod, Kong gateway, CI/CD, Hetzner)
-- superadmin-service (3012), chain/franchise features
+- analytics-service (3009)
+- loyalty-service (3011)
+- superadmin-service (3012)
+- social-room features (pre-roll ads — `social_room` placement ready in ads-service)
+- Chain/franchise features (isChain, getCatalogueForBranch with overrides, chain dashboard)
+- Phase 6: Production infra (Docker prod, Kong gateway, CI/CD, Hetzner deployment)
 
 ---
 

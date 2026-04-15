@@ -100,7 +100,7 @@ export async function confirmTableSession(
 export async function closeTableSession(
   session_id: string,
   tenant_id: string,
-  staff_user_id: string
+  _staff_user_id: string
 ) {
   const session = await findSessionById(session_id, tenant_id);
   if (!session) throw new AppError("Session not found", 404);

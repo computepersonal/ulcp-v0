@@ -1,14 +1,14 @@
 import { Queue, Worker, Job } from "bullmq";
 import { logger } from "./logger";
 
-const REDIS_URL = process.env["REDIS_URL"] ?? "redis://localhost:6379";
+const REDIS_URL = process.env["REDIS_URL"] ?? "redis://localhost:6380";
 
 // Parse redis URL into ioredis connection config for BullMQ
 function redisConnection() {
   const url = new URL(REDIS_URL);
   return {
     host: url.hostname,
-    port: parseInt(url.port || "6379"),
+    port: parseInt(url.port || "6380"),
     password: url.password || undefined,
   };
 }
