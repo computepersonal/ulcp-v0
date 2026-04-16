@@ -15,6 +15,7 @@ model Order {
   tenant_id   String
   branch_id   String
   table_id    String?
+  table_name  String?  // snapshot of table name at order creation time — survives renaming
   session_id  String?
   customer_id String?
 
@@ -65,9 +66,10 @@ model KOT {
   branch_id String
   order_id  String
 
-  kot_number String @default("KOT-001") // KOT-001, sequential per branch per day
-  station    String @default("kitchen") // kitchen | bar
-  status     String @default("pending") // pending | acknowledged | preparing | ready | served | rejected
+  kot_number  String  @default("KOT-001") // KOT-001, sequential per branch per day
+  station     String  @default("kitchen") // kitchen | bar
+  status      String  @default("pending") // pending | acknowledged | preparing | ready | served | rejected
+  table_name  String? // snapshot from order — for KOT printout
 
   // Items for this station (snapshot from order items filtered by station)
   // Each item: { id, name, price, quantity, variant_name?, options?, addons?, status? }

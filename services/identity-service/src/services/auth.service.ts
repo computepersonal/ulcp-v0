@@ -212,6 +212,7 @@ export async function isTokenBlacklisted(jti: string): Promise<boolean> {
 function buildPayload(user: User): Omit<StaffJwtPayload, "iat" | "exp"> {
   return {
     user_id: user.id,
+    name: user.name ?? undefined,
     tenant_id: user.tenant_id,   // string | null
     role: user.role as StaffJwtPayload["role"],
     permissions: user.permissions as StaffJwtPayload["permissions"],

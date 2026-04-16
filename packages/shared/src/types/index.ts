@@ -3,6 +3,7 @@ import type { Role } from "../constants/roles";
 
 export interface StaffJwtPayload {
   user_id: string;
+  name?: string;            // display name — included since 2026-04-16 for audit logs
   tenant_id: string | null; // null for pending_onboarding users (no tenant yet)
   role: Role;
   permissions: Permission[];

@@ -21,7 +21,7 @@ export async function findKOTs(
     where: { tenant_id, branch_id, ...statusFilter },
     include: {
       order: {
-        select: { order_number: true, table_id: true, type: true, status: true },
+        select: { order_number: true, table_id: true, table_name: true, type: true, status: true },
       },
     },
     orderBy: { created_at: "asc" },
@@ -31,7 +31,7 @@ export async function findKOTs(
   return kots.map((k) => ({
     ...k,
     order_type: k.order?.type ?? "dine_in",
-    table_name: k.order?.table_id ?? null,
+    table_name: k.order?.table_name ?? null,
   }));
 }
 

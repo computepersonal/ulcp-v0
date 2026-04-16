@@ -9,6 +9,8 @@ import {
   updateTableById,
   deleteTableById,
 } from "../services/table.service";
+import { createAuditLog } from "../repositories/auditLog.repository";
+import { logger } from "../lib/logger";
 
 const genericOk = {
   type: "object",
@@ -83,6 +85,18 @@ export async function tableRoutes(fastify: FastifyInstance): Promise<void> {
           req.params.branch_id,
           body.data
         );
+        createAuditLog({
+          tenant_id:   req.params.tenant_id,
+          branch_id:   req.params.branch_id,
+          actor_id:    req.staff!.user_id,
+          actor_name:  req.staff!.name,
+          actor_role:  req.staff!.role,
+          action:      "table.created",
+          entity_type: "table",
+          entity_id:   table.id,
+          entity_name: table.name,
+          metadata: { capacity: table.capacity, section_id: table.section_id ?? null },
+        }).catch((e: unknown) => logger.warn({ e }, "audit log write failed"));
         return reply.code(201).send(apiSuccess({ table }));
       } catch (err) {
         if (err instanceof AppError) return reply.code(err.statusCode).send(apiError(err.message));
@@ -155,12 +169,65 @@ export async function tableRoutes(fastify: FastifyInstance): Promise<void> {
         return reply.code(400).send(apiError(formatZodError(body.error)));
       }
       try {
+        // Fetch current state before update for audit context
+        const current = (await getTablesForBranch(req.params.tenant_id, req.params.branch_id))
+          .find((t) => t.id === req.params.id);
+
         const table = await updateTableById(
           req.params.tenant_id,
           req.params.branch_id,
           req.params.id,
           body.data
         );
+
+        // Determine what changed and emit the right action
+        if (current) {
+          const d = body.data;
+          if (d.capacity !== undefined && d.capacity !== current.capacity) {
+            createAuditLog({
+              tenant_id:   req.params.tenant_id,
+              branch_id:   req.params.branch_id,
+              actor_id:    req.staff!.user_id,
+              actor_role:  req.staff!.role,
+              action:      "table.capacity_changed",
+              entity_type: "table",
+              entity_id:   table.id,
+              entity_name: table.name,
+              metadata: { from: current.capacity, to: d.capacity },
+            }).catch((e: unknown) => logger.warn({ e }, "audit log write failed"));
+          }
+          if ("section_id" in d && d.section_id !== current.section_id) {
+            createAuditLog({
+              tenant_id:   req.params.tenant_id,
+              branch_id:   req.params.branch_id,
+              actor_id:    req.staff!.user_id,
+              actor_role:  req.staff!.role,
+              action:      "table.zone_changed",
+              entity_type: "table",
+              entity_id:   table.id,
+              entity_name: table.name,
+              metadata: {
+                from_zone: current.section_id ?? null,
+                to_zone:   d.section_id ?? null,
+                old_name:  current.name,
+                new_name:  table.name,
+              },
+            }).catch((e: unknown) => logger.warn({ e }, "audit log write failed"));
+          } else if (d.name !== undefined && d.name !== current.name) {
+            createAuditLog({
+              tenant_id:   req.params.tenant_id,
+              branch_id:   req.params.branch_id,
+              actor_id:    req.staff!.user_id,
+              actor_role:  req.staff!.role,
+              action:      "table.renamed",
+              entity_type: "table",
+              entity_id:   table.id,
+              entity_name: table.name,
+              metadata: { from: current.name, to: table.name },
+            }).catch((e: unknown) => logger.warn({ e }, "audit log write failed"));
+          }
+        }
+
         return reply.send(apiSuccess({ table }));
       } catch (err) {
         if (err instanceof AppError) return reply.code(err.statusCode).send(apiError(err.message));
@@ -190,7 +257,28 @@ export async function tableRoutes(fastify: FastifyInstance): Promise<void> {
     },
     async (req, reply) => {
       try {
+        // Snapshot name before deletion for audit record
+        const current = (await getTablesForBranch(req.params.tenant_id, req.params.branch_id))
+          .find((t) => t.id === req.params.id);
+
         await deleteTableById(req.params.tenant_id, req.params.branch_id, req.params.id);
+
+        createAuditLog({
+          tenant_id:   req.params.tenant_id,
+          branch_id:   req.params.branch_id,
+          actor_id:    req.staff!.user_id,
+          actor_name:  req.staff!.name,
+          actor_role:  req.staff!.role,
+          action:      "table.deleted",
+          entity_type: "table",
+          entity_id:   req.params.id,
+          entity_name: current?.name ?? req.params.id,
+          metadata: {
+            capacity:   current?.capacity ?? null,
+            section_id: current?.section_id ?? null,
+          },
+        }).catch((e: unknown) => logger.warn({ e }, "audit log write failed"));
+
         return reply.send(apiSuccess({ message: "Table deleted" }));
       } catch (err) {
         if (err instanceof AppError) return reply.code(err.statusCode).send(apiError(err.message));

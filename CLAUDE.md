@@ -1572,6 +1572,18 @@ CHANGE LOG ADDITIONS:
 2026-04-16: customer-web: Checkout — post-checkout success screen with horizontal scroll of 3 nearby ads before tracking redirect
 2026-04-16: jukebox-player: useJukeboxAds() — fetches 5 ads, rotates every 30s, refreshes every 10min; ad zone in right column of TV screen
 2026-04-16: apps/web: Settings → 📢 Promotions tab — create/list/pause in-house promotions, placement checkboxes, POSTs to ads-service
+2026-04-16: tenant-service: AuditLog model added (schema + migration) — tracks actor_id, actor_name, actor_role, action, entity_type, entity_id, entity_name, metadata, branch_id, created_at; indexed for fast queries
+2026-04-16: tenant-service: auditLog.repository.ts — createAuditLog() + listAuditLogs() with pagination, entity_type filter, date range, actor_id filter
+2026-04-16: tenant-service: auditLog.routes.ts — GET /:tenant_id/audit-logs; role-gated (tenant_owner/managing_partner/branch_manager/operations_partner); branch_manager restricted to own branch
+2026-04-16: tenant-service: table.routes.ts — audit logging for table.created, table.deleted, table.capacity_changed, table.zone_changed, table.renamed (fire-and-forget, never blocks)
+2026-04-16: tenant-service: section.routes.ts — audit logging for section.created, section.deleted, section.renamed
+2026-04-16: identity-service: JWT payload now includes actor name — buildPayload() includes `name: user.name`, StaffJwtPayload.name added to shared types
+2026-04-16: tenant-service: POST /sections/:id/rename — new atomic endpoint; renames section + all tables whose names start with old section prefix in a single Prisma $transaction (replaces N+1 PATCH calls from frontend)
+2026-04-16: apps/web: FloorMap — zone management UI: ··· menu per zone tab (fixed-position dropdown escaping overflow-x-auto); add/rename/delete/disable zones inline; zone disable shows orange banner + blocks Open Table
+2026-04-16: apps/web: FloorMap — table disable/enable for service: "Close table for service" / "Re-enable table" button in right panel; disabled table card shows orange "table closed" label; Open Table blocked with message
+2026-04-16: apps/web: FloorMap — zone rename cascades to all tables in that zone (atomic via new /rename endpoint); zone delete moves tables to general floor; source zone renumbers on table move
+2026-04-16: apps/web: ActivityLog page — paginated audit log (25/page), filter by entity type (tables/zones/reservations), date picker, action badge color coding, actor name + role, relative + absolute timestamps; role-gated nav item
+2026-04-16: apps/web: Catalogue — full rewrite with real API calls: add section modal, add item modal (food/veg classification, price, section assignment), availability toggle per item, section hide/show/rename/delete, delete item with confirm; empty state with action buttons
 
 ---
 

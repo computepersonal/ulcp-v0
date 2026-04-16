@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import {
   Map,
@@ -10,7 +10,9 @@ import {
   Settings,
   LogOut,
   ChevronRight,
-  Package
+  Package,
+  CalendarDays,
+  ScrollText
 } from 'lucide-react';
 
 import { useAppSelector, useAppDispatch } from '../hooks/redux';
@@ -24,6 +26,7 @@ interface NavItem {
 }
 
 const OWNER_ROLES = new Set(['tenant_owner', 'primary_owner', 'managing_partner', 'platform_superadmin']);
+const AUDIT_ROLES = new Set(['tenant_owner', 'primary_owner', 'managing_partner', 'branch_manager', 'platform_superadmin']);
 
 function canViewReports(user: { role: string; permissions: string[] } | null): boolean {
   if (!user) return false;
@@ -31,10 +34,16 @@ function canViewReports(user: { role: string; permissions: string[] } | null): b
   return user.permissions.includes('reports:view');
 }
 
+function canViewAuditLog(user: { role: string } | null): boolean {
+  if (!user) return false;
+  return AUDIT_ROLES.has(user.role);
+}
+
 const BASE_NAV_ITEMS: NavItem[] = [
   { to: '/floor-map', icon: <Map size={20} />, label: 'Floor Map' },
   { to: '/orders', icon: <ClipboardList size={20} />, label: 'Orders' },
   { to: '/catalogue', icon: <BookOpen size={20} />, label: 'Catalogue' },
+  { to: '/reservations', icon: <CalendarDays size={20} />, label: 'Reservations' },
   { to: '/staff', icon: <Users size={20} />, label: 'Staff' },
   { to: '/procurement', icon: <ShoppingCart size={20} />, label: 'Procurement' },
   { to: '/settings', icon: <Settings size={20} />, label: 'Settings' }
@@ -42,15 +51,34 @@ const BASE_NAV_ITEMS: NavItem[] = [
 
 export default function Layout() {
   const [expanded, setExpanded] = useState(false);
+  const [businessName, setBusinessName] = useState<string | null>(null);
   const user = useAppSelector((s) => s.auth.user);
+  const token = useAppSelector((s) => s.auth.token);
   const dispatch = useAppDispatch();
   const navigate = useNavigate();
   useSocket(); // Initialize socket connection
 
+  // Fetch tenant name once on mount (or when tenant changes)
+  useEffect(() => {
+    if (!user?.tenant_id || !token) return;
+    const tenantServiceUrl = import.meta.env.VITE_TENANT_SERVICE_URL ?? 'http://localhost:3002';
+    fetch(`${tenantServiceUrl}/api/v1/tenants/${user.tenant_id}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+      .then((r) => r.json())
+      .then((data: { success: boolean; data?: { tenant?: { name?: string } } }) => {
+        if (data.success && data.data?.tenant?.name) {
+          setBusinessName(data.data.tenant.name);
+        }
+      })
+      .catch(() => undefined);
+  }, [user?.tenant_id, token]);
+
   const navItems: NavItem[] = [
     ...BASE_NAV_ITEMS.slice(0, 3), // floor-map, orders, catalogue
     ...(canViewReports(user) ? [{ to: '/reports', icon: <BarChart3 size={20} />, label: 'Reports' }] : []),
-    ...BASE_NAV_ITEMS.slice(3), // staff, procurement, settings
+    ...BASE_NAV_ITEMS.slice(3), // reservations, staff, procurement, settings
+    ...(canViewAuditLog(user) ? [{ to: '/activity', icon: <ScrollText size={20} />, label: 'Activity Log' }] : []),
   ];
 
   const handleLogout = () => {
@@ -118,7 +146,7 @@ export default function Layout() {
         {/* Top bar */}
         <header className="h-16 bg-white border-b border-gray-200 flex items-center justify-between px-6 shrink-0">
           <div className="flex items-center gap-2">
-            <span className="font-semibold text-gray-900">{user?.name ?? 'Staff Portal'}</span>
+            <span className="font-semibold text-gray-900">{businessName ?? user?.name ?? 'Staff Portal'}</span>
             <ChevronRight size={16} className="text-gray-400" />
             <span className="text-sm text-gray-500">Main Branch</span>
           </div>

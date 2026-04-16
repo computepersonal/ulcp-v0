@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useAppSelector } from '../hooks/redux';
 import { apiFetch } from '../lib/apiFetch';
 import { useSocket } from '../hooks/useSocket';
@@ -98,6 +99,7 @@ function fmt(paise: number): string {
 }
 
 export default function Orders() {
+  const navigate = useNavigate();
   const auth = useAppSelector((s) => s.auth);
   const [orders, setOrders] = useState<OrderData[]>([]);
   const [fetchError, setFetchError] = useState<string | null>(null);
@@ -275,6 +277,25 @@ export default function Orders() {
       setCheckoutLoading(false);
     }
   };
+
+  // No tenant yet — show setup nudge instead of hitting the API and getting a 401
+  if (!auth.user?.tenant_id) {
+    return (
+      <div className="p-6 flex flex-col items-center justify-center min-h-[60vh] text-center">
+        <div className="text-5xl mb-4">🛒</div>
+        <h2 className="text-xl font-bold text-gray-900 mb-2">Finish setting up first</h2>
+        <p className="text-gray-500 text-sm max-w-xs mb-6">
+          Complete your business setup before you can receive and manage orders.
+        </p>
+        <button
+          onClick={() => navigate('/setup')}
+          className="px-6 py-3 bg-brand-500 hover:bg-brand-600 text-white font-semibold rounded-xl transition-colors"
+        >
+          Go to setup checklist →
+        </button>
+      </div>
+    );
+  }
 
   return (
     <div className="p-6 h-full flex gap-4">

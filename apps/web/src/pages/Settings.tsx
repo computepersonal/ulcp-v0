@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useAppSelector } from '../hooks/redux';
 import { apiFetch } from '../lib/apiFetch';
+import SetupReturnBanner from '../components/SetupReturnBanner';
 
 type SettingsTab = 'business' | 'branches' | 'qr' | 'subscription' | 'promotions';
 
@@ -300,6 +301,8 @@ export default function Settings() {
   ];
 
   return (
+    <div>
+      <SetupReturnBanner />
     <div className="p-6">
       <h1 className="text-xl font-bold text-gray-900 mb-6">Settings</h1>
 
@@ -414,6 +417,7 @@ export default function Settings() {
           </div>
         </div>
       )}
+    </div>
     </div>
   );
 }

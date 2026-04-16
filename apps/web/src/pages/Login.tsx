@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { useAppDispatch } from '../hooks/redux';
 import { setAuth } from '../store/authSlice';
 
@@ -76,7 +76,12 @@ export default function Login() {
       }
 
       dispatch(setAuth({ token: loginData.data.access_token, user: loginData.data.user }));
-      navigate('/floor-map');
+      // pending_onboarding → hasn't created a business yet
+      if (loginData.data.user.role === 'pending_onboarding') {
+        navigate('/onboard');
+      } else {
+        navigate('/floor-map');
+      }
     } catch {
       setError('Unable to connect. Please check your connection.');
     } finally {
@@ -183,6 +188,13 @@ export default function Login() {
             {loading ? 'Signing in...' : 'Sign In'}
           </button>
         </form>
+
+        <p className="text-center text-sm text-gray-500 mt-6">
+          New to ULCP?{' '}
+          <Link to="/register" className="text-brand-500 font-medium hover:underline">
+            Set up your business
+          </Link>
+        </p>
       </div>
     </div>
   );

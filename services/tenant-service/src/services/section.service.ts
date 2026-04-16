@@ -7,6 +7,7 @@ import {
   deleteSection,
 } from "../repositories/section.repository";
 import { findBranchById } from "../repositories/branch.repository";
+import { prisma } from "../lib/prisma";
 
 export type CreateSectionInput = {
   name: string;
@@ -60,4 +61,45 @@ export async function deleteSectionById(
   const section = await findSectionById(id, tenant_id);
   if (!section || section.branch_id !== branch_id) throw new NotFoundError("Section not found");
   return deleteSection(id);
+}
+
+/**
+ * Rename a section AND rename all tables in that section whose names start
+ * with the old section name, replacing the prefix atomically in a transaction.
+ */
+export async function renameSectionWithTables(
+  tenant_id: string,
+  branch_id: string,
+  id: string,
+  newName: string
+): Promise<{ section: Awaited<ReturnType<typeof updateSection>>; tablesRenamed: number }> {
+  const section = await findSectionById(id, tenant_id);
+  if (!section || section.branch_id !== branch_id) throw new NotFoundError("Section not found");
+
+  const oldName = section.name;
+
+  // Build regex for prefix replacement (case-insensitive)
+  const escapedOld = oldName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const prefixRe = new RegExp(`^${escapedOld}`, "i");
+
+  // Find all tables in this section
+  const tables = await prisma.table.findMany({
+    where: { tenant_id, branch_id, section_id: id },
+    select: { id: true, name: true },
+  });
+
+  const toRename = tables.filter((t) => prefixRe.test(t.name));
+
+  // Run everything in a transaction
+  const [updatedSection] = await prisma.$transaction([
+    prisma.section.update({ where: { id }, data: { name: newName } }),
+    ...toRename.map((t) =>
+      prisma.table.update({
+        where: { id: t.id },
+        data: { name: t.name.replace(prefixRe, newName) },
+      })
+    ),
+  ]);
+
+  return { section: updatedSection, tablesRenamed: toRename.length };
 }

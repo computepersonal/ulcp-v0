@@ -2,7 +2,7 @@
 
 ## Status
 
-Last updated: 2026-04-16
+Last updated: 2026-04-17
 
 ---
 
@@ -25,6 +25,7 @@ Last updated: 2026-04-16
 - `GET  /api/v1/auth/me` — current user profile
 - `PATCH /api/v1/auth/users/:id/tenant` — internal (X-Internal-Secret), called by tenant-service
 - PIN unlock: short-lived token for shared tablet waiter flow
+- JWT payload includes `name` field — used by audit log for actor attribution
 - JWT: access 15min (memory) + refresh 30d (Redis, SHA-256 hashed)
 - Prisma schema: User, RefreshToken, PlatformCustomer, OtpCode, KdsDevice, SecurityLog
 
@@ -47,8 +48,9 @@ Last updated: 2026-04-16
 - **Branches:** CRUD, is_primary tracking, plan limit enforcement (PLAN_BRANCH_LIMITS)
 - **Staff:** invite (token, 48hr expiry), accept invite, list, update role/permissions, deactivate
 - **Partners:** invite, accept, update permissions (revenue/branches/financial visibility etc), remove
-- **Tables:** CRUD per branch, QR code generation (base64 data URL; @unique removed — btree limit)
-- **Floor map Sections:** CRUD per branch, color + position
+- **Tables:** CRUD per branch, QR code generation (base64 data URL; @unique removed — btree limit); `is_active` field for disabling individual tables for service
+- **Floor map Sections:** CRUD per branch, color + position; `POST /:id/rename` atomically renames section + all prefixed tables in a single Prisma `$transaction`
+- **Audit Log:** AuditLog model (id, tenant_id, branch_id, actor_id, actor_name, actor_role, action, entity_type, entity_id, entity_name, metadata, created_at) with 5 DB indexes; `createAuditLog()` + `listAuditLogs()` with pagination/filter; `GET /:tenant_id/audit-logs` route (role-gated); table + section routes emit audit events fire-and-forget on every write operation
 - **Plan enforcement:** PLAN_ITEM_LIMITS, PLAN_BRANCH_LIMITS, PLAN_STAFF_LIMITS
 - **Onboarding wizard:** 6-step state persistence, resume support, 30-day Starter trial on completion
 - **Subscription:** updateTenantPlan, transfer ownership
@@ -334,14 +336,19 @@ Last updated: 2026-04-16
 - **`apiFetch` wrapper:** auto-attaches `Authorization: Bearer <token>` from Redux store to all fetch calls
 - **Layout:** 64px collapsed / 240px hover sidebar (lucide-react icons), top bar with branch info, `<Outlet />` routing
   - **Permission-gated Reports nav:** `canViewReports(user)` helper — owner roles bypass check, others need `reports:view` in JWT `permissions[]`; Reports link hidden from cashier/waiter/etc.
+  - **Activity Log nav** — shown to tenant_owner, managing_partner, branch_manager, operations_partner, reports_analyst only
 - **ProtectedRoute:** redirects to /login if no token
 - **ToastContainer:** fixed top-right, auto-dismiss 4s, info/success/warning/error colors
 - **useSocket hook:** Socket.io connects on login, dispatches toasts for order:new, kot:ready, inventory:critical
 - **Screens:**
   - `Login` — email + password + optional tenant_id, POSTs to identity-service; `permissions[]` captured from JWT and stored in Redux
-  - `FloorMap` — stats bar, section tabs, table grid (color coded), right panel detail + actions, demo data fallback
+  - `FloorMap` — stats bar, section tabs with ··· zone management menu (fixed-position dropdown), table grid (color coded), right panel detail + actions
+    - **Zone management:** add zone, rename (cascades to table names via atomic backend), delete (tables move to general floor), disable/enable (orange banner, blocks Open Table)
+    - **Table management:** delete with sequential zone renumber, move between zones (renumbers source zone), disable/enable individual tables for service, table card shows orange "table closed" when inactive
+    - Uses real tenant-service API throughout (no demo fallback)
+  - `ActivityLog` — paginated audit log (25/page), filter by entity type (Tables/Zones/Reservations), date picker, action badge with color coding (green=created, red=deleted, blue=changed, purple=moved), actor name + role, relative + absolute timestamps
   - `Orders` — 4-column Kanban (pending/confirmed/preparing/ready), live via Socket.io `order:new` + `order:status:changed`, PATCH status via order-service, optimistic update, demo data fallback
-  - `Catalogue` — view/edit toggle (permission-gated), live editing banner, item availability toggle, fetches real data from catalogue-service
+  - `Catalogue` — add section modal, add item modal (name, price, description, section assignment, food/veg classification), availability toggle per item (real PATCH to catalogue-service), section hide/show/rename/delete, delete item with confirm; empty state with action buttons
   - `Reports` — fetches real daily summary from order-service `/orders/:tenant_id/summary/daily`, date tabs, metric cards, Recharts LineChart (revenue trend), top items table, PDF/Excel export buttons
   - `Staff` — table with status badges, Invite Staff modal (email + role)
   - `Procurement` — 4 tabs: Market View (ingredient list + vendor comparison), Vendors, Bid Requests, Direct Orders — all fetch from procurement-service with demo data fallback

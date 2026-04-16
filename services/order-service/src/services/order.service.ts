@@ -48,6 +48,7 @@ export interface CreateOrderInput {
   tenant_id: string;
   branch_id: string;
   table_id?: string;
+  table_name?: string; // snapshot at time of order — persisted so renames don't affect history
   session_id?: string;
   customer_id?: string;
   type: string; // dine_in | takeaway | delivery
@@ -141,6 +142,7 @@ async function generateKOTs(order_id: string, input: CreateOrderInput) {
       station,
       status: "pending",
       items: items as unknown as Prisma.InputJsonValue,
+      table_name: input.table_name ?? null,
     });
 
     // Apply acknowledgment mode
@@ -166,7 +168,7 @@ async function generateKOTs(order_id: string, input: CreateOrderInput) {
         status:      "pending",
         items,
         order_type:  input.type ?? "dine_in",
-        table_name:  input.table_id ?? null,
+        table_name:  input.table_name ?? null,
         created_at:  kot.created_at,
       })
     ).catch((err: unknown) => logger.warn({ err, kot_id: kot.id }, "Failed to publish KOT_CREATED"));
@@ -229,6 +231,7 @@ export async function placeOrder(input: CreateOrderInput) {
     tenant_id: input.tenant_id,
     branch_id: input.branch_id,
     table_id: input.table_id,
+    table_name: input.table_name,
     session_id: input.session_id,
     customer_id: input.customer_id,
     order_number,

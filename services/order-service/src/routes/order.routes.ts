@@ -55,6 +55,7 @@ const orderItemSchema = z.object({
 const placeOrderSchema = z.object({
   branch_id: z.string().min(1),
   table_id: z.string().optional(),
+  table_name: z.string().optional(), // snapshot — caller passes name at time of order
   session_id: z.string().optional(),
   customer_id: z.string().optional(),
   type: z.enum(["dine_in", "takeaway", "delivery"]),

@@ -92,6 +92,7 @@ model Branch {
   tables          Table[]
   sections        Section[]
   kds_setup_codes KdsSetupCode[]
+  reservations    Reservation[]
 
   @@index([tenant_id])
   @@map("branches")
@@ -186,9 +187,10 @@ model Table {
   created_at DateTime @default(now())
   updated_at DateTime @updatedAt
 
-  branch   Branch         @relation(fields: [branch_id], references: [id], onDelete: Cascade)
-  section  Section?       @relation(fields: [section_id], references: [id], onDelete: SetNull)
-  sessions TableSession[]
+  branch       Branch         @relation(fields: [branch_id], references: [id], onDelete: Cascade)
+  section      Section?       @relation(fields: [section_id], references: [id], onDelete: SetNull)
+  sessions     TableSession[]
+  reservations Reservation[]
 
   @@index([tenant_id])
   @@index([branch_id])
@@ -245,6 +247,74 @@ model Subscription {
 
   @@index([tenant_id])
   @@map("subscriptions")
+}
+
+// ─── Reservations ─────────────────────────────────────────────────────────────
+
+model Reservation {
+  id              String    @id @default(cuid())
+  tenant_id       String
+  branch_id       String
+  table_id        String?   // optional — can reserve without assigning a table yet
+
+  customer_name   String
+  customer_phone  String
+  customer_email  String?
+  pax             Int       @default(2)
+
+  date            String    // "YYYY-MM-DD"
+  time_slot       String    // "HH:MM" (24h)
+
+  status          String    @default("pending")
+  // pending | confirmed | seated | cancelled | no_show
+
+  notes           String?
+  created_by      String?   // staff user_id
+
+  created_at      DateTime  @default(now())
+  updated_at      DateTime  @updatedAt
+
+  branch Branch  @relation(fields: [branch_id], references: [id], onDelete: Cascade)
+  table  Table?  @relation(fields: [table_id],  references: [id], onDelete: SetNull)
+
+  @@index([tenant_id])
+  @@index([branch_id])
+  @@index([date])
+  @@index([status])
+  @@map("reservations")
+}
+
+// ─── Audit Log ────────────────────────────────────────────────────────────────
+// Tracks all significant staff actions across tables, sections, and other entities.
+
+model AuditLog {
+  id          String @id @default(cuid())
+  tenant_id   String
+  branch_id   String?
+
+  actor_id    String  // user_id from JWT
+  actor_name  String? // display name snapshot (from JWT name field)
+  actor_role  String  // role snapshot at time of action
+
+  action      String
+  // table.created | table.deleted | table.capacity_changed | table.zone_changed | table.renamed
+  // section.created | section.deleted | section.renamed
+  // reservation.created | reservation.confirmed | reservation.cancelled
+
+  entity_type String  // table | section | reservation | session
+  entity_id   String  // cuid of the affected entity
+  entity_name String  // name snapshot at time of action
+
+  metadata    Json?   // before/after values, context (e.g. old zone → new zone)
+
+  created_at  DateTime @default(now())
+
+  @@index([tenant_id])
+  @@index([branch_id])
+  @@index([actor_id])
+  @@index([entity_type, entity_id])
+  @@index([created_at])
+  @@map("audit_logs")
 }
 
 // ─── KDS Setup Codes ──────────────────────────────────────────────────────────

@@ -2,6 +2,9 @@ import { Provider } from 'react-redux';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { store } from './store';
 import Login from './pages/Login';
+import Register from './pages/Register';
+import Onboard from './pages/Onboard';
+import Setup from './pages/Setup';
 import Layout from './components/Layout';
 import ProtectedRoute from './components/ProtectedRoute';
 import FloorMap from './pages/FloorMap';
@@ -11,12 +14,24 @@ import Reports from './pages/Reports';
 import Staff from './pages/Staff';
 import Procurement from './pages/Procurement';
 import Settings from './pages/Settings';
+import Reservations from './pages/Reservations';
+import ActivityLog from './pages/ActivityLog';
 import ToastContainer from './components/ToastContainer';
 
 function AppRoutes() {
   return (
     <Routes>
+      {/* Public */}
       <Route path="/login" element={<Login />} />
+      <Route path="/register" element={<Register />} />
+
+      {/* Requires auth (any role) — onboarding wizard */}
+      <Route path="/onboard" element={<Onboard />} />
+
+      {/* Setup checklist — after wizard, before full usage */}
+      <Route path="/setup" element={<ProtectedRoute><Setup /></ProtectedRoute>} />
+
+      {/* Requires auth + active tenant */}
       <Route
         element={
           <ProtectedRoute>
@@ -30,9 +45,12 @@ function AppRoutes() {
         <Route path="/reports" element={<Reports />} />
         <Route path="/staff" element={<Staff />} />
         <Route path="/procurement" element={<Procurement />} />
+        <Route path="/reservations" element={<Reservations />} />
+        <Route path="/activity" element={<ActivityLog />} />
         <Route path="/settings" element={<Settings />} />
         <Route path="/" element={<Navigate to="/floor-map" replace />} />
       </Route>
+
       <Route path="*" element={<Navigate to="/floor-map" replace />} />
     </Routes>
   );

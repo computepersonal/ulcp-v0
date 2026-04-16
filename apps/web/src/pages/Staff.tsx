@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useAppSelector } from '../hooks/redux';
+import SetupReturnBanner from '../components/SetupReturnBanner';
 
 interface StaffMember {
   id: string;
@@ -12,13 +13,7 @@ interface StaffMember {
   created_at?: string;
 }
 
-const DEMO_STAFF: StaffMember[] = [
-  { id: '1', name: 'Raj Kumar', email: 'raj@demo.com', role: 'waiter', status: 'active', shift_start: '09:00' },
-  { id: '2', name: 'Priya Sharma', email: 'priya@demo.com', role: 'cashier', status: 'active', shift_start: '10:00' },
-  { id: '3', name: 'Amit Verma', email: 'amit@demo.com', role: 'waiter', status: 'break', shift_start: '09:00' },
-  { id: '4', name: 'Chef Raman', email: 'raman@demo.com', role: 'head_chef', status: 'active', shift_start: '08:00' },
-  { id: '5', name: 'Sunita Devi', email: 'sunita@demo.com', role: 'inventory_manager', status: 'off' }
-];
+
 
 const STATUS_BADGES: Record<string, string> = {
   active: 'bg-green-50 text-green-700 border-green-200',
@@ -28,7 +23,8 @@ const STATUS_BADGES: Record<string, string> = {
 
 export default function Staff() {
   const auth = useAppSelector((s) => s.auth);
-  const [staff, setStaff] = useState<StaffMember[]>(DEMO_STAFF);
+  const [staff, setStaff] = useState<StaffMember[]>([]);
+  const [loadingStaff, setLoadingStaff] = useState(true);
   const [showInvite, setShowInvite] = useState(false);
   const [inviteEmail, setInviteEmail] = useState('');
   const [inviteRole, setInviteRole] = useState('waiter');
@@ -47,12 +43,12 @@ export default function Staff() {
         if (res.ok) {
           const data = (await res.json()) as { success: boolean; data?: { users: StaffMember[] } };
           const users = data.data?.users ?? [];
-          if (users.length > 0) {
-            setStaff(users.map((u) => ({ ...u, status: 'active' as const })));
-          }
+          setStaff(users.map((u) => ({ ...u, status: 'active' as const })));
         }
       } catch {
-        // Use demo data
+        // silently fail — empty state shown
+      } finally {
+        setLoadingStaff(false);
       }
     };
     void load();
@@ -76,7 +72,20 @@ export default function Staff() {
     setInviteEmail('');
   };
 
+  if (loadingStaff) {
+    return (
+      <div>
+        <SetupReturnBanner />
+        <div className="p-6 flex items-center justify-center min-h-[60vh]">
+          <div className="text-gray-400 text-sm">Loading staff...</div>
+        </div>
+      </div>
+    );
+  }
+
   return (
+    <div>
+      <SetupReturnBanner />
     <div className="p-6">
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-xl font-bold text-gray-900">Staff</h1>
@@ -100,6 +109,15 @@ export default function Staff() {
             </tr>
           </thead>
           <tbody>
+            {staff.length === 0 && (
+              <tr>
+                <td colSpan={5} className="px-5 py-12 text-center">
+                  <div className="text-3xl mb-2">👥</div>
+                  <div className="text-sm font-medium text-gray-700 mb-1">No staff yet</div>
+                  <div className="text-xs text-gray-400">Invite your first team member using the button above.</div>
+                </td>
+              </tr>
+            )}
             {staff.map((member, idx) => (
               <tr key={member.id} className={`${idx > 0 ? 'border-t border-gray-50' : ''} hover:bg-gray-50`}>
                 <td className="px-5 py-3">
@@ -174,6 +192,7 @@ export default function Staff() {
           </div>
         </div>
       )}
+    </div>
     </div>
   );
 }

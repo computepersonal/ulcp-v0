@@ -17,7 +17,9 @@ import { onboardingRoutes } from "./routes/onboarding.routes";
 import { tableRoutes } from "./routes/table.routes";
 import { sectionRoutes } from "./routes/section.routes";
 import { sessionRoutes } from "./routes/session.routes";
+import { reservationRoutes } from "./routes/reservation.routes";
 import { kdsRoutes } from "./routes/kds.routes";
+import { auditLogRoutes } from "./routes/auditLog.routes";
 
 const PORT = parseInt(process.env["PORT"] ?? "3002", 10);
 
@@ -138,7 +140,13 @@ async function buildApp() {
     { prefix: "/api/v1/tenants/:tenant_id/branches/:branch_id/sessions" }
   );
 
+  await app.register(
+    async (instance) => { await instance.register(reservationRoutes); },
+    { prefix: "/api/v1/tenants/:tenant_id/branches/:branch_id/reservations" }
+  );
+
   await app.register(onboardingRoutes, { prefix: "/api/v1/onboarding" });
+  await app.register(auditLogRoutes, { prefix: "/api/v1/tenants" });
 
   // KDS: public verify endpoint + staff generate endpoint
   await app.register(kdsRoutes, { prefix: "/api/v1/tenants/kds" });

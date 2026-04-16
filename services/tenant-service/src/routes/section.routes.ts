@@ -8,7 +8,10 @@ import {
   getSectionsForBranch,
   updateSectionById,
   deleteSectionById,
+  renameSectionWithTables,
 } from "../services/section.service";
+import { createAuditLog } from "../repositories/auditLog.repository";
+import { logger } from "../lib/logger";
 
 const genericOk = {
   type: "object",
@@ -81,6 +84,17 @@ export async function sectionRoutes(fastify: FastifyInstance): Promise<void> {
           req.params.branch_id,
           body.data
         );
+        createAuditLog({
+          tenant_id:   req.params.tenant_id,
+          branch_id:   req.params.branch_id,
+          actor_id:    req.staff!.user_id,
+          actor_name:  req.staff!.name,
+          actor_role:  req.staff!.role,
+          action:      "section.created",
+          entity_type: "section",
+          entity_id:   section.id,
+          entity_name: section.name,
+        }).catch((e: unknown) => logger.warn({ e }, "audit log write failed"));
         return reply.code(201).send(apiSuccess({ section }));
       } catch (err) {
         if (err instanceof AppError) return reply.code(err.statusCode).send(apiError(err.message));
@@ -166,6 +180,65 @@ export async function sectionRoutes(fastify: FastifyInstance): Promise<void> {
     }
   );
 
+  // POST /tenants/:tenant_id/branches/:branch_id/sections/:id/rename
+  fastify.post<{ Params: SectionParams }>(
+    "/:id/rename",
+    {
+      schema: {
+        summary: "Rename a section and cascade to table names",
+        description: "Renames the section and any tables whose names start with the old section name, in a single transaction.",
+        tags: ["Sections"],
+        params: {
+          type: "object",
+          properties: {
+            tenant_id: { type: "string" },
+            branch_id: { type: "string" },
+            id:        { type: "string" },
+          },
+        },
+        body: {
+          type: "object",
+          required: ["name"],
+          properties: {
+            name: { type: "string", minLength: 1 },
+          },
+        },
+        response: { 200: genericOk, ...errResponses },
+      },
+      preHandler: [authenticateStaff],
+    },
+    async (req, reply) => {
+      const body = z.object({ name: z.string().min(1) }).safeParse(req.body);
+      if (!body.success) {
+        return reply.code(400).send(apiError(formatZodError(body.error)));
+      }
+      try {
+        const { section, tablesRenamed } = await renameSectionWithTables(
+          req.params.tenant_id,
+          req.params.branch_id,
+          req.params.id,
+          body.data.name
+        );
+        createAuditLog({
+          tenant_id:   req.params.tenant_id,
+          branch_id:   req.params.branch_id,
+          actor_id:    req.staff!.user_id,
+          actor_name:  req.staff!.name,
+          actor_role:  req.staff!.role,
+          action:      "section.renamed",
+          entity_type: "section",
+          entity_id:   req.params.id,
+          entity_name: body.data.name,
+          metadata:    { tables_renamed: tablesRenamed },
+        }).catch((e: unknown) => logger.warn({ e }, "audit log write failed"));
+        return reply.send(apiSuccess({ section, tablesRenamed }));
+      } catch (err) {
+        if (err instanceof AppError) return reply.code(err.statusCode).send(apiError(err.message));
+        throw err;
+      }
+    }
+  );
+
   // DELETE /tenants/:tenant_id/branches/:branch_id/sections/:id
   fastify.delete<{ Params: SectionParams }>(
     "/:id",
@@ -188,7 +261,20 @@ export async function sectionRoutes(fastify: FastifyInstance): Promise<void> {
     },
     async (req, reply) => {
       try {
+        const sections = await getSectionsForBranch(req.params.tenant_id, req.params.branch_id);
+        const current = sections.find((s) => s.id === req.params.id);
         await deleteSectionById(req.params.tenant_id, req.params.branch_id, req.params.id);
+        createAuditLog({
+          tenant_id:   req.params.tenant_id,
+          branch_id:   req.params.branch_id,
+          actor_id:    req.staff!.user_id,
+          actor_name:  req.staff!.name,
+          actor_role:  req.staff!.role,
+          action:      "section.deleted",
+          entity_type: "section",
+          entity_id:   req.params.id,
+          entity_name: current?.name ?? req.params.id,
+        }).catch((e: unknown) => logger.warn({ e }, "audit log write failed"));
         return reply.send(apiSuccess({ message: "Section deleted" }));
       } catch (err) {
         if (err instanceof AppError) return reply.code(err.statusCode).send(apiError(err.message));
