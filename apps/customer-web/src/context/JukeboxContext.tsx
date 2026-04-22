@@ -40,7 +40,7 @@ export interface SongResult {
   song_artist: string;
   song_duration_secs: number;
   song_thumbnail: string;
-  source: "youtube";
+  source: "youtube" | "spotify";
 }
 
 export interface AddSongParams {

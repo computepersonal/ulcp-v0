@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useNavigate, useParams } from 'react-router-dom';
 import { useAppSelector, useAppDispatch } from '../hooks/redux';
 import { clearAuth } from '../store/authSlice';
 import MyProfilePanel from './MyProfilePanel';
@@ -12,6 +13,8 @@ interface ProfileDrawerProps {
 export default function ProfileDrawer({ isOpen, onClose, onLoginRequest }: ProfileDrawerProps) {
   const auth = useAppSelector(s => s.auth);
   const dispatch = useAppDispatch();
+  const navigate = useNavigate();
+  const { slug } = useParams<{ slug: string }>();
   const isLoggedIn = !!auth.token;
   const [activeSection, setActiveSection] = useState<string | null>(null);
   const [showMyProfile, setShowMyProfile] = useState(false);
@@ -85,6 +88,24 @@ export default function ProfileDrawer({ isOpen, onClose, onLoginRequest }: Profi
             </div>
             <span className="text-gray-300 text-xs">▶</span>
           </button>
+
+          {/* My Rewards */}
+          {isLoggedIn && (
+            <button
+              onClick={() => {
+                onClose();
+                if (slug) navigate(`/place/${slug}/rewards`);
+              }}
+              className="w-full flex items-center gap-3 px-5 py-4 hover:bg-gray-50 transition-colors text-left"
+            >
+              <span className="text-xl w-7 text-center">🎁</span>
+              <div className="flex-1">
+                <div className="text-sm font-semibold text-gray-800">My Rewards</div>
+                <div className="text-xs text-gray-400">Points, offers & tier status</div>
+              </div>
+              <span className="text-gray-300 text-xs">▶</span>
+            </button>
+          )}
 
           {[
             { id: 'orders', icon: '📦', label: 'Order History', sub: 'All past orders' },

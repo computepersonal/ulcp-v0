@@ -3,7 +3,8 @@ import { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { apiSuccess, apiError, AppError } from "@ulcp/shared";
 import { authenticateStaff, tryAuthenticateStaff, resolveContext } from "../middleware/authenticate";
-import { fetchDefaultBranchId } from "../lib/tenantClient";
+import { fetchDefaultBranchId, fetchTenantOnboardingCompleted } from "../lib/tenantClient";
+import { auditLog } from "../lib/auditClient";
 import {
   createCatalogueItem,
   getCatalogueItems,
@@ -157,8 +158,15 @@ export async function itemRoutes(fastify: FastifyInstance): Promise<void> {
     async (req, reply) => {
       try {
         const { tenant_id, branch_id } = req.params;
-        const catalogue = await getPublicCatalogue(tenant_id, branch_id);
         const context = resolveContext(req);
+        // Customers cannot browse until onboarding is complete
+        if (context === "customer") {
+          const ready = await fetchTenantOnboardingCompleted(tenant_id);
+          if (!ready) {
+            return reply.code(403).send(apiError("This business is not yet open. Please check back soon."));
+          }
+        }
+        const catalogue = await getPublicCatalogue(tenant_id, branch_id);
         return reply.send(apiSuccess({ ...catalogue as object, context }));
       } catch (err) {
         if (err instanceof AppError) return reply.code(err.statusCode).send(apiError(err.message));
@@ -256,6 +264,17 @@ export async function itemRoutes(fastify: FastifyInstance): Promise<void> {
       const token = req.headers.authorization?.slice(7) ?? "";
       try {
         const item = await createCatalogueItem(req.params.tenant_id, body.data, token);
+        auditLog({
+          tenant_id:   req.params.tenant_id,
+          actor_id:    req.staff!.user_id,
+          actor_name:  req.staff!.name,
+          actor_role:  req.staff!.role,
+          action:      "item.created",
+          entity_type: "item",
+          entity_id:   item.id,
+          entity_name: item.name,
+          metadata:    { price: item.price, section_id: item.section_id },
+        });
         return reply.code(201).send(apiSuccess({ item }));
       } catch (err) {
         if (err instanceof AppError) return reply.code(err.statusCode).send(apiError(err.message));
@@ -409,6 +428,21 @@ export async function itemRoutes(fastify: FastifyInstance): Promise<void> {
       }
       try {
         const item = await updateCatalogueItem(req.params.tenant_id, req.params.id, body.data);
+        // Determine action — availability change vs general edit
+        const action = body.data.is_available !== undefined
+          ? (body.data.is_available ? "item.enabled" : "item.disabled")
+          : "item.updated";
+        auditLog({
+          tenant_id:   req.params.tenant_id,
+          actor_id:    req.staff!.user_id,
+          actor_name:  req.staff!.name,
+          actor_role:  req.staff!.role,
+          action,
+          entity_type: "item",
+          entity_id:   item.id,
+          entity_name: item.name,
+          metadata:    { changes: body.data },
+        });
         return reply.send(apiSuccess({ item }));
       } catch (err) {
         if (err instanceof AppError) return reply.code(err.statusCode).send(apiError(err.message));
@@ -435,6 +469,16 @@ export async function itemRoutes(fastify: FastifyInstance): Promise<void> {
     async (req, reply) => {
       try {
         const item = await toggleItemAvailability(req.params.tenant_id, req.params.id);
+        auditLog({
+          tenant_id:   req.params.tenant_id,
+          actor_id:    req.staff!.user_id,
+          actor_name:  req.staff!.name,
+          actor_role:  req.staff!.role,
+          action:      item.is_available ? "item.enabled" : "item.disabled",
+          entity_type: "item",
+          entity_id:   item.id,
+          entity_name: item.name,
+        });
         return reply.send(apiSuccess({ item }));
       } catch (err) {
         if (err instanceof AppError) return reply.code(err.statusCode).send(apiError(err.message));
@@ -503,7 +547,19 @@ export async function itemRoutes(fastify: FastifyInstance): Promise<void> {
     },
     async (req, reply) => {
       try {
+        // Fetch name before deletion for audit log
+        const existing = await getCatalogueItemById(req.params.tenant_id, req.params.id);
         await deleteCatalogueItem(req.params.tenant_id, req.params.id);
+        auditLog({
+          tenant_id:   req.params.tenant_id,
+          actor_id:    req.staff!.user_id,
+          actor_name:  req.staff!.name,
+          actor_role:  req.staff!.role,
+          action:      "item.deleted",
+          entity_type: "item",
+          entity_id:   req.params.id,
+          entity_name: existing.name,
+        });
         return reply.send(apiSuccess({ message: "Item deleted" }));
       } catch (err) {
         if (err instanceof AppError) return reply.code(err.statusCode).send(apiError(err.message));

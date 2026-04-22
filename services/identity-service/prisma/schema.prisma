@@ -53,14 +53,17 @@ model RefreshToken {
 // ─── Platform Customers ──────────────────────────────────────────────────────
 
 model PlatformCustomer {
-  id             String   @id @default(cuid())
-  mobile         String   @unique
+  id             String    @id @default(cuid())
+  mobile         String    @unique
   name           String?
   email          String?
-  is_active      Boolean  @default(true)
-  social_profile Json?    // { bio, interests, looking_for, prepared_qa, show_profile, emoji_avatar }
-  created_at     DateTime @default(now())
-  updated_at     DateTime @updatedAt
+  birthday       DateTime? // used for birthday offers
+  anniversary    DateTime?
+  preferences    Json?     // { veg_only, allergens[], dietary_notes }
+  is_active      Boolean   @default(true)
+  social_profile Json?     // { bio, interests, looking_for, prepared_qa, show_profile, emoji_avatar }
+  created_at     DateTime  @default(now())
+  updated_at     DateTime  @updatedAt
 
   @@map("platform_customers")
 }

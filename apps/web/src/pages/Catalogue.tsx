@@ -262,6 +262,153 @@ function AddItemModal({
   );
 }
 
+// ─── Edit Item Modal ──────────────────────────────────────────────────────────
+
+function EditItemModal({
+  item,
+  onClose,
+  onSave,
+}: {
+  item: CatalogueItem;
+  onClose: () => void;
+  onSave: (data: { name: string; price: number; mrp?: number; description?: string; is_food?: boolean; veg_type?: string }) => Promise<void>;
+}) {
+  const [name, setName] = useState(item.name);
+  const [priceStr, setPriceStr] = useState(String(item.price / 100));
+  const [mrpStr, setMrpStr] = useState(item.mrp ? String(item.mrp / 100) : '');
+  const [desc, setDesc] = useState(item.description ?? '');
+  const [isFood, setIsFood] = useState(item.is_food !== false);
+  const [vegType, setVegType] = useState<'veg' | 'non_veg' | 'egg' | 'vegan'>(
+    (item.veg_type as 'veg' | 'non_veg' | 'egg' | 'vegan') ?? 'veg'
+  );
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const price = Math.round(parseFloat(priceStr) * 100);
+    const mrp = mrpStr ? Math.round(parseFloat(mrpStr) * 100) : undefined;
+    if (!name.trim() || isNaN(price) || price < 0) {
+      setError('Name and a valid price are required');
+      return;
+    }
+    setSaving(true);
+    setError('');
+    try {
+      await onSave({
+        name: name.trim(),
+        price,
+        mrp,
+        description: desc.trim() || undefined,
+        is_food: isFood,
+        veg_type: isFood ? vegType : undefined,
+      });
+      onClose();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to save');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm p-6 max-h-[90vh] overflow-y-auto">
+        <div className="flex items-center justify-between mb-5">
+          <h3 className="text-lg font-bold text-gray-900">Edit item</h3>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-xl leading-none">✕</button>
+        </div>
+        <form onSubmit={(e) => void handleSubmit(e)} className="space-y-4">
+          <div>
+            <label className="block text-xs font-medium text-gray-500 mb-1">Item name *</label>
+            <input
+              autoFocus
+              type="text"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm outline-none focus:border-brand-500 transition-colors"
+            />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-medium text-gray-500 mb-1">Price (₹) *</label>
+              <input
+                type="number" min="0" step="0.01"
+                value={priceStr}
+                onChange={(e) => setPriceStr(e.target.value)}
+                className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm outline-none focus:border-brand-500 transition-colors font-mono"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-500 mb-1">MRP (₹) <span className="font-normal text-gray-400">optional</span></label>
+              <input
+                type="number" min="0" step="0.01"
+                value={mrpStr}
+                onChange={(e) => setMrpStr(e.target.value)}
+                placeholder="for strikethrough"
+                className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm outline-none focus:border-brand-500 transition-colors font-mono"
+              />
+            </div>
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-500 mb-1">Description <span className="font-normal text-gray-400">optional</span></label>
+            <textarea
+              rows={2}
+              value={desc}
+              onChange={(e) => setDesc(e.target.value)}
+              className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm outline-none focus:border-brand-500 transition-colors resize-none"
+            />
+          </div>
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-medium text-gray-500">Food item?</span>
+            <button
+              type="button"
+              onClick={() => setIsFood(!isFood)}
+              className={`relative w-10 h-5 rounded-full transition-colors ${isFood ? 'bg-brand-500' : 'bg-gray-300'}`}
+            >
+              <div className={`absolute top-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${isFood ? 'translate-x-5' : 'translate-x-0.5'}`} />
+            </button>
+          </div>
+          {isFood && (
+            <div>
+              <label className="block text-xs font-medium text-gray-500 mb-2">Type</label>
+              <div className="grid grid-cols-4 gap-1.5">
+                {(['veg', 'non_veg', 'egg', 'vegan'] as const).map((t) => (
+                  <button
+                    key={t}
+                    type="button"
+                    onClick={() => setVegType(t)}
+                    className={`py-1.5 text-xs rounded-lg border font-medium transition-colors ${
+                      vegType === t
+                        ? 'bg-brand-50 border-brand-400 text-brand-700'
+                        : 'border-gray-200 text-gray-500 hover:border-gray-300'
+                    }`}
+                  >
+                    {t === 'non_veg' ? 'Non-veg' : t.charAt(0).toUpperCase() + t.slice(1)}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+          {error && <p className="text-red-500 text-xs">{error}</p>}
+          <div className="flex gap-3 pt-1">
+            <button type="button" onClick={onClose} className="flex-1 py-2.5 border border-gray-200 rounded-xl text-sm text-gray-600 hover:border-gray-300">
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={saving || !name.trim() || !priceStr}
+              className="flex-1 py-2.5 bg-brand-500 hover:bg-brand-600 disabled:opacity-40 text-white text-sm font-semibold rounded-xl transition-colors"
+            >
+              {saving ? 'Saving...' : 'Save changes'}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
 // ─── Veg indicator dot ────────────────────────────────────────────────────────
 function VegDot({ type }: { type?: string }) {
   if (!type) return null;
@@ -297,6 +444,10 @@ export default function Catalogue() {
   const [confirmDeleteItem, setConfirmDeleteItem] = useState<string | null>(null);
   const [confirmDeleteSection, setConfirmDeleteSection] = useState<string | null>(null);
 
+  // Edit item — store ID only so the modal always reads the latest price from `items` state
+  const [editingItemId, setEditingItemId] = useState<string | null>(null);
+  const editingItem = editingItemId ? (items.find((i) => i.id === editingItemId) ?? null) : null;
+
   // Inline rename
   const [renamingSection, setRenamingSection] = useState<{ id: string; name: string } | null>(null);
 
@@ -306,29 +457,34 @@ export default function Catalogue() {
 
   const authHeader = { Authorization: `Bearer ${auth.token}` };
 
-  const load = useCallback(async () => {
+  useEffect(() => {
     if (!tenantId) return;
+    let cancelled = false;
     setLoading(true);
     setError('');
-    try {
-      const [secRes, itemRes] = await Promise.all([
-        apiFetch(`${catalogueServiceUrl}/api/v1/catalogue/${tenantId}/sections`, { headers: authHeader }),
-        apiFetch(`${catalogueServiceUrl}/api/v1/catalogue/${tenantId}/items`, { headers: authHeader }),
-      ]);
-      const [secData, itemData] = await Promise.all([
-        secRes.json() as Promise<{ success: boolean; data?: { sections: CatalogueSection[] } }>,
-        itemRes.json() as Promise<{ success: boolean; data?: { items: CatalogueItem[] } }>,
-      ]);
-      if (secData.success) setSections(secData.data?.sections ?? []);
-      if (itemData.success) setItems(itemData.data?.items ?? []);
-    } catch {
-      setError('Failed to load catalogue');
-    } finally {
-      setLoading(false);
-    }
+    const token = auth.token;
+    const header = { Authorization: `Bearer ${token}` };
+    void (async () => {
+      try {
+        const [secRes, itemRes] = await Promise.all([
+          apiFetch(`${catalogueServiceUrl}/api/v1/catalogue/${tenantId}/sections`, { headers: header }),
+          apiFetch(`${catalogueServiceUrl}/api/v1/catalogue/${tenantId}/items`, { headers: header }),
+        ]);
+        const [secData, itemData] = await Promise.all([
+          secRes.ok ? secRes.json() as Promise<{ success: boolean; data?: { sections: CatalogueSection[] } }> : Promise.resolve({ success: false }),
+          itemRes.ok ? itemRes.json() as Promise<{ success: boolean; data?: { items: CatalogueItem[] } }> : Promise.resolve({ success: false }),
+        ]);
+        if (cancelled) return;
+        if (secData.success) setSections((secData as { success: boolean; data?: { sections: CatalogueSection[] } }).data?.sections ?? []);
+        if (itemData.success) setItems((itemData as { success: boolean; data?: { items: CatalogueItem[] } }).data?.items ?? []);
+      } catch {
+        // Service unreachable — show empty state so user can still start adding items
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
   }, [tenantId, auth.token, catalogueServiceUrl]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  useEffect(() => { void load(); }, [load]);
 
   // ─── Section actions ──────────────────────────────────────────────────────
 
@@ -416,6 +572,38 @@ export default function Catalogue() {
     setConfirmDeleteItem(null);
   };
 
+  const handleMoveItemToSection = async (itemId: string, sectionId: string | null) => {
+    const res = await apiFetch(`${catalogueServiceUrl}/api/v1/catalogue/${tenantId}/items/${itemId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', ...authHeader },
+      body: JSON.stringify({ section_id: sectionId }),
+    });
+    if (!res.ok) return;
+    setItems((prev) =>
+      prev.map((i) => (i.id === itemId ? { ...i, section_id: sectionId } : i))
+    );
+  };
+
+  const handleEditItem = async (
+    itemId: string,
+    data: { name: string; price: number; mrp?: number; description?: string; is_food?: boolean; veg_type?: string }
+  ) => {
+    const res = await apiFetch(`${catalogueServiceUrl}/api/v1/catalogue/${tenantId}/items/${itemId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', ...authHeader },
+      body: JSON.stringify(data),
+    });
+    const json = (await res.json()) as { success: boolean; error?: string; data?: { item: CatalogueItem } };
+    if (!res.ok || !json.success) throw new Error(json.error ?? 'Failed to save');
+    // Use the API response (DB ground truth) so price/mrp are always in correct paise format
+    const updated = json.data?.item;
+    setItems((prev) => prev.map((i) =>
+      i.id === itemId
+        ? updated ? { ...i, ...updated } : { ...i, ...data, veg_type: data.veg_type as CatalogueItem['veg_type'] }
+        : i
+    ));
+  };
+
   // ─── Render ───────────────────────────────────────────────────────────────
 
   if (loading) {
@@ -450,52 +638,54 @@ export default function Catalogue() {
           onSave={handleAddItem}
         />
       )}
+      {editingItem && (
+        <EditItemModal
+          item={editingItem}
+          onClose={() => setEditingItemId(null)}
+          onSave={(data) => handleEditItem(editingItem.id, data)}
+        />
+      )}
 
       <div className="p-6 max-w-5xl">
-        {/* Header */}
+        {/* Header — only show title row; Edit toggle hidden when catalogue is empty */}
         <div className="flex items-center justify-between mb-6">
           <div>
             <h1 className="text-xl font-bold text-gray-900">Catalogue</h1>
-            <p className="text-xs text-gray-400 mt-0.5">{items.length} items · {sections.length} sections</p>
-          </div>
-          <div className="flex items-center gap-2">
-            {editMode && canEdit && (
-              <>
-                <button
-                  onClick={() => setShowAddSection(true)}
-                  className="px-3 py-2 border border-gray-200 rounded-xl text-sm text-gray-700 hover:border-brand-300 hover:text-brand-600 font-medium transition-colors"
-                >
-                  + Section
-                </button>
-                <button
-                  onClick={() => setShowAddItemGlobal(true)}
-                  className="px-3 py-2 bg-brand-500 hover:bg-brand-600 text-white text-sm font-semibold rounded-xl transition-colors"
-                >
-                  + Item
-                </button>
-              </>
-            )}
-            {canEdit && (
-              <div className="flex items-center gap-2">
-                {editMode && (
-                  <div className="flex items-center gap-1.5 bg-orange-50 border border-orange-200 rounded-xl px-2.5 py-1.5">
-                    <div className="w-2 h-2 rounded-full bg-orange-500" />
-                    <span className="text-xs font-medium text-orange-700">Live editing</span>
-                  </div>
-                )}
-                <button
-                  onClick={() => setEditMode(!editMode)}
-                  className={`px-3 py-2 rounded-xl text-sm font-medium border transition-colors ${
-                    editMode
-                      ? 'bg-orange-50 border-orange-300 text-orange-700'
-                      : 'bg-white border-gray-200 text-gray-600 hover:border-brand-300'
-                  }`}
-                >
-                  {editMode ? '👁 View' : '✏️ Edit'}
-                </button>
-              </div>
+            {(sections.length > 0 || items.length > 0) && (
+              <p className="text-xs text-gray-400 mt-0.5">{items.length} items · {sections.length} sections</p>
             )}
           </div>
+          {/* Edit controls — only when catalogue has content */}
+          {canEdit && (sections.length > 0 || items.length > 0) && (
+            <div className="flex items-center gap-2">
+              {editMode && (
+                <>
+                  <button
+                    onClick={() => setShowAddSection(true)}
+                    className="px-3 py-2 border border-gray-200 rounded-xl text-sm text-gray-700 hover:border-brand-300 hover:text-brand-600 font-medium transition-colors"
+                  >
+                    + Section
+                  </button>
+                  <button
+                    onClick={() => setShowAddItemGlobal(true)}
+                    className="px-3 py-2 bg-brand-500 hover:bg-brand-600 text-white text-sm font-semibold rounded-xl transition-colors"
+                  >
+                    + Item
+                  </button>
+                </>
+              )}
+              <button
+                onClick={() => setEditMode(!editMode)}
+                className={`px-3 py-2 rounded-xl text-sm font-medium border transition-colors ${
+                  editMode
+                    ? 'bg-orange-50 border-orange-300 text-orange-700'
+                    : 'bg-white border-gray-200 text-gray-600 hover:border-brand-300'
+                }`}
+              >
+                {editMode ? '👁 View' : '✏️ Edit'}
+              </button>
+            </div>
+          )}
         </div>
 
         {error && (
@@ -605,8 +795,11 @@ export default function Catalogue() {
                       key={item.id}
                       item={item}
                       editMode={editMode && canEdit}
+                      sections={sections}
                       onToggle={() => void handleToggleItem(item)}
+                      onEdit={() => setEditingItemId(item.id)}
                       onDelete={() => setConfirmDeleteItem(item.id)}
+                      onMoveToSection={(sid) => void handleMoveItemToSection(item.id, sid)}
                       confirmingDelete={confirmDeleteItem === item.id}
                       onConfirmDelete={() => void handleDeleteItem(item.id)}
                       onCancelDelete={() => setConfirmDeleteItem(null)}
@@ -637,8 +830,11 @@ export default function Catalogue() {
                     key={item.id}
                     item={item}
                     editMode={editMode && canEdit}
+                    sections={sections}
                     onToggle={() => void handleToggleItem(item)}
+                    onEdit={() => setEditingItemId(item.id)}
                     onDelete={() => setConfirmDeleteItem(item.id)}
+                    onMoveToSection={(sid) => void handleMoveItemToSection(item.id, sid)}
                     confirmingDelete={confirmDeleteItem === item.id}
                     onConfirmDelete={() => void handleDeleteItem(item.id)}
                     onCancelDelete={() => setConfirmDeleteItem(null)}
@@ -668,16 +864,22 @@ export default function Catalogue() {
 function ItemCard({
   item,
   editMode,
+  sections,
   onToggle,
+  onEdit,
   onDelete,
+  onMoveToSection,
   confirmingDelete,
   onConfirmDelete,
   onCancelDelete,
 }: {
   item: CatalogueItem;
   editMode: boolean;
+  sections: CatalogueSection[];
   onToggle: () => void;
+  onEdit: () => void;
   onDelete: () => void;
+  onMoveToSection: (sectionId: string | null) => void;
   confirmingDelete: boolean;
   onConfirmDelete: () => void;
   onCancelDelete: () => void;
@@ -697,7 +899,7 @@ function ItemCard({
           )}
           <div className="text-brand-600 font-semibold text-sm mt-1.5 font-mono">
             ₹{(item.price / 100).toFixed(0)}
-            {item.mrp && item.mrp > item.price && (
+            {item.mrp > 0 && item.mrp > item.price && (
               <span className="ml-1.5 line-through text-gray-400 font-normal text-xs">₹{(item.mrp / 100).toFixed(0)}</span>
             )}
           </div>
@@ -731,10 +933,26 @@ function ItemCard({
               <div className={`absolute top-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${item.is_available ? 'translate-x-5' : 'translate-x-0.5'}`} />
             </button>
             <span className="text-xs text-gray-500 flex-1">{item.is_available ? 'On' : 'Off'}</span>
+            <button onClick={onEdit} className="text-xs text-brand-500 hover:text-brand-600 font-medium">Edit</button>
             <button onClick={onDelete} className="text-xs text-red-400 hover:text-red-500 font-medium">Delete</button>
           </>
         )}
       </div>
+      {/* Section assignment — only in edit mode when sections exist */}
+      {editMode && !confirmingDelete && sections.length > 0 && (
+        <div className="mt-2 pt-2 border-t border-gray-100">
+          <select
+            value={item.section_id ?? ''}
+            onChange={(e) => onMoveToSection(e.target.value || null)}
+            className="w-full text-xs border border-gray-200 rounded-lg px-2 py-1.5 bg-white text-gray-600 outline-none focus:border-brand-400 transition-colors"
+          >
+            <option value="">No section (General)</option>
+            {sections.map((s) => (
+              <option key={s.id} value={s.id}>{s.name}</option>
+            ))}
+          </select>
+        </div>
+      )}
     </div>
   );
 }

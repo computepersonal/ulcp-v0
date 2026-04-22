@@ -9,6 +9,7 @@ export interface SongResponse {
   song_artist: string;
   song_thumbnail: string;
   song_duration_secs: number;
+  source: "youtube" | "spotify";
   requested_by_alias: string;
   dedicated_to_alias?: string | null;
   dedication_message?: string | null;

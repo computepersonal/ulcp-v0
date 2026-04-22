@@ -11,6 +11,7 @@ import Cart from './pages/Cart';
 import Checkout from './pages/Checkout';
 import OrderTracking from './pages/OrderTracking';
 import Explore from './pages/Explore';
+import MyRewards from './pages/MyRewards';
 
 function GuestLanding() {
   return (
@@ -46,6 +47,7 @@ function AppWithProviders() {
             <Route path="/place/:slug/cart" element={<Cart />} />
             <Route path="/place/:slug/checkout" element={<Checkout />} />
             <Route path="/place/:slug/order/:id" element={<OrderTracking />} />
+            <Route path="/place/:slug/rewards" element={<MyRewards />} />
             <Route path="/explore" element={<Explore />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>

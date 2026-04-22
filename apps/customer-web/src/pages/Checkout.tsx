@@ -4,6 +4,7 @@ import { useAppDispatch, useAppSelector } from '../hooks/redux';
 import { clearCart } from '../store/cartSlice';
 import { NativeAdCard } from '../components/ads/NativeAdCard';
 import { useAds } from '../components/ads/useAds';
+import OtpModal from '../components/OtpModal';
 
 type PaymentMethod = 'upi' | 'card' | 'cod';
 
@@ -18,6 +19,7 @@ export default function Checkout() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [confirmedOrderId, setConfirmedOrderId] = useState<string | null>(null);
+  const [showOtp, setShowOtp] = useState(!auth.token);
 
   const { ads: postCheckoutAds } = useAds({
     placement: 'post_checkout',
@@ -32,6 +34,10 @@ export default function Checkout() {
   const total = subtotal + gst;
 
   const handlePay = async () => {
+    if (!auth.token) {
+      setShowOtp(true);
+      return;
+    }
     setLoading(true);
     setError('');
     try {
@@ -39,7 +45,7 @@ export default function Checkout() {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          ...(auth.token ? { Authorization: `Bearer ${auth.token}` } : {})
+          Authorization: `Bearer ${auth.token}`,
         },
         body: JSON.stringify({
           tenant_id: cart.tenant_id,
@@ -61,20 +67,26 @@ export default function Checkout() {
         dispatch(clearCart());
         setConfirmedOrderId(data.data.id);
       } else {
-        // Dev fallback — simulate order placement
-        const mockId = `ORD-${Date.now()}`;
-        dispatch(clearCart());
-        setConfirmedOrderId(mockId);
+        setError(data.error ?? 'Failed to place order. Please try again.');
       }
     } catch {
-      // Dev fallback
-      const mockId = `ORD-${Date.now()}`;
-      dispatch(clearCart());
-      setConfirmedOrderId(mockId);
+      setError('Network error. Please check your connection and try again.');
     } finally {
       setLoading(false);
     }
   };
+
+  // OTP gate — must be logged in before checkout
+  if (showOtp) {
+    return (
+      <OtpModal
+        open={true}
+        tenantId={cart.tenant_id ?? ''}
+        onSuccess={(_token: string) => setShowOtp(false)}
+        onClose={() => navigate(-1)}
+      />
+    );
+  }
 
   // Post-checkout success screen with ads
   if (confirmedOrderId) {

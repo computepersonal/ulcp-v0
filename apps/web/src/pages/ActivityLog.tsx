@@ -17,28 +17,60 @@ interface AuditEntry {
 }
 
 const ACTION_LABELS: Record<string, string> = {
+  // Catalogue — items
+  'item.created':           'Item added',
+  'item.updated':           'Item updated',
+  'item.deleted':           'Item deleted',
+  'item.enabled':           'Item enabled',
+  'item.disabled':          'Item disabled',
+  // Catalogue — sections (menu sections, not floor zones)
+  'section.created':        'Menu section added',
+  'section.deleted':        'Menu section deleted',
+  'section.renamed':        'Menu section renamed',
+  'section.shown':          'Menu section shown',
+  'section.hidden':         'Menu section hidden',
+  'section.updated':        'Menu section updated',
+  // Tables
   'table.created':          'Table created',
   'table.deleted':          'Table deleted',
   'table.capacity_changed': 'Capacity changed',
   'table.zone_changed':     'Table moved to zone',
   'table.renamed':          'Table renamed',
-  'section.created':        'Floor zone created',
-  'section.deleted':        'Floor zone deleted',
-  'section.renamed':        'Floor zone renamed',
+  // Floor zones (kept for older logs that used these keys)
+  'zone.created':           'Floor zone created',
+  'zone.deleted':           'Floor zone deleted',
+  'zone.renamed':           'Floor zone renamed',
+  // Reservations
   'reservation.created':    'Reservation created',
   'reservation.confirmed':  'Reservation confirmed',
   'reservation.cancelled':  'Reservation cancelled',
 };
 
 const ACTION_COLORS: Record<string, string> = {
+  // Catalogue — items
+  'item.created':           'bg-green-100 text-green-700',
+  'item.updated':           'bg-blue-100 text-blue-700',
+  'item.deleted':           'bg-red-100 text-red-700',
+  'item.enabled':           'bg-green-100 text-green-700',
+  'item.disabled':          'bg-orange-100 text-orange-700',
+  // Catalogue — sections
+  'section.created':        'bg-green-100 text-green-700',
+  'section.deleted':        'bg-red-100 text-red-700',
+  'section.renamed':        'bg-gray-100 text-gray-700',
+  'section.shown':          'bg-green-100 text-green-700',
+  'section.hidden':         'bg-orange-100 text-orange-700',
+  'section.updated':        'bg-blue-100 text-blue-700',
+  // Tables
   'table.created':          'bg-green-100 text-green-700',
   'table.deleted':          'bg-red-100 text-red-700',
   'table.capacity_changed': 'bg-blue-100 text-blue-700',
   'table.zone_changed':     'bg-purple-100 text-purple-700',
   'table.renamed':          'bg-gray-100 text-gray-700',
-  'section.created':        'bg-green-100 text-green-700',
-  'section.deleted':        'bg-red-100 text-red-700',
-  'section.renamed':        'bg-gray-100 text-gray-700',
+  // Floor zones
+  'zone.created':           'bg-green-100 text-green-700',
+  'zone.deleted':           'bg-red-100 text-red-700',
+  'zone.renamed':           'bg-gray-100 text-gray-700',
+  // Reservations
   'reservation.created':    'bg-green-100 text-green-700',
   'reservation.confirmed':  'bg-blue-100 text-blue-700',
   'reservation.cancelled':  'bg-red-100 text-red-700',
@@ -47,6 +79,11 @@ const ACTION_COLORS: Record<string, string> = {
 function formatMetadata(action: string, meta: Record<string, unknown> | null): string {
   if (!meta) return '';
   switch (action) {
+    case 'item.created':
+    case 'item.updated': {
+      const price = meta['price'] as number | undefined;
+      return price !== undefined ? `₹${(price / 100).toFixed(0)}` : '';
+    }
     case 'table.capacity_changed':
       return `${meta['from']} → ${meta['to']} seats`;
     case 'table.zone_changed':
@@ -81,9 +118,10 @@ function formatDate(iso: string): string {
 }
 
 const ENTITY_FILTERS = [
-  { value: '', label: 'All actions' },
+  { value: '',            label: 'All actions' },
+  { value: 'item,section', label: 'Catalogue' },
   { value: 'table',       label: 'Tables' },
-  { value: 'section',     label: 'Floor zones' },
+  { value: 'zone',        label: 'Floor zones' },
   { value: 'reservation', label: 'Reservations' },
 ];
 
@@ -198,8 +236,8 @@ export default function ActivityLog() {
               const detail = formatMetadata(entry.action, entry.metadata);
               return (
                 <div key={entry.id} className="px-5 py-4 flex items-start gap-4">
-                  {/* Action badge */}
-                  <span className={`mt-0.5 shrink-0 text-xs font-semibold px-2.5 py-1 rounded-full ${ACTION_COLORS[entry.action] ?? 'bg-gray-100 text-gray-600'}`}>
+                  {/* Action badge — fixed width keeps entity column aligned */}
+                  <span className={`mt-0.5 shrink-0 w-44 text-center text-xs font-semibold px-2.5 py-1 rounded-full ${ACTION_COLORS[entry.action] ?? 'bg-gray-100 text-gray-600'}`}>
                     {ACTION_LABELS[entry.action] ?? entry.action}
                   </span>
 

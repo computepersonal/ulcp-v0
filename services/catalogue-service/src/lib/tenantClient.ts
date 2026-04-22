@@ -40,6 +40,31 @@ export async function fetchDefaultBranchId(
   }
 }
 
+export async function fetchTenantOnboardingCompleted(
+  tenantId: string
+): Promise<boolean> {
+  const cacheKey = `tenant:onboarding_completed:${tenantId}`;
+  const cached = await redisGet(cacheKey);
+  if (cached !== null) return cached === "true";
+
+  try {
+    const res = await fetch(`${TENANT_URL}/api/v1/tenants/${tenantId}`, {
+      headers: { "x-internal-secret": INTERNAL_SECRET },
+    });
+    if (!res.ok) return false;
+    const body = (await res.json()) as {
+      data?: { tenant?: { onboarding_completed?: boolean } };
+    };
+    const completed = body.data?.tenant?.onboarding_completed ?? false;
+    // Cache for 5 min — once completed it stays completed; short TTL handles the moment it flips
+    await redisSet(cacheKey, String(completed), 300);
+    return completed;
+  } catch (err) {
+    logger.warn({ err, tenantId }, "Could not fetch tenant onboarding status");
+    return false;
+  }
+}
+
 export async function fetchTenantPlan(
   tenantId: string,
   bearerToken: string

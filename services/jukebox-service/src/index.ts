@@ -11,7 +11,7 @@ import { redis } from "./lib/redis";
 const PORT = parseInt(process.env["PORT"] ?? "3014", 10);
 const CORS_ORIGINS = (
   process.env["CORS_ORIGINS"] ??
-  "http://localhost:5173,http://localhost:5174,http://localhost:5175,http://localhost:5176,http://localhost:5177"
+  "http://localhost:5173,http://localhost:5174,http://localhost:5175,http://localhost:5176,http://localhost:5177,http://localhost:5178,http://localhost:5179,http://localhost:5180,http://localhost:5181"
 )
   .split(",")
   .map((o) => o.trim());

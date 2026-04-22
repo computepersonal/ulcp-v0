@@ -301,7 +301,15 @@ export default function Orders() {
     <div className="p-6 h-full flex gap-4">
       {/* Kanban */}
       <div className="flex-1 overflow-auto">
-        <h1 className="text-xl font-bold text-gray-900 mb-4">Active Orders</h1>
+        <div className="flex items-center justify-between mb-4">
+          <h1 className="text-xl font-bold text-gray-900">Active Orders</h1>
+          <button
+            onClick={() => navigate('/new-order')}
+            className="px-4 py-2 bg-brand-500 hover:bg-brand-600 text-white text-sm font-semibold rounded-xl transition-colors"
+          >
+            + New Order
+          </button>
+        </div>
         {fetchError && (
           <div className="mb-4 px-4 py-3 bg-red-50 border border-red-200 rounded-xl text-sm text-red-700 font-medium">
             {fetchError}

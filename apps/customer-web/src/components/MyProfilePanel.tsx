@@ -1,6 +1,16 @@
-import { useState } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useAppSelector, useAppDispatch } from '../hooks/redux';
 import { clearAuth, setName as setNameAction } from '../store/authSlice';
+
+const DIETARY_OPTIONS = ['Vegetarian', 'Vegan', 'Eggetarian', 'Non-Veg', 'Jain', 'Halal'] as const;
+const ALLERGEN_OPTIONS = ['Gluten', 'Dairy', 'Eggs', 'Nuts', 'Peanuts', 'Soy', 'Fish', 'Shellfish', 'Sesame', 'Mustard'] as const;
+
+interface Preferences {
+  birthday: string;
+  anniversary: string;
+  dietary: string[];
+  allergens: string[];
+}
 
 interface Props {
   isOpen: boolean;
@@ -13,6 +23,57 @@ export default function MyProfilePanel({ isOpen, onClose }: Props) {
   const [name, setName] = useState(auth.name ?? '');
   const [bio, setBio] = useState('');
   const [editing, setEditing] = useState(false);
+
+  const identityUrl = import.meta.env.VITE_IDENTITY_SERVICE_URL ?? 'http://localhost:3001';
+
+  // Preferences state
+  const [prefs, setPrefs] = useState<Preferences>({ birthday: '', anniversary: '', dietary: [], allergens: [] });
+  const [prefsSaving, setPrefsSaving] = useState(false);
+  const [prefsSaved, setPrefsSaved] = useState(false);
+
+  // Load preferences from identity-service
+  const loadPrefs = useCallback(() => {
+    if (!auth.token) return;
+    fetch(`${identityUrl}/api/v1/auth/customer/me`, {
+      headers: { Authorization: `Bearer ${auth.token}` },
+    })
+      .then(r => r.json())
+      .then((data: { success: boolean; data?: { birthday?: string; anniversary?: string; preferences?: { dietary?: string[]; allergens?: string[] } } }) => {
+        if (data.success && data.data) {
+          setPrefs({
+            birthday: data.data.birthday ? data.data.birthday.slice(0, 10) : '',
+            anniversary: data.data.anniversary ? data.data.anniversary.slice(0, 10) : '',
+            dietary: data.data.preferences?.dietary ?? [],
+            allergens: data.data.preferences?.allergens ?? [],
+          });
+        }
+      })
+      .catch(() => undefined);
+  }, [auth.token, identityUrl]);
+
+  useEffect(() => { if (isOpen) loadPrefs(); }, [isOpen, loadPrefs]);
+
+  const savePrefs = async () => {
+    if (!auth.token) return;
+    setPrefsSaving(true);
+    try {
+      await fetch(`${identityUrl}/api/v1/auth/customer/me`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${auth.token}` },
+        body: JSON.stringify({
+          birthday: prefs.birthday || null,
+          anniversary: prefs.anniversary || null,
+          preferences: { dietary: prefs.dietary, allergens: prefs.allergens },
+        }),
+      });
+      setPrefsSaved(true);
+      setTimeout(() => setPrefsSaved(false), 2000);
+    } catch { /* ignore */ }
+    setPrefsSaving(false);
+  };
+
+  const toggleItem = (list: string[], item: string): string[] =>
+    list.includes(item) ? list.filter(x => x !== item) : [...list, item];
 
   const displayName = name || auth.name || '';
   const initials = displayName ? displayName[0].toUpperCase() : auth.phone?.[0] ?? '?';
@@ -109,6 +170,85 @@ export default function MyProfilePanel({ isOpen, onClose }: Props) {
                   {tag}
                 </button>
               ))}
+            </div>
+          </div>
+
+          {/* Preferences — Birthday, Anniversary, Dietary, Allergens */}
+          <div className="px-5 py-5 border-b border-gray-100">
+            <span className="text-xs font-semibold text-gray-400 uppercase tracking-wide block mb-3">Preferences</span>
+
+            <div className="space-y-4">
+              {/* Birthday */}
+              <div>
+                <label className="text-xs text-gray-500 block mb-1">Birthday</label>
+                <input
+                  type="date"
+                  value={prefs.birthday}
+                  onChange={e => setPrefs(p => ({ ...p, birthday: e.target.value }))}
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-800 outline-none focus:border-brand-500"
+                />
+                <p className="text-xs text-gray-400 mt-1">Get a special offer on your birthday!</p>
+              </div>
+
+              {/* Anniversary */}
+              <div>
+                <label className="text-xs text-gray-500 block mb-1">Anniversary</label>
+                <input
+                  type="date"
+                  value={prefs.anniversary}
+                  onChange={e => setPrefs(p => ({ ...p, anniversary: e.target.value }))}
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-800 outline-none focus:border-brand-500"
+                />
+              </div>
+
+              {/* Dietary */}
+              <div>
+                <label className="text-xs text-gray-500 block mb-2">Dietary Preference</label>
+                <div className="flex flex-wrap gap-2">
+                  {DIETARY_OPTIONS.map(opt => (
+                    <button
+                      key={opt}
+                      onClick={() => setPrefs(p => ({ ...p, dietary: toggleItem(p.dietary, opt) }))}
+                      className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-colors ${
+                        prefs.dietary.includes(opt)
+                          ? 'bg-brand-500 text-white border-brand-500'
+                          : 'bg-white text-gray-600 border-gray-200 hover:border-gray-300'
+                      }`}
+                    >
+                      {opt}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Allergens */}
+              <div>
+                <label className="text-xs text-gray-500 block mb-2">Allergens</label>
+                <div className="flex flex-wrap gap-2">
+                  {ALLERGEN_OPTIONS.map(opt => (
+                    <button
+                      key={opt}
+                      onClick={() => setPrefs(p => ({ ...p, allergens: toggleItem(p.allergens, opt) }))}
+                      className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-colors ${
+                        prefs.allergens.includes(opt)
+                          ? 'bg-red-500 text-white border-red-500'
+                          : 'bg-white text-gray-600 border-gray-200 hover:border-gray-300'
+                      }`}
+                    >
+                      {opt}
+                    </button>
+                  ))}
+                </div>
+                <p className="text-xs text-gray-400 mt-1">We'll highlight dishes with your allergens</p>
+              </div>
+
+              <button
+                onClick={() => { void savePrefs(); }}
+                disabled={prefsSaving}
+                className="w-full py-2.5 bg-brand-500 text-white rounded-xl text-sm font-medium hover:bg-brand-600 disabled:opacity-50"
+              >
+                {prefsSaved ? '✓ Saved' : prefsSaving ? 'Saving...' : 'Save Preferences'}
+              </button>
             </div>
           </div>
 

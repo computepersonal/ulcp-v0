@@ -16,6 +16,8 @@ import Procurement from './pages/Procurement';
 import Settings from './pages/Settings';
 import Reservations from './pages/Reservations';
 import ActivityLog from './pages/ActivityLog';
+import Customers from './pages/Customers';
+import NewOrder from './pages/NewOrder';
 import ToastContainer from './components/ToastContainer';
 
 function AppRoutes() {
@@ -41,11 +43,13 @@ function AppRoutes() {
       >
         <Route path="/floor-map" element={<FloorMap />} />
         <Route path="/orders" element={<Orders />} />
+        <Route path="/new-order" element={<NewOrder />} />
         <Route path="/catalogue" element={<Catalogue />} />
         <Route path="/reports" element={<Reports />} />
         <Route path="/staff" element={<Staff />} />
         <Route path="/procurement" element={<Procurement />} />
         <Route path="/reservations" element={<Reservations />} />
+        <Route path="/customers" element={<Customers />} />
         <Route path="/activity" element={<ActivityLog />} />
         <Route path="/settings" element={<Settings />} />
         <Route path="/" element={<Navigate to="/floor-map" replace />} />

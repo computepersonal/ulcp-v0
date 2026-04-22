@@ -1,0 +1,133 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── Loyalty Tiers & Enums ──────────────────────────────────────────────────
+
+enum LoyaltyTier {
+  silver
+  gold
+  platinum
+}
+
+enum OfferType {
+  auto_applied
+  reward
+  wallet_credit
+}
+
+enum OfferValueType {
+  percentage
+  flat
+  free_item
+}
+
+enum OfferTrigger {
+  birthday
+  milestone
+  manual_grant
+  signup
+  first_order
+  reorder
+  anniversary
+}
+
+enum OfferStatus {
+  active
+  used
+  expired
+  cancelled
+}
+
+// ─── Customer Loyalty (per tenant per customer) ─────────────────────────────
+
+model CustomerLoyalty {
+  id                       String      @id @default(cuid())
+  tenant_id                String
+  customer_id              String
+  points_balance           Int         @default(0)
+  wallet_balance           Int         @default(0)
+  lifetime_spend           Int         @default(0)
+  lifetime_earned_points   Int         @default(0)
+  lifetime_redeemed_points Int         @default(0)
+  visits_count             Int         @default(0)
+  orders_count             Int         @default(0)
+  last_visit_at            DateTime?
+  tier                     LoyaltyTier @default(silver)
+  favourite_items          String[]    @default([])
+  staff_notes              String?
+  created_at               DateTime    @default(now())
+  updated_at               DateTime    @updatedAt
+
+  @@unique([tenant_id, customer_id])
+  @@index([tenant_id])
+  @@map("customer_loyalty")
+}
+
+// ─── Customer Offers ────────────────────────────────────────────────────────
+
+model CustomerOffer {
+  id               String         @id @default(cuid())
+  tenant_id        String
+  customer_id      String
+  type             OfferType
+  name             String
+  description      String?
+  value_type       OfferValueType
+  value            Int
+  free_item_id     String?
+  free_item_name   String?
+  min_order_amount Int?
+  trigger          OfferTrigger
+  status           OfferStatus    @default(active)
+  expires_at       DateTime?
+  used_at          DateTime?
+  used_on_order_id String?
+  auto_apply       Boolean        @default(false)
+  granted_by       String?
+  created_at       DateTime       @default(now())
+
+  @@index([tenant_id, customer_id, status])
+  @@map("customer_offers")
+}
+
+// ─── Customer Visits ────────────────────────────────────────────────────────
+
+model CustomerVisit {
+  id           String   @id @default(cuid())
+  tenant_id    String
+  customer_id  String
+  order_id     String
+  branch_id    String
+  total_amount Int
+  items_count  Int
+  visited_at   DateTime @default(now())
+
+  @@index([tenant_id, customer_id])
+  @@map("customer_visits")
+}
+
+// ─── Loyalty Config (per tenant) ────────────────────────────────────────────
+
+model LoyaltyConfig {
+  tenant_id               String   @id
+  earn_rate               Float    @default(0.1)
+  redemption_value        Int      @default(100)
+  min_redemption_points   Int      @default(50)
+  signup_bonus_points     Int      @default(100)
+  birthday_offer_enabled  Boolean  @default(true)
+  birthday_discount_pct   Int      @default(50)
+  tier_silver_threshold   Int      @default(0)
+  tier_gold_threshold     Int      @default(100000)
+  tier_platinum_threshold Int      @default(500000)
+  created_at              DateTime @default(now())
+  updated_at              DateTime @updatedAt
+
+  @@map("loyalty_config")
+}

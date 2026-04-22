@@ -3,6 +3,7 @@ import { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { apiSuccess, apiError, AppError } from "@ulcp/shared";
 import { authenticateStaff } from "../middleware/authenticate";
+import { auditLog } from "../lib/auditClient";
 import {
   createCatalogueSection,
   getCatalogueSections,
@@ -77,6 +78,16 @@ export async function sectionRoutes(fastify: FastifyInstance): Promise<void> {
       }
       try {
         const section = await createCatalogueSection(req.params.tenant_id, body.data);
+        auditLog({
+          tenant_id:   req.params.tenant_id,
+          actor_id:    req.staff!.user_id,
+          actor_name:  req.staff!.name,
+          actor_role:  req.staff!.role,
+          action:      "section.created",
+          entity_type: "section",
+          entity_id:   section.id,
+          entity_name: section.name,
+        });
         return reply.code(201).send(apiSuccess({ section }));
       } catch (err) {
         if (err instanceof AppError) return reply.code(err.statusCode).send(apiError(err.message));
@@ -181,6 +192,20 @@ export async function sectionRoutes(fastify: FastifyInstance): Promise<void> {
       }
       try {
         const section = await updateCatalogueSection(req.params.tenant_id, req.params.id, body.data);
+        const action = body.data.is_available !== undefined
+          ? (body.data.is_available ? "section.shown" : "section.hidden")
+          : body.data.name !== undefined ? "section.renamed" : "section.updated";
+        auditLog({
+          tenant_id:   req.params.tenant_id,
+          actor_id:    req.staff!.user_id,
+          actor_name:  req.staff!.name,
+          actor_role:  req.staff!.role,
+          action,
+          entity_type: "section",
+          entity_id:   section.id,
+          entity_name: section.name,
+          metadata:    { changes: body.data },
+        });
         return reply.send(apiSuccess({ section }));
       } catch (err) {
         if (err instanceof AppError) return reply.code(err.statusCode).send(apiError(err.message));
@@ -207,7 +232,20 @@ export async function sectionRoutes(fastify: FastifyInstance): Promise<void> {
     },
     async (req, reply) => {
       try {
+        // Fetch name before deletion for audit log
+        const existing = await (await import("../services/section.service")).getCatalogueSections(req.params.tenant_id)
+          .then(secs => secs.find(s => s.id === req.params.id));
         await deleteCatalogueSection(req.params.tenant_id, req.params.id);
+        auditLog({
+          tenant_id:   req.params.tenant_id,
+          actor_id:    req.staff!.user_id,
+          actor_name:  req.staff!.name,
+          actor_role:  req.staff!.role,
+          action:      "section.deleted",
+          entity_type: "section",
+          entity_id:   req.params.id,
+          entity_name: existing?.name ?? req.params.id,
+        });
         return reply.send(apiSuccess({ message: "Section deleted" }));
       } catch (err) {
         if (err instanceof AppError) return reply.code(err.statusCode).send(apiError(err.message));

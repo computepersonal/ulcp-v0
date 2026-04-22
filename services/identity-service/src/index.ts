@@ -10,6 +10,8 @@ import { logger } from "./lib/logger";
 import { prisma } from "./lib/prisma";
 import { redis } from "./lib/redis";
 import { authRoutes } from "./routes/auth.routes";
+import { customerInternalRoutes } from "./routes/customer.routes";
+import { customerProfileRoutes } from "./routes/customerProfile.routes";
 
 const PORT = parseInt(process.env["PORT"] ?? "3001", 10);
 
@@ -88,6 +90,8 @@ async function buildApp() {
 
   // ─── Routes ───────────────────────────────────────────────────────────────
   await app.register(authRoutes, { prefix: "/api/v1/auth" });
+  await app.register(customerInternalRoutes, { prefix: "/api/v1/auth/customers" });
+  await app.register(customerProfileRoutes, { prefix: "/api/v1/auth/customer" });
 
   // Health check
   app.get("/health", async () => ({

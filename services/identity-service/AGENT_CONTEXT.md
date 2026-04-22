@@ -2,7 +2,7 @@
 
 > This file is the living knowledge base for the identity-service agent.
 > Update this file whenever routes, models, or behavior changes.
-> Last updated: 2026-04-15
+> Last updated: 2026-04-16
 
 ## Current Implementation Status
 **FULLY IMPLEMENTED**
@@ -17,24 +17,35 @@
 - Customer OTP send/verify — auto-register on first verify
 - Customer social profile get/update
 - Internal PATCH /users/:id/tenant — X-Internal-Secret, assigns tenant_id + promotes role
-- KDS device registration endpoints (implied from KdsDevice model)
+- KDS device registration endpoints
 - PIN unlock for shared tablets (POST /staff/pin-unlock)
 
 ## Prisma Models (current)
 - User, RefreshToken, PlatformCustomer, OtpCode, KdsDevice, SecurityLog
 
+## JWT Payload (staff)
+```typescript
+{ user_id, tenant_id, role, permissions: string[], name, email }
+```
+`permissions[]` is populated from the user's role + any custom grants — flows into Redux `authSlice` on login.
+
 ## Known Issues / Gotchas
-- None recorded yet
+- Redis default port is **6380** (not 6379) — Docker Redis runs on 6380 to avoid conflict with local Redis 3.0
+- OTP in dev mode: fixed `"123456"` for easy testing — logged via Pino (not console.log)
+- tenant_id is NEVER typed by user — always system-generated via tenant-service → PATCH /users/:id/tenant
 
 ## Recent Changes
 - 2026-03-19: Registration redesigned — tenant_id optional, pending_onboarding role
 - 2026-03-19: PATCH /auth/users/:id/tenant added — internal only, X-Internal-Secret auth
 - 2026-03-26: Helpful error when user exists but no tenant_id given on login
+- 2026-04-08: permissions[] included in login response and JWT payload
+- 2026-04-16: console.log replaced with logger.info (Pino) for dev OTP logging
+- 2026-04-16: Redis default fallback port corrected to 6380
 
 ## Environment
 - Dev port: 3001
 - DB schema: identity
-- Docker Redis: port 6380 (not 6379 — local Redis 3.0 on 6379 is incompatible with BullMQ)
+- Docker Redis: **port 6380** (not 6379 — local Redis 3.0 on 6379 is incompatible with BullMQ)
 
 ## How to Run Locally
 ```bash
@@ -42,24 +53,18 @@ cd services/identity-service
 pnpm dev
 # Service starts on http://localhost:3001
 # Health check: GET http://localhost:3001/health
-```
-
-## How to Run Tests
-```bash
-# No tests written yet — add here when written
+# Swagger: http://localhost:3001/docs
 ```
 
 ## How to Deploy
 ```bash
-# Docker build
-docker build -t ulcp-identity ./services/identity-service
-
-# Via docker-compose (all services)
 docker compose -f docker-compose.dev.yml up identity-service
-
-# Check logs
 docker compose -f docker-compose.dev.yml logs -f identity-service
 ```
+
+## Dependencies on Other Services
+- None at runtime — identity-service is called by others, not the reverse
+- tenant-service calls `PATCH /api/v1/auth/users/:id/tenant` (internal, X-Internal-Secret)
 
 ## Pending / TODO
 - Unit tests for auth.service.ts

@@ -21,7 +21,20 @@
       "Bash(do)",
       "Bash(echo \"=== $svc ===\")",
       "Bash(done)",
-      "Bash(xargs grep:*)"
+      "Bash(xargs grep:*)",
+      "Bash(pnpm tsc:*)",
+      "Bash(npm run:*)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://localhost:5173)",
+      "Bash(node -r ts-node/register src/index.ts)",
+      "Bash(curl -s http://localhost:3002/health)",
+      "Bash(pnpm dev:*)",
+      "Bash(curl -s http://localhost:3003/health)",
+      "Bash(curl -s http://localhost:3008/health)",
+      "Bash(echo \"Started PID: $!\")",
+      "Bash(pnpm turbo:*)",
+      "Bash(docker exec:*)",
+      "Bash(ls apps/customer-web/src/components/OtpModal*)",
+      "Bash(npx vite:*)"
     ]
   }
 }

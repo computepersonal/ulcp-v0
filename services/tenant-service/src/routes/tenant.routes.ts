@@ -4,6 +4,8 @@ import { z } from "zod";
 import { apiSuccess, apiError, AppError } from "@ulcp/shared";
 import { authenticateStaff } from "../middleware/authenticate";
 import { requireOwner } from "../middleware/ownerOnly";
+
+const INTERNAL_SECRET = process.env["INTERNAL_API_SECRET"] ?? "";
 import {
   createTenantWithDefaults,
   getTenant,
@@ -191,6 +193,12 @@ export async function tenantRoutes(fastify: FastifyInstance): Promise<void> {
     },
     async (req, reply) => {
       try {
+        // Allow internal service calls (catalogue-service onboarding check, etc.)
+        const internalSecret = req.headers["x-internal-secret"];
+        if (INTERNAL_SECRET && internalSecret === INTERNAL_SECRET) {
+          const tenant = await getTenant(req.params.id);
+          return reply.send(apiSuccess({ tenant }));
+        }
         const tenant = await getTenant(req.params.id);
         // Must be owner or staff of this tenant
         if (

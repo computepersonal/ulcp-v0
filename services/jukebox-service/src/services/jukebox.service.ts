@@ -2,7 +2,8 @@ import { redis } from "../lib/redis";
 import { signPlayerToken } from "../lib/jwt";
 import { logger } from "../lib/logger";
 import * as repo from "../repositories/jukebox.repository";
-import { searchYouTube, type YouTubeSong } from "../lib/youtube";
+import * as songRepo from "../repositories/song.repository";
+import type { YouTubeSong } from "../lib/youtube";
 
 const INTERNAL_SECRET = process.env["INTERNAL_API_SECRET"] ?? "";
 const ORDER_SERVICE_URL =
@@ -322,8 +323,19 @@ export async function updateHeartbeat(
   });
 }
 
-export async function searchSongs(query: string): Promise<YouTubeSong[]> {
-  return searchYouTube(query);
+export async function searchSongs(
+  tenant_id: string,
+  query: string
+): Promise<YouTubeSong[]> {
+  const songs = await songRepo.searchSongs(tenant_id, query, 20);
+  return songs.map((s) => ({
+    song_id: s.source_id,
+    song_title: s.title,
+    song_artist: s.artist,
+    song_duration_secs: s.duration_secs,
+    song_thumbnail: s.thumbnail ?? `https://img.youtube.com/vi/${s.source_id}/mqdefault.jpg`,
+    source: s.source as "youtube" | "spotify",
+  }));
 }
 
 async function publishQueueUpdate(

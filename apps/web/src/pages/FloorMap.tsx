@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useAppSelector } from '../hooks/redux';
 import SetupReturnBanner from '../components/SetupReturnBanner';
 import { apiFetch } from '../lib/apiFetch';
@@ -434,6 +435,7 @@ function RenameZoneModal({ initialName, onClose, onSave }: RenameZoneModalProps)
 
 export default function FloorMap() {
   const auth = useAppSelector((s) => s.auth);
+  const navigate = useNavigate();
 
   const [tables, setTables] = useState<TableData[]>([]);
   const [sections, setSections] = useState<Section[]>([]);
@@ -648,6 +650,31 @@ export default function FloorMap() {
       ? { ...prev, status: newStatus, session_id: sessionId, occupied_since: new Date().toISOString() }
       : prev
     );
+  };
+
+  const handleConfirmTable = async (table: TableData) => {
+    if (!table.session_id) return;
+    setActionLoading(true);
+    setActionError('');
+    try {
+      const res = await apiFetch(
+        `${tenantServiceUrl}/api/v1/tenants/${tenantId}/branches/${branchId}/sessions/${table.session_id}/confirm`,
+        { method: 'PATCH', headers: { Authorization: `Bearer ${auth.token}` } }
+      );
+      const data = (await res.json()) as { success: boolean; error?: string };
+      if (!res.ok || !data.success) throw new Error(data.error ?? 'Failed to confirm table');
+      setTables((prev) => prev.map((t) =>
+        t.id === table.id ? { ...t, status: 'occupied' } : t
+      ));
+      setSelectedTable((prev) => prev?.id === table.id
+        ? { ...prev, status: 'occupied' }
+        : prev
+      );
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : 'Failed to confirm table');
+    } finally {
+      setActionLoading(false);
+    }
   };
 
   const handleCloseTable = async (table: TableData) => {
@@ -1242,13 +1269,33 @@ export default function FloorMap() {
                 );
               })()}
               {selectedTable.status === 'pending_confirmation' && (
-                <div className="text-center text-sm text-amber-600 font-medium py-2 bg-amber-50 rounded-xl">
-                  Waiting for confirmation...
-                </div>
+                <>
+                  <div className="text-center text-xs text-amber-600 font-medium py-1.5 bg-amber-50 rounded-xl">
+                    Waiting for staff confirmation
+                  </div>
+                  <button
+                    onClick={() => void handleConfirmTable(selectedTable)}
+                    disabled={actionLoading}
+                    className="w-full py-2.5 bg-green-600 hover:bg-green-700 disabled:opacity-40 text-white text-sm font-semibold rounded-xl transition-colors"
+                  >
+                    {actionLoading ? 'Confirming...' : 'Confirm Table'}
+                  </button>
+                </>
               )}
               {selectedTable.status === 'occupied' && (
                 <>
-                  <button className="w-full py-2.5 bg-brand-500 hover:bg-brand-600 text-white text-sm font-semibold rounded-xl transition-colors">
+                  <button
+                    onClick={() => {
+                      const params = new URLSearchParams({
+                        table_id: selectedTable.id,
+                        table_name: selectedTable.name,
+                        type: 'dine_in',
+                        ...(selectedTable.session_id ? { session_id: selectedTable.session_id } : {}),
+                      });
+                      navigate(`/new-order?${params.toString()}`);
+                    }}
+                    className="w-full py-2.5 bg-brand-500 hover:bg-brand-600 text-white text-sm font-semibold rounded-xl transition-colors"
+                  >
                     Take Order
                   </button>
                   <button
@@ -1258,7 +1305,10 @@ export default function FloorMap() {
                   >
                     {actionLoading ? 'Processing...' : 'Generate Bill'}
                   </button>
-                  <button className="w-full py-2.5 bg-gray-100 hover:bg-gray-200 text-gray-700 text-sm font-medium rounded-xl transition-colors">
+                  <button
+                    onClick={() => navigate('/orders')}
+                    className="w-full py-2.5 bg-gray-100 hover:bg-gray-200 text-gray-700 text-sm font-medium rounded-xl transition-colors"
+                  >
                     View Orders
                   </button>
                 </>

@@ -75,3 +75,25 @@ model JukeboxHistory {
   @@index([tenant_id, branch_id])
   @@map("jukebox_history")
 }
+
+model Song {
+  id            String   @id @default(cuid())
+  tenant_id     String
+  title         String
+  artist        String
+  duration_secs Int      @default(240)
+  thumbnail     String?
+  source        String   // "youtube" or "spotify"
+  source_id     String   // YouTube video ID or Spotify track ID
+  source_url    String   // Original URL pasted by owner
+  genre         String?
+  language      String?
+  is_active     Boolean  @default(true)
+  sort_order    Int      @default(0)
+  added_by      String?  // staff user ID who added it
+  created_at    DateTime @default(now())
+
+  @@unique([tenant_id, source, source_id])
+  @@index([tenant_id, is_active])
+  @@map("jukebox_songs")
+}

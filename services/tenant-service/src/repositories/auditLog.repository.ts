@@ -56,8 +56,11 @@ export async function listAuditLogs(filter: ListAuditLogsFilter) {
   // Build where clause
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const where: Record<string, any> = { tenant_id: filter.tenant_id };
-  if (filter.branch_id)   where["branch_id"]   = filter.branch_id;
-  if (filter.entity_type) where["entity_type"] = filter.entity_type;
+  if (filter.branch_id) where["branch_id"] = filter.branch_id;
+  if (filter.entity_type) {
+    const types = filter.entity_type.split(",").map((t) => t.trim()).filter(Boolean);
+    where["entity_type"] = types.length === 1 ? types[0] : { in: types };
+  }
   if (filter.actor_id)    where["actor_id"]    = filter.actor_id;
   if (filter.from || filter.to) {
     where["created_at"] = {

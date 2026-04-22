@@ -48,12 +48,10 @@ function useJukeboxAds(tenant_id: string, branch_id: string) {
       }
     };
     void load();
-    // Refresh ads every 10 minutes
     const interval = setInterval(() => void load(), 600000);
     return () => clearInterval(interval);
   }, [tenant_id, branch_id]);
 
-  // Rotate ad every 30 seconds
   useEffect(() => {
     if (ads.length < 2) return;
     const interval = setInterval(() => {
@@ -103,6 +101,50 @@ interface YTPlayer {
   destroy: () => void;
 }
 
+// ── Spotify Embed Player ─────────────────────────────────────────────────────
+// Spotify Embed iframe plays 30s preview for non-Premium users.
+// If the venue has Spotify Premium logged in on the player browser, full playback.
+// The embed posts messages we can listen to for play state.
+
+function SpotifyEmbed({
+  trackId,
+  onEnded,
+}: {
+  trackId: string;
+  onEnded: () => void;
+}) {
+  const iframeRef = useRef<HTMLIFrameElement>(null);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    // Spotify embed doesn't reliably fire "ended" events via postMessage.
+    // Fallback: auto-advance after duration (default 240s for catalog songs,
+    // or 30s for preview). We use 35s as a safe preview timeout.
+    // If the song is still playing after 35s, it means Premium is active —
+    // we then wait the full duration. For simplicity, use a 240s timeout.
+    timerRef.current = setTimeout(() => {
+      onEnded();
+    }, 240 * 1000);
+
+    return () => {
+      if (timerRef.current) clearTimeout(timerRef.current);
+    };
+  }, [trackId, onEnded]);
+
+  return (
+    <iframe
+      ref={iframeRef}
+      src={`https://open.spotify.com/embed/track/${trackId}?utm_source=generator&theme=0`}
+      width="1"
+      height="1"
+      style={{ position: "absolute", top: -9999, left: -9999 }}
+      allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture"
+      loading="lazy"
+      title="Spotify Player"
+    />
+  );
+}
+
 export default function PlayerScreen({
   tenant_id,
   branch_id,
@@ -130,7 +172,6 @@ export default function PlayerScreen({
   const JUKEBOX_URL: string =
     (import.meta as unknown as { env?: Record<string, string> }).env
       ?.VITE_JUKEBOX_SERVICE_URL ?? "http://localhost:3014";
-  // QR links to customer web social room
   const qrUrl = `http://localhost:5174/place/${tenant_id}?jukebox=1`;
 
   const jukeboxAd = useJukeboxAds(tenant_id, branch_id);
@@ -188,6 +229,36 @@ export default function PlayerScreen({
     }, 1000);
   }, []);
 
+  // Spotify progress tracking (estimated, since we can't query the iframe)
+  const startSpotifyProgressTracking = useCallback((durationSecs: number) => {
+    if (progressIntervalRef.current)
+      clearInterval(progressIntervalRef.current);
+    const startTime = Date.now();
+    setDuration(durationSecs);
+    progressIntervalRef.current = setInterval(() => {
+      const elapsed = Math.floor((Date.now() - startTime) / 1000);
+      setCurrentTime(Math.min(elapsed, durationSecs));
+      setProgress(Math.min((elapsed / durationSecs) * 100, 100));
+    }, 1000);
+  }, []);
+
+  const advanceToNext = useCallback(() => {
+    if (progressIntervalRef.current)
+      clearInterval(progressIntervalRef.current);
+    const current = currentSongRef.current;
+    if (!current) return;
+    markFinished(tenant_id, branch_id, player_token, current.id, true)
+      .then((next) => {
+        if (next) {
+          loadSongRef.current?.(next);
+        } else {
+          setNowPlaying(null);
+          setProgress(0);
+        }
+      })
+      .catch(() => undefined);
+  }, [tenant_id, branch_id, player_token]);
+
   const loadSong = useCallback(
     (song: SongResponse) => {
       currentSongRef.current = song;
@@ -196,21 +267,15 @@ export default function PlayerScreen({
       setCurrentTime(0);
       setDuration(song.song_duration_secs);
 
+      if (song.source === "spotify") {
+        // Spotify: embed handles playback, we just track progress
+        startSpotifyProgressTracking(song.song_duration_secs);
+        return;
+      }
+
+      // YouTube playback
       function onSongEnded() {
-        if (progressIntervalRef.current)
-          clearInterval(progressIntervalRef.current);
-        const current = currentSongRef.current;
-        if (!current) return;
-        markFinished(tenant_id, branch_id, player_token, current.id, true)
-          .then((next) => {
-            if (next) {
-              loadSongRef.current?.(next);
-            } else {
-              setNowPlaying(null);
-              setProgress(0);
-            }
-          })
-          .catch(() => undefined);
+        advanceToNext();
       }
 
       if (playerRef.current) {
@@ -227,7 +292,6 @@ export default function PlayerScreen({
             },
             onStateChange: (event) => {
               if (event.data === 0) {
-                // YT.PlayerState.ENDED = 0
                 onSongEnded();
               }
             },
@@ -235,10 +299,10 @@ export default function PlayerScreen({
         });
       }
     },
-    [tenant_id, branch_id, player_token, startProgressTracking]
+    [startProgressTracking, startSpotifyProgressTracking, advanceToNext]
   );
 
-  // Keep ref in sync so onSongEnded can call the latest loadSong
+  // Keep ref in sync so callbacks can call the latest loadSong
   useEffect(() => {
     loadSongRef.current = loadSong;
   }, [loadSong]);
@@ -259,6 +323,8 @@ export default function PlayerScreen({
     return `${m}:${s.toString().padStart(2, "0")}`;
   }
 
+  const isReady = ytReady; // YouTube API must be loaded; Spotify embeds work without setup
+
   if (!started) {
     return (
       <div className="w-full h-full bg-[#0F1117] flex flex-col items-center justify-center gap-8">
@@ -268,14 +334,14 @@ export default function PlayerScreen({
             Jukebox Ready
           </h1>
           <p className="text-gray-400 text-lg">
-            {ytReady
+            {isReady
               ? "Click to start playing music"
-              : "Loading YouTube player..."}
+              : "Loading player..."}
           </p>
         </div>
         <button
           onClick={() => void handleStart()}
-          disabled={!ytReady}
+          disabled={!isReady}
           className="bg-brand-500 hover:bg-brand-600 disabled:opacity-50 text-white font-bold px-16 py-6 rounded-2xl text-2xl transition-colors shadow-2xl"
         >
           ▶ Start Jukebox
@@ -304,6 +370,14 @@ export default function PlayerScreen({
         }}
       />
 
+      {/* Hidden Spotify embed — renders only for Spotify songs */}
+      {nowPlaying?.source === "spotify" && (
+        <SpotifyEmbed
+          trackId={nowPlaying.song_id}
+          onEnded={advanceToNext}
+        />
+      )}
+
       {/* Header */}
       <div className="flex items-center justify-between shrink-0">
         <div className="flex items-center gap-3">
@@ -329,12 +403,20 @@ export default function PlayerScreen({
           {nowPlaying ? (
             <div className="flex gap-8 items-start animate-slide-up">
               {/* Thumbnail */}
-              <div className="w-48 h-48 rounded-2xl overflow-hidden shrink-0 shadow-2xl">
+              <div className="w-48 h-48 rounded-2xl overflow-hidden shrink-0 shadow-2xl relative">
                 <img
                   src={nowPlaying.song_thumbnail}
                   alt={nowPlaying.song_title}
                   className="w-full h-full object-cover"
                 />
+                {/* Source badge */}
+                <div className={`absolute top-2 right-2 px-2 py-0.5 rounded text-[10px] font-bold ${
+                  nowPlaying.source === "spotify"
+                    ? "bg-green-500 text-white"
+                    : "bg-red-600 text-white"
+                }`}>
+                  {nowPlaying.source === "spotify" ? "Spotify" : "YouTube"}
+                </div>
               </div>
 
               {/* Info */}
@@ -372,7 +454,9 @@ export default function PlayerScreen({
                 <div className="space-y-2">
                   <div className="w-full h-2 bg-[#252B3B] rounded-full overflow-hidden">
                     <div
-                      className="h-full bg-brand-500 rounded-full transition-all duration-1000"
+                      className={`h-full rounded-full transition-all duration-1000 ${
+                        nowPlaying.source === "spotify" ? "bg-green-500" : "bg-brand-500"
+                      }`}
                       style={{ width: `${progress}%` }}
                     />
                   </div>
@@ -453,7 +537,6 @@ export default function PlayerScreen({
             Scan to add songs to the queue
           </p>
 
-          {/* Jukebox player ad — rotates every 30s */}
           {jukeboxAd && (
             <div
               className="w-full rounded-2xl overflow-hidden border border-[#252B3B] transition-all duration-500"
@@ -489,7 +572,7 @@ export default function PlayerScreen({
         </div>
       </div>
 
-      {/* Footer: venue info */}
+      {/* Footer */}
       <div className="shrink-0 text-center text-gray-700 text-xs">
         {JUKEBOX_URL.replace("http://", "").replace(":3014", "")} •
         Add songs by scanning the QR code

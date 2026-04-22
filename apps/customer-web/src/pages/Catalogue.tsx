@@ -208,6 +208,7 @@ export default function Catalogue() {
   const [sections, setSections] = useState<Section[]>([]);
   const [items, setItems] = useState<CatalogueItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [notOpen, setNotOpen] = useState(false);
   const [search, setSearch] = useState('');
   const [vegOnly, setVegOnly] = useState(false);
   const [collapsedSections, setCollapsedSections] = useState<Set<string>>(new Set());
@@ -262,7 +263,9 @@ export default function Catalogue() {
         } catch { /* ignore */ }
 
         const catRes = await fetch(`${catalogueServiceUrl}/api/v1/catalogue/${tenantData.data.tenant_id}/public`);
-        if (catRes.ok) {
+        if (catRes.status === 403) {
+          setNotOpen(true);
+        } else if (catRes.ok) {
           const catData = (await catRes.json()) as { success: boolean; data?: { sections: Section[]; items: CatalogueItem[] } };
           if (catData.success && catData.data) {
             setSections(catData.data.sections);
@@ -396,6 +399,20 @@ export default function Catalogue() {
           <div className="animate-spin h-10 w-10 border-4 border-brand-500 border-t-transparent rounded-full mx-auto mb-3" />
           <div className="text-gray-500">Loading menu...</div>
         </div>
+      </div>
+    );
+  }
+
+  if (notOpen) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center px-6 text-center">
+        <div className="text-6xl mb-5">🔒</div>
+        <h1 className="text-xl font-bold text-gray-900 mb-2">
+          {tenantInfo?.name ?? 'This place'} isn't open yet
+        </h1>
+        <p className="text-gray-500 text-sm max-w-xs">
+          The business is still setting up. Check back soon!
+        </p>
       </div>
     );
   }
@@ -607,7 +624,7 @@ function ItemCard({ item, cartQty, onAdd, onRemove }: {
         {item.description && <div className="text-xs text-gray-400 mt-0.5 line-clamp-2">{item.description}</div>}
         <div className="text-brand-600 font-semibold text-sm mt-1 font-mono">
           ₹{(item.price / 100).toFixed(0)}
-          {item.mrp && item.mrp > item.price && (
+          {item.mrp > 0 && item.mrp > item.price && (
             <span className="text-gray-400 line-through ml-2 font-normal">₹{(item.mrp / 100).toFixed(0)}</span>
           )}
         </div>

@@ -12,7 +12,8 @@ import {
   ChevronRight,
   Package,
   CalendarDays,
-  ScrollText
+  ScrollText,
+  Heart
 } from 'lucide-react';
 
 import { useAppSelector, useAppDispatch } from '../hooks/redux';
@@ -44,6 +45,7 @@ const BASE_NAV_ITEMS: NavItem[] = [
   { to: '/orders', icon: <ClipboardList size={20} />, label: 'Orders' },
   { to: '/catalogue', icon: <BookOpen size={20} />, label: 'Catalogue' },
   { to: '/reservations', icon: <CalendarDays size={20} />, label: 'Reservations' },
+  { to: '/customers', icon: <Heart size={20} />, label: 'Customers' },
   { to: '/staff', icon: <Users size={20} />, label: 'Staff' },
   { to: '/procurement', icon: <ShoppingCart size={20} />, label: 'Procurement' },
   { to: '/settings', icon: <Settings size={20} />, label: 'Settings' }

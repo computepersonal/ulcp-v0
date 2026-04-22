@@ -3,7 +3,7 @@ import { useAppSelector } from '../hooks/redux';
 import { apiFetch } from '../lib/apiFetch';
 import SetupReturnBanner from '../components/SetupReturnBanner';
 
-type SettingsTab = 'business' | 'branches' | 'qr' | 'subscription' | 'promotions';
+type SettingsTab = 'business' | 'branches' | 'qr' | 'subscription' | 'promotions' | 'jukebox';
 
 const PLAN_LIMITS = {
   free: { items: 200, staff: 5, branches: 1, price: 0 },
@@ -285,6 +285,329 @@ function PromotionsTab({ tenantId, token }: { tenantId: string; token: string })
   );
 }
 
+// ── Jukebox Song Catalog Tab ─────────────────────────────────────────────────
+
+interface JukeboxSong {
+  id: string;
+  title: string;
+  artist: string;
+  duration_secs: number;
+  thumbnail: string | null;
+  source: 'youtube' | 'spotify';
+  source_id: string;
+  source_url: string;
+  genre: string | null;
+  language: string | null;
+  is_active: boolean;
+}
+
+const JUKEBOX_URL = import.meta.env.VITE_JUKEBOX_SERVICE_URL ?? 'http://localhost:3014';
+
+function JukeboxTab({ tenantId, token }: { tenantId: string; token: string }) {
+  const [songs, setSongs] = useState<JukeboxSong[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [songCount, setSongCount] = useState(0);
+
+  // Add song form
+  const [urlInput, setUrlInput] = useState('');
+  const [bulkInput, setBulkInput] = useState('');
+  const [genre, setGenre] = useState('');
+  const [language, setLanguage] = useState('');
+  const [adding, setAdding] = useState(false);
+  const [addError, setAddError] = useState('');
+  const [addSuccess, setAddSuccess] = useState('');
+  const [showBulk, setShowBulk] = useState(false);
+
+  // Search
+  const [search, setSearch] = useState('');
+
+  const headers = { Authorization: `Bearer ${token}` };
+
+  const loadSongs = async (q?: string) => {
+    setLoading(true);
+    try {
+      const params = new URLSearchParams({ limit: '100' });
+      if (q) params.set('search', q);
+      const res = await apiFetch(`${JUKEBOX_URL}/api/v1/jukebox/${tenantId}/songs?${params}`, { headers });
+      const d = await res.json() as { success: boolean; data?: JukeboxSong[] };
+      if (d.success && d.data) setSongs(d.data);
+    } catch { /* ignore */ }
+    setLoading(false);
+  };
+
+  const loadCount = async () => {
+    try {
+      const res = await apiFetch(`${JUKEBOX_URL}/api/v1/jukebox/${tenantId}/songs/count`, { headers });
+      const d = await res.json() as { success: boolean; data?: { count: number } };
+      if (d.success && d.data) setSongCount(d.data.count);
+    } catch { /* ignore */ }
+  };
+
+  useEffect(() => { void loadSongs(); void loadCount(); }, [tenantId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const handleAddSong = async () => {
+    if (!urlInput.trim()) return;
+    setAdding(true);
+    setAddError('');
+    setAddSuccess('');
+    try {
+      const res = await apiFetch(`${JUKEBOX_URL}/api/v1/jukebox/${tenantId}/songs`, {
+        method: 'POST',
+        headers: { ...headers, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          url: urlInput.trim(),
+          ...(genre ? { genre } : {}),
+          ...(language ? { language } : {}),
+        }),
+      });
+      const d = await res.json() as { success: boolean; data?: JukeboxSong; error?: string };
+      if (d.success && d.data) {
+        setSongs(prev => [d.data!, ...prev]);
+        setSongCount(c => c + 1);
+        setUrlInput('');
+        setAddSuccess(`Added: ${d.data.title} - ${d.data.artist}`);
+        setTimeout(() => setAddSuccess(''), 3000);
+      } else {
+        setAddError(d.error ?? 'Failed to add song');
+      }
+    } catch {
+      setAddError('Failed to connect to jukebox service');
+    }
+    setAdding(false);
+  };
+
+  const handleBulkAdd = async () => {
+    const urls = bulkInput.split('\n').map(u => u.trim()).filter(Boolean);
+    if (urls.length === 0) return;
+    setAdding(true);
+    setAddError('');
+    setAddSuccess('');
+    try {
+      const res = await apiFetch(`${JUKEBOX_URL}/api/v1/jukebox/${tenantId}/songs/bulk`, {
+        method: 'POST',
+        headers: { ...headers, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          urls,
+          ...(genre ? { genre } : {}),
+          ...(language ? { language } : {}),
+        }),
+      });
+      const d = await res.json() as { success: boolean; data?: { added: number; failed: Array<{ url: string; error: string }> } };
+      if (d.success && d.data) {
+        const { added, failed } = d.data;
+        setAddSuccess(`Added ${added} song${added !== 1 ? 's' : ''}${failed.length > 0 ? `, ${failed.length} failed` : ''}`);
+        setBulkInput('');
+        void loadSongs();
+        void loadCount();
+        setTimeout(() => setAddSuccess(''), 4000);
+      }
+    } catch {
+      setAddError('Failed to connect to jukebox service');
+    }
+    setAdding(false);
+  };
+
+  const handleDelete = async (id: string) => {
+    try {
+      await apiFetch(`${JUKEBOX_URL}/api/v1/jukebox/${tenantId}/songs/${id}`, {
+        method: 'DELETE',
+        headers,
+      });
+      setSongs(prev => prev.filter(s => s.id !== id));
+      setSongCount(c => c - 1);
+    } catch { /* ignore */ }
+  };
+
+  const handleToggle = async (id: string, isActive: boolean) => {
+    try {
+      await apiFetch(`${JUKEBOX_URL}/api/v1/jukebox/${tenantId}/songs/${id}`, {
+        method: 'PATCH',
+        headers: { ...headers, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ is_active: !isActive }),
+      });
+      setSongs(prev => prev.map(s => s.id === id ? { ...s, is_active: !isActive } : s));
+    } catch { /* ignore */ }
+  };
+
+  const handleSearch = () => { void loadSongs(search || undefined); };
+
+  const formatDuration = (secs: number) =>
+    `${Math.floor(secs / 60)}:${(secs % 60).toString().padStart(2, '0')}`;
+
+  return (
+    <div className="max-w-3xl space-y-5">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h3 className="font-semibold text-gray-900">Song Catalog</h3>
+          <p className="text-sm text-gray-500 mt-0.5">
+            {songCount} song{songCount !== 1 ? 's' : ''} in your jukebox
+          </p>
+        </div>
+        <button
+          onClick={() => setShowBulk(!showBulk)}
+          className="text-sm text-brand-500 hover:text-brand-600 font-medium"
+        >
+          {showBulk ? 'Single add' : 'Bulk add'}
+        </button>
+      </div>
+
+      {/* Add Song */}
+      <div className="bg-white border border-gray-200 rounded-2xl p-5 space-y-3">
+        <h4 className="text-sm font-semibold text-gray-900">
+          {showBulk ? 'Bulk Add Songs' : 'Add Song'}
+        </h4>
+        <p className="text-xs text-gray-500">
+          Paste YouTube or Spotify URLs. Metadata is auto-extracted.
+        </p>
+
+        {!showBulk ? (
+          <div className="flex gap-2">
+            <input
+              type="text"
+              value={urlInput}
+              onChange={e => { setUrlInput(e.target.value); setAddError(''); }}
+              onKeyDown={e => e.key === 'Enter' && handleAddSong()}
+              placeholder="https://youtube.com/watch?v=... or https://open.spotify.com/track/..."
+              className="flex-1 border border-gray-200 rounded-xl px-4 py-2.5 text-sm outline-none focus:border-brand-500"
+            />
+            <button
+              onClick={() => { void handleAddSong(); }}
+              disabled={adding || !urlInput.trim()}
+              className="px-5 py-2.5 bg-brand-500 hover:bg-brand-600 disabled:opacity-50 text-white text-sm font-semibold rounded-xl shrink-0"
+            >
+              {adding ? 'Adding...' : '+ Add'}
+            </button>
+          </div>
+        ) : (
+          <>
+            <textarea
+              value={bulkInput}
+              onChange={e => setBulkInput(e.target.value)}
+              rows={6}
+              placeholder="Paste one URL per line (max 50)..."
+              className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm outline-none focus:border-brand-500 resize-none font-mono"
+            />
+            <button
+              onClick={() => { void handleBulkAdd(); }}
+              disabled={adding || !bulkInput.trim()}
+              className="px-5 py-2.5 bg-brand-500 hover:bg-brand-600 disabled:opacity-50 text-white text-sm font-semibold rounded-xl"
+            >
+              {adding ? 'Processing...' : `Add ${bulkInput.split('\n').filter(u => u.trim()).length} URLs`}
+            </button>
+          </>
+        )}
+
+        {/* Optional genre/language */}
+        <div className="flex gap-3">
+          <input
+            type="text"
+            value={genre}
+            onChange={e => setGenre(e.target.value)}
+            placeholder="Genre (optional)"
+            className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-brand-500"
+          />
+          <input
+            type="text"
+            value={language}
+            onChange={e => setLanguage(e.target.value)}
+            placeholder="Language (optional)"
+            className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-brand-500"
+          />
+        </div>
+
+        {addError && (
+          <div className="text-sm text-red-600 bg-red-50 px-3 py-2 rounded-lg">{addError}</div>
+        )}
+        {addSuccess && (
+          <div className="text-sm text-green-600 bg-green-50 px-3 py-2 rounded-lg">{addSuccess}</div>
+        )}
+      </div>
+
+      {/* Search */}
+      <div className="flex gap-2">
+        <input
+          type="text"
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+          onKeyDown={e => e.key === 'Enter' && handleSearch()}
+          placeholder="Search songs..."
+          className="flex-1 border border-gray-200 rounded-xl px-4 py-2 text-sm outline-none focus:border-brand-500"
+        />
+        {search && (
+          <button onClick={() => { setSearch(''); void loadSongs(); }} className="text-gray-400 hover:text-gray-600 text-sm px-2">
+            Clear
+          </button>
+        )}
+      </div>
+
+      {/* Song List */}
+      {loading ? (
+        <div className="text-center py-12 text-gray-400 text-sm">Loading songs...</div>
+      ) : songs.length === 0 ? (
+        <div className="text-center py-12 border-2 border-dashed border-gray-200 rounded-2xl">
+          <div className="text-3xl mb-2">🎵</div>
+          <p className="text-gray-500 text-sm">No songs yet</p>
+          <p className="text-gray-400 text-xs mt-1">Paste YouTube or Spotify URLs above to build your playlist</p>
+        </div>
+      ) : (
+        <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden divide-y divide-gray-50">
+          {songs.map(song => (
+            <div key={song.id} className={`flex items-center gap-3 p-3 hover:bg-gray-50 ${!song.is_active ? 'opacity-50' : ''}`}>
+              {/* Thumbnail */}
+              {song.thumbnail ? (
+                <img src={song.thumbnail} alt="" className="w-12 h-12 rounded-lg object-cover shrink-0" />
+              ) : (
+                <div className="w-12 h-12 rounded-lg bg-gray-100 flex items-center justify-center text-gray-400 text-lg shrink-0">
+                  🎵
+                </div>
+              )}
+
+              {/* Info */}
+              <div className="flex-1 min-w-0">
+                <div className="text-sm font-medium text-gray-900 truncate">{song.title}</div>
+                <div className="text-xs text-gray-500 truncate">{song.artist}</div>
+                <div className="flex items-center gap-2 mt-0.5">
+                  <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${
+                    song.source === 'youtube' ? 'bg-red-100 text-red-600' : 'bg-green-100 text-green-600'
+                  }`}>
+                    {song.source === 'youtube' ? 'YouTube' : 'Spotify'}
+                  </span>
+                  <span className="text-xs text-gray-400">{formatDuration(song.duration_secs)}</span>
+                  {song.genre && <span className="text-xs text-gray-400">{song.genre}</span>}
+                  {song.language && <span className="text-xs text-gray-400">{song.language}</span>}
+                </div>
+              </div>
+
+              {/* Actions */}
+              <div className="flex items-center gap-2 shrink-0">
+                <button
+                  onClick={() => { void handleToggle(song.id, song.is_active); }}
+                  className={`text-xs px-2.5 py-1 rounded-lg font-medium ${
+                    song.is_active
+                      ? 'bg-green-50 text-green-600 hover:bg-green-100'
+                      : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
+                  }`}
+                  title={song.is_active ? 'Disable' : 'Enable'}
+                >
+                  {song.is_active ? 'Active' : 'Hidden'}
+                </button>
+                <button
+                  onClick={() => { void handleDelete(song.id); }}
+                  className="text-xs text-red-400 hover:text-red-600 px-2 py-1"
+                  title="Remove"
+                >
+                  Remove
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function Settings() {
   const auth = useAppSelector((s) => s.auth);
   const [tab, setTab] = useState<SettingsTab>('business');
@@ -298,6 +621,7 @@ export default function Settings() {
     { id: 'qr', label: 'QR Codes' },
     { id: 'subscription', label: 'Subscription' },
     { id: 'promotions', label: '📢 Promotions' },
+    { id: 'jukebox', label: '🎵 Jukebox' },
   ];
 
   return (
@@ -381,6 +705,10 @@ export default function Settings() {
 
       {tab === 'promotions' && auth.user?.tenant_id && auth.token && (
         <PromotionsTab tenantId={auth.user.tenant_id} token={auth.token} />
+      )}
+
+      {tab === 'jukebox' && auth.user?.tenant_id && auth.token && (
+        <JukeboxTab tenantId={auth.user.tenant_id} token={auth.token} />
       )}
 
       {tab === 'subscription' && (
