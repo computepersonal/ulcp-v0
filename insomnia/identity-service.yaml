@@ -1,0 +1,364 @@
+openapi: 3.0.0
+info:
+  title: ULCP — identity-service
+  version: 1.0.0
+  description: Auth endpoints for identity-service running on port 3001
+
+servers:
+  - url: http://localhost:3001
+    description: Local dev
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+    InternalSecret:
+      type: apiKey
+      in: header
+      name: X-Internal-Secret
+
+  schemas:
+    SuccessResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: true
+        data:
+          type: object
+
+    ErrorResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: false
+        error:
+          type: string
+
+paths:
+
+  /health:
+    get:
+      summary: Health Check
+      tags: [🟢 Health]
+      responses:
+        '200':
+          description: Service is up
+          content:
+            application/json:
+              example:
+                success: true
+                data:
+                  service: identity-service
+                  status: ok
+                  uptime: 42
+                  timestamp: "2026-04-23T17:00:00.000Z"
+
+  /api/v1/auth/register:
+    post:
+      summary: Register new owner/staff
+      tags: [👤 Staff Auth]
+      description: |
+        Creates a new account. Returns JWT with `tenant_id: null` and `role: pending_onboarding`.
+        **After this:** copy `access_token` and `refresh_token` for use in other requests.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password, name]
+              properties:
+                email:
+                  type: string
+                  example: owner@example.com
+                password:
+                  type: string
+                  example: Test1234!
+                name:
+                  type: string
+                  example: John Owner
+      responses:
+        '200':
+          description: Registered successfully
+          content:
+            application/json:
+              example:
+                success: true
+                data:
+                  access_token: "<jwt>"
+                  refresh_token: "<jwt>"
+                  user:
+                    id: "cmobrl804..."
+                    email: owner@example.com
+                    name: John Owner
+                    tenant_id: null
+                    role: pending_onboarding
+                    permissions: []
+        '400':
+          description: Validation error or duplicate email
+
+  /api/v1/auth/login:
+    post:
+      summary: Login
+      tags: [👤 Staff Auth]
+      description: |
+        Login for staff/owners. While still `pending_onboarding`, `tenant_id` is not required.
+        Once onboarded, include `"tenant_id": "<id>"` in the body.
+        **After this:** copy `access_token` and `refresh_token`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email:
+                  type: string
+                  example: owner@example.com
+                password:
+                  type: string
+                  example: Test1234!
+                tenant_id:
+                  type: string
+                  description: Required only after onboarding is complete
+                  example: "cmp123abc..."
+      responses:
+        '200':
+          description: Login successful
+          content:
+            application/json:
+              example:
+                success: true
+                data:
+                  access_token: "<jwt>"
+                  refresh_token: "<jwt>"
+                  user:
+                    id: "cmobrl804..."
+                    email: owner@example.com
+                    role: pending_onboarding
+        '401':
+          description: Invalid credentials
+
+  /api/v1/auth/me:
+    get:
+      summary: Get current user
+      tags: [👤 Staff Auth]
+      description: Returns the currently authenticated staff/owner profile.
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Current user profile
+          content:
+            application/json:
+              example:
+                success: true
+                data:
+                  user:
+                    id: "cmobrl804..."
+                    email: owner@example.com
+                    role: pending_onboarding
+                    tenant_id: null
+                    permissions: []
+        '401':
+          description: Missing or invalid token
+
+  /api/v1/auth/refresh:
+    post:
+      summary: Refresh tokens
+      tags: [👤 Staff Auth]
+      description: |
+        Exchange a refresh token for a new access + refresh token pair.
+        **After this:** update your saved `access_token` and `refresh_token`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [refresh_token]
+              properties:
+                refresh_token:
+                  type: string
+                  example: "<your_refresh_token>"
+      responses:
+        '200':
+          description: New token pair issued
+          content:
+            application/json:
+              example:
+                success: true
+                data:
+                  access_token: "<new_jwt>"
+                  refresh_token: "<new_jwt>"
+        '401':
+          description: Invalid or expired refresh token
+
+  /api/v1/auth/logout:
+    post:
+      summary: Logout
+      tags: [👤 Staff Auth]
+      description: Blacklists the current access token in Redis. The token becomes invalid immediately.
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Logged out
+          content:
+            application/json:
+              example:
+                success: true
+                data:
+                  message: Logged out
+        '401':
+          description: Missing or invalid token
+
+  /api/v1/auth/customer/otp/send:
+    post:
+      summary: Send OTP to customer
+      tags: [📱 Customer Auth]
+      description: |
+        Sends a 6-digit OTP to the given phone number.
+        **In dev (no MSG91 keys):** the OTP is printed to the service console — check your terminal running `pnpm dev`.
+        Note: the field is `phone`, not `mobile`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [phone]
+              properties:
+                phone:
+                  type: string
+                  example: "9999999999"
+      responses:
+        '200':
+          description: OTP sent
+          content:
+            application/json:
+              example:
+                success: true
+                data:
+                  message: OTP sent
+
+  /api/v1/auth/customer/otp/verify:
+    post:
+      summary: Verify OTP + auto-register
+      tags: [📱 Customer Auth]
+      description: |
+        Verifies the OTP. Auto-registers the customer if this is their first time.
+        Get the OTP from the service terminal output (dev mode).
+        **After this:** copy `access_token` — this is the customer JWT (separate from staff JWT).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [phone, otp]
+              properties:
+                phone:
+                  type: string
+                  example: "9999999999"
+                otp:
+                  type: string
+                  example: "123456"
+      responses:
+        '200':
+          description: OTP verified, customer JWT issued
+          content:
+            application/json:
+              example:
+                success: true
+                data:
+                  access_token: "<customer_jwt>"
+                  customer:
+                    id: "cust123..."
+                    mobile: "9999999999"
+                    name: null
+        '401':
+          description: Invalid or expired OTP
+
+  /api/v1/auth/customer/social-profile:
+    get:
+      summary: Get customer profile
+      tags: [📱 Customer Auth]
+      description: Fetch the authenticated customer's profile. Uses the customer JWT from OTP verify.
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Customer profile
+          content:
+            application/json:
+              example:
+                success: true
+                data:
+                  customer:
+                    id: "cust123..."
+                    mobile: "9999999999"
+                    name: null
+                    email: null
+
+    patch:
+      summary: Update customer profile
+      tags: [📱 Customer Auth]
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                  example: Jane Customer
+                email:
+                  type: string
+                  example: jane@example.com
+      responses:
+        '200':
+          description: Profile updated
+
+  /api/v1/auth/users/{user_id}/tenant:
+    patch:
+      summary: Assign tenant to user (internal only)
+      tags: [🔒 Internal]
+      description: |
+        Called by tenant-service after creating a tenant. NOT exposed through Kong.
+        Requires `X-Internal-Secret` header. Promotes user from `pending_onboarding` → `tenant_owner`.
+      security:
+        - InternalSecret: []
+      parameters:
+        - name: user_id
+          in: path
+          required: true
+          schema:
+            type: string
+          example: "cmobrl804..."
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [tenant_id]
+              properties:
+                tenant_id:
+                  type: string
+                  example: "cmp123abc..."
+      responses:
+        '200':
+          description: Tenant assigned, role promoted to tenant_owner
+        '401':
+          description: Missing or invalid X-Internal-Secret
+        '404':
+          description: User not found

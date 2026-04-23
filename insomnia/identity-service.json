@@ -1,0 +1,221 @@
+{
+  "_type": "export",
+  "___exportFormat": 4,
+  "___exportSource": "insomnia.desktop.app:v10.0.0",
+  "__resources": [
+    {
+      "_id": "wrk_identity",
+      "_type": "workspace",
+      "name": "ULCP — identity-service",
+      "description": "Auth endpoints for identity-service (port 3001)",
+      "scope": "collection"
+    },
+    {
+      "_id": "env_base",
+      "_type": "environment",
+      "parentId": "wrk_identity",
+      "name": "Dev",
+      "data": {
+        "base_url": "http://localhost:3001",
+        "access_token": "",
+        "refresh_token": "",
+        "customer_access_token": "",
+        "internal_secret": "dev_internal_secret_ulcp_services"
+      },
+      "color": "#00b8a9",
+      "isPrivate": false
+    },
+    {
+      "_id": "fld_health",
+      "_type": "request_group",
+      "parentId": "wrk_identity",
+      "name": "🟢 Health",
+      "description": ""
+    },
+    {
+      "_id": "fld_staff",
+      "_type": "request_group",
+      "parentId": "wrk_identity",
+      "name": "👤 Staff Auth",
+      "description": "Register, login, refresh, logout, /me for staff/owners"
+    },
+    {
+      "_id": "fld_customer",
+      "_type": "request_group",
+      "parentId": "wrk_identity",
+      "name": "📱 Customer Auth",
+      "description": "OTP-based auth for platform customers"
+    },
+    {
+      "_id": "fld_internal",
+      "_type": "request_group",
+      "parentId": "wrk_identity",
+      "name": "🔒 Internal Endpoints",
+      "description": "Service-to-service only — X-Internal-Secret required"
+    },
+    {
+      "_id": "req_health",
+      "_type": "request",
+      "parentId": "fld_health",
+      "name": "Health Check",
+      "method": "GET",
+      "url": "{{ _.base_url }}/health",
+      "headers": [],
+      "body": {},
+      "description": "Verify the service is running. Expected: { success: true, data: { service, status, uptime } }"
+    },
+    {
+      "_id": "req_register",
+      "_type": "request",
+      "parentId": "fld_staff",
+      "name": "Register (new owner)",
+      "method": "POST",
+      "url": "{{ _.base_url }}/api/v1/auth/register",
+      "headers": [
+        { "name": "Content-Type", "value": "application/json" }
+      ],
+      "body": {
+        "mimeType": "application/json",
+        "text": "{\n  \"email\": \"owner@example.com\",\n  \"password\": \"Test1234!\",\n  \"name\": \"John Owner\"\n}"
+      },
+      "description": "Creates a new staff/owner account.\nReturns JWT with tenant_id: null and role: pending_onboarding.\nCopy the access_token and refresh_token into the environment variables."
+    },
+    {
+      "_id": "req_login",
+      "_type": "request",
+      "parentId": "fld_staff",
+      "name": "Login",
+      "method": "POST",
+      "url": "{{ _.base_url }}/api/v1/auth/login",
+      "headers": [
+        { "name": "Content-Type", "value": "application/json" }
+      ],
+      "body": {
+        "mimeType": "application/json",
+        "text": "{\n  \"email\": \"owner@example.com\",\n  \"password\": \"Test1234!\"\n}"
+      },
+      "description": "Login for staff/owners.\nNo tenant_id needed while still pending_onboarding.\nOnce onboarded, add \"tenant_id\": \"<id>\" to the body.\nCopy access_token → env.access_token, refresh_token → env.refresh_token."
+    },
+    {
+      "_id": "req_me",
+      "_type": "request",
+      "parentId": "fld_staff",
+      "name": "Get Current User (/me)",
+      "method": "GET",
+      "url": "{{ _.base_url }}/api/v1/auth/me",
+      "headers": [
+        { "name": "Authorization", "value": "Bearer {{ _.access_token }}" }
+      ],
+      "body": {},
+      "description": "Returns the currently authenticated user.\nRequires Bearer token in Authorization header.\nSet env.access_token from Register or Login response first."
+    },
+    {
+      "_id": "req_refresh",
+      "_type": "request",
+      "parentId": "fld_staff",
+      "name": "Refresh Token",
+      "method": "POST",
+      "url": "{{ _.base_url }}/api/v1/auth/refresh",
+      "headers": [
+        { "name": "Content-Type", "value": "application/json" }
+      ],
+      "body": {
+        "mimeType": "application/json",
+        "text": "{\n  \"refresh_token\": \"{{ _.refresh_token }}\"\n}"
+      },
+      "description": "Exchange a refresh token for a new access + refresh token pair.\nSet env.refresh_token from Register or Login response first.\nUpdate env.access_token and env.refresh_token with the new values."
+    },
+    {
+      "_id": "req_logout",
+      "_type": "request",
+      "parentId": "fld_staff",
+      "name": "Logout",
+      "method": "POST",
+      "url": "{{ _.base_url }}/api/v1/auth/logout",
+      "headers": [
+        { "name": "Authorization", "value": "Bearer {{ _.access_token }}" }
+      ],
+      "body": {},
+      "description": "Blacklists the current access token in Redis.\nAfter this, /me with the same token will return 401."
+    },
+    {
+      "_id": "req_otp_send",
+      "_type": "request",
+      "parentId": "fld_customer",
+      "name": "Send OTP",
+      "method": "POST",
+      "url": "{{ _.base_url }}/api/v1/auth/customer/otp/send",
+      "headers": [
+        { "name": "Content-Type", "value": "application/json" }
+      ],
+      "body": {
+        "mimeType": "application/json",
+        "text": "{\n  \"phone\": \"9999999999\"\n}"
+      },
+      "description": "Sends an OTP to the given phone number.\nIn dev (no MSG91 keys), the OTP is logged to the service console — check your terminal.\nNote: the field is 'phone', not 'mobile'."
+    },
+    {
+      "_id": "req_otp_verify",
+      "_type": "request",
+      "parentId": "fld_customer",
+      "name": "Verify OTP",
+      "method": "POST",
+      "url": "{{ _.base_url }}/api/v1/auth/customer/otp/verify",
+      "headers": [
+        { "name": "Content-Type", "value": "application/json" }
+      ],
+      "body": {
+        "mimeType": "application/json",
+        "text": "{\n  \"phone\": \"9999999999\",\n  \"otp\": \"123456\"\n}"
+      },
+      "description": "Verifies the OTP. Auto-registers the customer if first time.\nReplace '123456' with the OTP from the service console logs.\nReturns a customer JWT — copy it to env.customer_access_token."
+    },
+    {
+      "_id": "req_customer_profile_get",
+      "_type": "request",
+      "parentId": "fld_customer",
+      "name": "Get Customer Profile",
+      "method": "GET",
+      "url": "{{ _.base_url }}/api/v1/auth/customer/social-profile",
+      "headers": [
+        { "name": "Authorization", "value": "Bearer {{ _.customer_access_token }}" }
+      ],
+      "body": {},
+      "description": "Fetch the authenticated customer's profile.\nUses the customer JWT (different from staff JWT).\nSet env.customer_access_token from Verify OTP response."
+    },
+    {
+      "_id": "req_customer_profile_patch",
+      "_type": "request",
+      "parentId": "fld_customer",
+      "name": "Update Customer Profile",
+      "method": "PATCH",
+      "url": "{{ _.base_url }}/api/v1/auth/customer/social-profile",
+      "headers": [
+        { "name": "Content-Type", "value": "application/json" },
+        { "name": "Authorization", "value": "Bearer {{ _.customer_access_token }}" }
+      ],
+      "body": {
+        "mimeType": "application/json",
+        "text": "{\n  \"name\": \"Jane Customer\",\n  \"email\": \"jane@example.com\"\n}"
+      },
+      "description": "Update the customer's name and/or email."
+    },
+    {
+      "_id": "req_assign_tenant",
+      "_type": "request",
+      "parentId": "fld_internal",
+      "name": "Assign Tenant to User (internal)",
+      "method": "PATCH",
+      "url": "{{ _.base_url }}/api/v1/auth/users/<user_id>/tenant",
+      "headers": [
+        { "name": "Content-Type", "value": "application/json" },
+        { "name": "X-Internal-Secret", "value": "{{ _.internal_secret }}" }
+      ],
+      "body": {
+        "mimeType": "application/json",
+        "text": "{\n  \"tenant_id\": \"<tenant_id>\"\n}"
+      },
+      "description": "Called by tenant-service after creating a tenant.\nNOT exposed through Kong — internal service-to-service only.\nX-Internal-Secret header is required.\nReplace <user_id> in the URL and <tenant_id> in the body with real values.\nThis promotes the user from pending_onboarding → tenant_owner."
+    }
+  ]
+}

@@ -12,7 +12,10 @@ FROM base AS builder
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 RUN pnpm --filter @ulcp/shared build
+ENV DATABASE_URL="postgresql://placeholder:placeholder@placeholder:5432/placeholder?schema=placeholder"
+RUN pnpm --filter @ulcp/tenant-service db:generate
 RUN pnpm --filter @ulcp/tenant-service build
+RUN cp -r services/tenant-service/src/generated services/tenant-service/dist/
 
 FROM node:22-alpine AS runner
 WORKDIR /app
