@@ -884,6 +884,7 @@ function Step5Operations({
 function Step6GoLive({
   bizName, businessType, loading, onComplete,
 }: { bizName: string; businessType: string; loading: boolean; onComplete: () => void }) {
+  const [goLive, setGoLive] = useState(false);
   const typeLabel = BUSINESS_TYPES.find((t) => t.value === businessType)?.label ?? businessType;
 
   const checklist = [
@@ -896,16 +897,18 @@ function Step6GoLive({
   ];
 
   return (
-    <div className="text-center">
-      <div className="w-20 h-20 bg-green-50 rounded-full flex items-center justify-center mx-auto mb-6">
-        <span className="text-4xl">🎉</span>
+    <div>
+      <div className="text-center mb-8">
+        <div className="w-20 h-20 bg-green-50 rounded-full flex items-center justify-center mx-auto mb-6">
+          <span className="text-4xl">{goLive ? '🚀' : '🎉'}</span>
+        </div>
+        <h2 className="text-2xl font-bold text-gray-900 mb-2">Almost there!</h2>
+        <p className="text-gray-500 text-sm max-w-sm mx-auto">
+          Review your setup and flip the switch when you're ready to go live.
+        </p>
       </div>
-      <h2 className="text-2xl font-bold text-gray-900 mb-2">You're ready to go!</h2>
-      <p className="text-gray-500 text-sm mb-8 max-w-sm mx-auto">
-        Your business is set up. Complete the remaining tasks in your dashboard to start taking orders.
-      </p>
 
-      <div className="bg-white border border-gray-100 rounded-2xl p-5 text-left mb-8">
+      <div className="bg-white border border-gray-100 rounded-2xl p-5 text-left mb-6">
         <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">Setup checklist</p>
         <div className="space-y-3">
           {checklist.map((item, i) => (
@@ -917,6 +920,29 @@ function Step6GoLive({
             </div>
           ))}
         </div>
+        <p className="text-xs text-gray-400 mt-3">Remaining tasks can be completed from your dashboard.</p>
+      </div>
+
+      {/* Go Live toggle */}
+      <div className={`border-2 rounded-2xl p-5 mb-6 transition-colors ${goLive ? 'border-green-400 bg-green-50' : 'border-gray-200 bg-white'}`}>
+        <div className="flex items-center justify-between">
+          <div>
+            <p className={`text-base font-bold ${goLive ? 'text-green-700' : 'text-gray-900'}`}>
+              {goLive ? 'Your business is live!' : 'Go Live'}
+            </p>
+            <p className={`text-xs mt-0.5 ${goLive ? 'text-green-600' : 'text-gray-500'}`}>
+              {goLive
+                ? 'QR codes will work. Customers can place orders.'
+                : 'Flip this switch to activate your business and start accepting orders.'}
+            </p>
+          </div>
+          <button
+            onClick={() => setGoLive(!goLive)}
+            className={`relative w-14 h-8 rounded-full transition-colors shrink-0 ${goLive ? 'bg-green-500' : 'bg-gray-300'}`}
+          >
+            <span className={`absolute top-1 left-1 w-6 h-6 bg-white rounded-full shadow transition-transform ${goLive ? 'translate-x-6' : 'translate-x-0'}`} />
+          </button>
+        </div>
       </div>
 
       <div className="bg-brand-50 border border-brand-100 rounded-2xl p-4 mb-8 text-left">
@@ -925,10 +951,15 @@ function Step6GoLive({
       </div>
 
       <button
-        onClick={onComplete} disabled={loading}
-        className="w-full py-4 bg-brand-500 hover:bg-brand-600 disabled:opacity-40 text-white font-semibold rounded-xl text-base transition-colors"
+        onClick={onComplete}
+        disabled={!goLive || loading}
+        className={`w-full py-4 font-semibold rounded-xl text-base transition-colors ${
+          goLive
+            ? 'bg-green-500 hover:bg-green-600 text-white'
+            : 'bg-gray-200 text-gray-400 cursor-not-allowed'
+        }`}
       >
-        {loading ? 'Opening your dashboard...' : 'Go to dashboard'}
+        {loading ? 'Launching your dashboard...' : goLive ? 'Launch Dashboard' : 'Flip the switch above to go live'}
       </button>
     </div>
   );

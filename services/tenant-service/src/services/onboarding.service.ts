@@ -1,6 +1,8 @@
 import { AppError, NotFoundError } from "@ulcp/shared";
 import { findTenantById, updateTenant } from "../repositories/tenant.repository";
+import { createShiftTemplate, findShiftTemplates } from "../repositories/shift.repository";
 import { redisDel } from "../lib/redis";
+import { logger } from "../lib/logger";
 import { z } from "zod";
 
 // ─── Step validation schemas ─────────────────────────────────────────────────
@@ -195,10 +197,43 @@ export async function completeOnboarding(tenant_id: string) {
     setup_tasks: DEFAULT_SETUP_TASKS,
   });
 
+  // Seed default shift templates (fire-and-forget)
+  void seedDefaultShiftTemplates(tenant_id);
+
   // Invalidate cache
   await redisDel(`tenant:config:${tenant_id}`);
 
   return updated;
+}
+
+// ─── Seed default shift templates ────────────────────────────────────────────
+
+async function seedDefaultShiftTemplates(tenant_id: string) {
+  try {
+    const existing = await findShiftTemplates(tenant_id);
+    if (existing.length > 0) return; // already has shifts
+
+    await Promise.all([
+      createShiftTemplate({
+        tenant_id,
+        name: "Morning Shift",
+        start_time: "09:00",
+        end_time: "16:00",
+        break_mins: 30,
+        color: "#F59E0B",
+      }),
+      createShiftTemplate({
+        tenant_id,
+        name: "Evening Shift",
+        start_time: "18:00",
+        end_time: "23:00",
+        break_mins: 15,
+        color: "#6366F1",
+      }),
+    ]);
+  } catch (err) {
+    logger.error(err, "Failed to seed default shift templates");
+  }
 }
 
 // ─── Setup tasks (post-onboarding checklist, server-persisted) ───────────────

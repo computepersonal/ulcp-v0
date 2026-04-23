@@ -18,6 +18,7 @@ import Reservations from './pages/Reservations';
 import ActivityLog from './pages/ActivityLog';
 import Customers from './pages/Customers';
 import NewOrder from './pages/NewOrder';
+import Inventory from './pages/Inventory';
 import InviteAccept from './pages/InviteAccept';
 import ToastContainer from './components/ToastContainer';
 
@@ -49,6 +50,7 @@ function AppRoutes() {
         <Route path="/catalogue" element={<Catalogue />} />
         <Route path="/reports" element={<Reports />} />
         <Route path="/staff" element={<Staff />} />
+        <Route path="/inventory" element={<Inventory />} />
         <Route path="/procurement" element={<Procurement />} />
         <Route path="/reservations" element={<Reservations />} />
         <Route path="/customers" element={<Customers />} />

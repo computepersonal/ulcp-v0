@@ -414,12 +414,13 @@ function PromotionsTab({ tenantId, token }: { tenantId: string; token: string })
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
   const [form, setForm] = useState({
     name: '',
     headline: '',
     body: '',
     cta_text: 'Learn More',
-    cta_url: 'https://',
+    cta_url: '',
     placements: ['order_tracking', 'post_checkout'] as string[],
     starts_at: new Date().toISOString().slice(0, 10),
     ends_at: new Date(Date.now() + 30 * 86400000).toISOString().slice(0, 10),
@@ -436,6 +437,14 @@ function PromotionsTab({ tenantId, token }: { tenantId: string; token: string })
   }, [tenantId, token]);
 
   const handleSave = async () => {
+    setFormError(null);
+
+    // Validate CTA URL if provided
+    if (form.cta_url && !/^https?:\/\/.+/.test(form.cta_url)) {
+      setFormError('CTA Link must be a valid URL (e.g. https://example.com)');
+      return;
+    }
+
     setSaving(true);
     try {
       const res = await apiFetch(`${ADS_URL}/api/v1/ads/in-house/${tenantId}`, {
@@ -445,19 +454,24 @@ function PromotionsTab({ tenantId, token }: { tenantId: string; token: string })
           name: form.name,
           headline: form.headline,
           body: form.body || undefined,
-          cta_text: form.cta_text,
-          cta_url: form.cta_url,
+          cta_text: form.cta_text || undefined,
+          cta_url: form.cta_url || undefined,
           placements: form.placements,
           starts_at: new Date(form.starts_at).toISOString(),
           ends_at: new Date(form.ends_at).toISOString(),
         }),
       });
-      const d = await res.json() as { success: boolean; data?: Promotion };
+      const d = await res.json() as { success: boolean; data?: Promotion; error?: string };
       if (d.success && d.data) {
         setPromos(p => [d.data!, ...p]);
         setShowForm(false);
+        setFormError(null);
+      } else {
+        setFormError(d.error ?? 'Failed to create promotion');
       }
-    } catch { /* ignore */ }
+    } catch {
+      setFormError('Unable to connect to ads service. Is it running?');
+    }
     finally { setSaving(false); }
   };
 
@@ -577,10 +591,11 @@ function PromotionsTab({ tenantId, token }: { tenantId: string; token: string })
               />
             </div>
             <div>
-              <label className="text-xs font-medium text-gray-500 uppercase tracking-wide">CTA Link</label>
+              <label className="text-xs font-medium text-gray-500 uppercase tracking-wide">CTA Link <span className="text-gray-400 normal-case">(optional)</span></label>
               <input
                 value={form.cta_url}
                 onChange={e => setForm(f => ({ ...f, cta_url: e.target.value }))}
+                placeholder="https://example.com"
                 className="mt-1 w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-brand-500"
               />
             </div>
@@ -621,6 +636,11 @@ function PromotionsTab({ tenantId, token }: { tenantId: string; token: string })
               />
             </div>
           </div>
+          {formError && (
+            <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-2.5 text-sm text-red-600">
+              {formError}
+            </div>
+          )}
           <div className="flex gap-3 pt-2">
             <button
               onClick={() => void handleSave()}

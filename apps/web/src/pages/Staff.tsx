@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useAppSelector } from '../hooks/redux';
+import { apiFetch } from '../lib/apiFetch';
 import SetupReturnBanner from '../components/SetupReturnBanner';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -141,7 +142,8 @@ export default function Staff() {
   const [wageData, setWageData] = useState<{ id: string; user_id: string; wage_type: string; amount: number; effective_from: string; effective_to: string | null; notes: string | null }[]>([]);
 
   // Shift/Leave modals
-  const [showAddShift, setShowAddShift] = useState(false);
+  const [showShiftModal, setShowShiftModal] = useState(false);
+  const [editingShiftId, setEditingShiftId] = useState<string | null>(null);
   const [newShift, setNewShift] = useState({ name: '', start_time: '09:00', end_time: '17:00', break_mins: 30, color: '#6366F1' });
   const [showAddWage, setShowAddWage] = useState(false);
   const [wageUser, setWageUser] = useState('');
@@ -153,6 +155,7 @@ export default function Staff() {
   const [profileData, setProfileData] = useState<Partial<StaffProfile>>({});
   const [profileSaving, setProfileSaving] = useState(false);
   const [profileSaved, setProfileSaved] = useState(false);
+  const [profileError, setProfileError] = useState<string | null>(null);
 
   const identityServiceUrl = import.meta.env.VITE_IDENTITY_SERVICE_URL ?? 'http://localhost:3001';
   const tenantServiceUrl = import.meta.env.VITE_TENANT_SERVICE_URL ?? 'http://localhost:3002';
@@ -162,7 +165,7 @@ export default function Staff() {
   const loadStaff = useCallback(async () => {
     if (!tenantId) return;
     try {
-      const res = await fetch(`${identityServiceUrl}/api/v1/auth/users`, {
+      const res = await apiFetch(`${identityServiceUrl}/api/v1/auth/users`, {
         headers: { Authorization: `Bearer ${auth.token}` },
       });
       if (res.ok) {
@@ -178,7 +181,7 @@ export default function Staff() {
   const loadInvites = useCallback(async () => {
     if (!tenantId) return;
     try {
-      const res = await fetch(`${tenantServiceUrl}/api/v1/tenants/${tenantId}/staff`, {
+      const res = await apiFetch(`${tenantServiceUrl}/api/v1/tenants/${tenantId}/staff`, {
         headers: { Authorization: `Bearer ${auth.token}` },
       });
       if (res.ok) {
@@ -197,7 +200,7 @@ export default function Staff() {
   const loadShifts = useCallback(async () => {
     if (!tenantId) return;
     try {
-      const res = await fetch(`${hrUrl}/shifts`, { headers: authHeaders });
+      const res = await apiFetch(`${hrUrl}/shifts`, { headers: authHeaders });
       if (res.ok) {
         const data = (await res.json()) as { success: boolean; data?: { shifts: typeof shiftTemplates } };
         setShiftTemplates(data.data?.shifts ?? []);
@@ -211,7 +214,7 @@ export default function Staff() {
     const from = new Date(today.getFullYear(), today.getMonth(), 1).toISOString();
     const to = today.toISOString();
     try {
-      const res = await fetch(`${hrUrl}/attendance?date_from=${from}&date_to=${to}`, { headers: authHeaders });
+      const res = await apiFetch(`${hrUrl}/attendance?date_from=${from}&date_to=${to}`, { headers: authHeaders });
       if (res.ok) {
         const data = (await res.json()) as { success: boolean; data?: { records: typeof attendanceRecords } };
         setAttendanceRecords(data.data?.records ?? []);
@@ -255,7 +258,7 @@ export default function Staff() {
     setInviteSubmitting(true);
 
     try {
-      const res = await fetch(`${tenantServiceUrl}/api/v1/tenants/${tenantId}/staff/invite`, {
+      const res = await apiFetch(`${tenantServiceUrl}/api/v1/tenants/${tenantId}/staff/invite`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -284,7 +287,7 @@ export default function Staff() {
   // ─── Revoke invite ──────────────────────────────────────────────────────
   const handleRevoke = async (inviteId: string) => {
     try {
-      await fetch(`${tenantServiceUrl}/api/v1/tenants/${tenantId}/staff/${inviteId}`, {
+      await apiFetch(`${tenantServiceUrl}/api/v1/tenants/${tenantId}/staff/${inviteId}`, {
         method: 'DELETE',
         headers: { Authorization: `Bearer ${auth.token}` },
       });
@@ -308,7 +311,7 @@ export default function Staff() {
     setProfileSaved(false);
     setProfileLoading(true);
     try {
-      const res = await fetch(
+      const res = await apiFetch(
         `${tenantServiceUrl}/api/v1/tenants/${tenantId}/staff-profiles/${member.id}`,
         { headers: { Authorization: `Bearer ${auth.token}` } }
       );
@@ -328,8 +331,16 @@ export default function Staff() {
   const handleSaveProfile = async () => {
     if (!editingUser) return;
     setProfileSaving(true);
+    setProfileError(null);
     try {
-      const res = await fetch(
+      // Strip empty strings and undefined values before sending
+      const cleanData: Record<string, unknown> = {};
+      for (const [key, value] of Object.entries(profileData)) {
+        if (value !== undefined && value !== '' && value !== null) {
+          cleanData[key] = value;
+        }
+      }
+      const res = await apiFetch(
         `${tenantServiceUrl}/api/v1/tenants/${tenantId}/staff-profiles/${editingUser.id}`,
         {
           method: 'PUT',
@@ -337,14 +348,22 @@ export default function Staff() {
             'Content-Type': 'application/json',
             Authorization: `Bearer ${auth.token}`,
           },
-          body: JSON.stringify(profileData),
+          body: JSON.stringify(cleanData),
         }
       );
-      if (res.ok) {
+      const data = (await res.json()) as { success: boolean; error?: string };
+      if (res.ok && data.success) {
         setProfileSaved(true);
-        setTimeout(() => setProfileSaved(false), 2000);
+        setTimeout(() => {
+          setProfileSaved(false);
+          setEditingUser(null);
+        }, 800);
+      } else {
+        setProfileError(data.error ?? 'Failed to save profile');
       }
-    } catch { /* empty */ } finally {
+    } catch {
+      setProfileError('Something went wrong. Please try again.');
+    } finally {
       setProfileSaving(false);
     }
   };
@@ -562,7 +581,11 @@ export default function Staff() {
             <div className="flex items-center justify-between">
               <h2 className="text-sm font-semibold text-gray-700">Shift Templates</h2>
               <button
-                onClick={() => setShowAddShift(true)}
+                onClick={() => {
+                  setEditingShiftId(null);
+                  setNewShift({ name: '', start_time: '09:00', end_time: '17:00', break_mins: 30, color: '#6366F1' });
+                  setShowShiftModal(true);
+                }}
                 className="px-3 py-1.5 bg-brand-500 hover:bg-brand-600 text-white text-xs font-semibold rounded-lg transition-colors"
               >
                 + Add Shift
@@ -577,11 +600,33 @@ export default function Staff() {
             ) : (
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                 {shiftTemplates.map((s) => (
-                  <div key={s.id} className="bg-white border border-gray-100 rounded-xl p-4 shadow-sm">
+                  <div
+                    key={s.id}
+                    className="bg-white border border-gray-100 rounded-xl p-4 shadow-sm group relative cursor-pointer hover:border-brand-200 transition-colors"
+                    onClick={() => {
+                      setEditingShiftId(s.id);
+                      setNewShift({ name: s.name, start_time: s.start_time, end_time: s.end_time, break_mins: s.break_mins, color: s.color });
+                      setShowShiftModal(true);
+                    }}
+                  >
                     <div className="flex items-center gap-2 mb-2">
                       <div className="w-3 h-3 rounded-full" style={{ backgroundColor: s.color }} />
                       <span className="font-semibold text-sm text-gray-900">{s.name}</span>
                       {!s.is_active && <span className="text-xs text-gray-400">(inactive)</span>}
+                      <button
+                        onClick={async (e) => {
+                          e.stopPropagation();
+                          if (!confirm(`Delete shift "${s.name}"?`)) return;
+                          await apiFetch(`${hrUrl}/shifts/${s.id}`, {
+                            method: 'DELETE', headers: authHeaders,
+                          });
+                          void loadShifts();
+                        }}
+                        className="ml-auto text-gray-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"
+                        title="Delete shift"
+                      >
+                        &times;
+                      </button>
                     </div>
                     <div className="text-xs text-gray-500">
                       {s.start_time} &ndash; {s.end_time}
@@ -592,11 +637,11 @@ export default function Staff() {
               </div>
             )}
 
-            {/* Add Shift Modal */}
-            {showAddShift && (
+            {/* Add/Edit Shift Modal */}
+            {showShiftModal && (
               <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
                 <div className="bg-white rounded-2xl p-6 w-96 shadow-xl">
-                  <h3 className="font-bold text-gray-900 mb-4">Add Shift Template</h3>
+                  <h3 className="font-bold text-gray-900 mb-4">{editingShiftId ? 'Edit Shift Template' : 'Add Shift Template'}</h3>
                   <div className="space-y-3">
                     <div>
                       <label className="text-xs font-medium text-gray-600 block mb-1">Name</label>
@@ -624,21 +669,29 @@ export default function Staff() {
                     </div>
                   </div>
                   <div className="flex gap-3 mt-5">
-                    <button onClick={() => setShowAddShift(false)} className="flex-1 py-2 border border-gray-200 rounded-xl text-sm font-medium text-gray-600">Cancel</button>
+                    <button onClick={() => setShowShiftModal(false)} className="flex-1 py-2 border border-gray-200 rounded-xl text-sm font-medium text-gray-600">Cancel</button>
                     <button
                       onClick={async () => {
                         if (!newShift.name) return;
-                        await fetch(`${hrUrl}/shifts`, {
-                          method: 'POST', headers: { 'Content-Type': 'application/json', ...authHeaders },
-                          body: JSON.stringify(newShift),
-                        });
-                        setShowAddShift(false);
+                        if (editingShiftId) {
+                          await apiFetch(`${hrUrl}/shifts/${editingShiftId}`, {
+                            method: 'PATCH', headers: { 'Content-Type': 'application/json', ...authHeaders },
+                            body: JSON.stringify(newShift),
+                          });
+                        } else {
+                          await apiFetch(`${hrUrl}/shifts`, {
+                            method: 'POST', headers: { 'Content-Type': 'application/json', ...authHeaders },
+                            body: JSON.stringify(newShift),
+                          });
+                        }
+                        setShowShiftModal(false);
+                        setEditingShiftId(null);
                         setNewShift({ name: '', start_time: '09:00', end_time: '17:00', break_mins: 30, color: '#6366F1' });
                         void loadShifts();
                       }}
                       className="flex-1 py-2 bg-brand-500 hover:bg-brand-600 text-white text-sm font-semibold rounded-xl"
                     >
-                      Create
+                      {editingShiftId ? 'Save Changes' : 'Create'}
                     </button>
                   </div>
                 </div>
@@ -765,7 +818,7 @@ export default function Staff() {
                               <div className="flex gap-1">
                                 <button
                                   onClick={async () => {
-                                    await fetch(`${hrUrl}/leave-requests/${r.id}/review`, {
+                                    await apiFetch(`${hrUrl}/leave-requests/${r.id}/review`, {
                                       method: 'PATCH', headers: { 'Content-Type': 'application/json', ...authHeaders },
                                       body: JSON.stringify({ status: 'approved' }),
                                     });
@@ -777,7 +830,7 @@ export default function Staff() {
                                 </button>
                                 <button
                                   onClick={async () => {
-                                    await fetch(`${hrUrl}/leave-requests/${r.id}/review`, {
+                                    await apiFetch(`${hrUrl}/leave-requests/${r.id}/review`, {
                                       method: 'PATCH', headers: { 'Content-Type': 'application/json', ...authHeaders },
                                       body: JSON.stringify({ status: 'rejected' }),
                                     });
@@ -866,7 +919,7 @@ export default function Staff() {
                     <button
                       onClick={async () => {
                         if (!wageUser || !newWage.amount) return;
-                        await fetch(`${hrUrl}/wages`, {
+                        await apiFetch(`${hrUrl}/wages`, {
                           method: 'POST', headers: { 'Content-Type': 'application/json', ...authHeaders },
                           body: JSON.stringify({
                             user_id: wageUser,
@@ -1196,7 +1249,7 @@ function WageDisplay({
     if (!userId) return;
     (async () => {
       try {
-        const res = await fetch(`${hrUrl}/wages/${userId}`, { headers: authHeaders });
+        const res = await apiFetch(`${hrUrl}/wages/${userId}`, { headers: authHeaders });
         if (res.ok) {
           const data = (await res.json()) as { success: boolean; data?: { wages: typeof wageData; current_wage: typeof wageData[0] | null } };
           setWageData(data.data?.wages ?? []);

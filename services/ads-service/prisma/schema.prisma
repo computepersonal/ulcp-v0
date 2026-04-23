@@ -79,8 +79,8 @@ model AdCreative {
   format         AdFormat
   headline       String
   body           String?
-  cta_text       String
-  cta_url        String
+  cta_text       String?
+  cta_url        String?
   image_url      String?
   logo_url       String?
   brand_color    String?

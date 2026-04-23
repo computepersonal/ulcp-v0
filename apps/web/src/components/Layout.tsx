@@ -47,6 +47,7 @@ const BASE_NAV_ITEMS: NavItem[] = [
   { to: '/reservations', icon: <CalendarDays size={20} />, label: 'Reservations' },
   { to: '/customers', icon: <Heart size={20} />, label: 'Customers' },
   { to: '/staff', icon: <Users size={20} />, label: 'Staff' },
+  { to: '/inventory', icon: <Package size={20} />, label: 'Inventory' },
   { to: '/procurement', icon: <ShoppingCart size={20} />, label: 'Procurement' },
   { to: '/settings', icon: <Settings size={20} />, label: 'Settings' }
 ];
@@ -187,7 +188,6 @@ export default function Layout() {
             <span className="text-sm text-gray-500">Main Branch</span>
           </div>
           <div className="flex items-center gap-3">
-            <Package size={20} className="text-gray-400" />
             <button
               onClick={handleLogout}
               title="Logout"
