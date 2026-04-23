@@ -85,3 +85,10 @@ export async function findUsersByTenant(tenant_id: string): Promise<User[]> {
     orderBy: { created_at: "asc" },
   });
 }
+
+export async function deactivateUser(id: string): Promise<User> {
+  return prisma.user.update({
+    where: { id },
+    data: { is_active: false },
+  });
+}

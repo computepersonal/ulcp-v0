@@ -21,6 +21,9 @@ import { reservationRoutes } from "./routes/reservation.routes";
 import { kdsRoutes } from "./routes/kds.routes";
 import { auditLogRoutes } from "./routes/auditLog.routes";
 import { subscriptionRoutes } from "./routes/subscription.routes";
+import { staffInvitePublicRoutes } from "./routes/staffInvitePublic.routes";
+import { staffProfileRoutes } from "./routes/staffProfile.routes";
+import { staffHrRoutes } from "./routes/staffHr.routes";
 
 const PORT = parseInt(process.env["PORT"] ?? "3002", 10);
 
@@ -149,6 +152,21 @@ async function buildApp() {
   await app.register(onboardingRoutes, { prefix: "/api/v1/onboarding" });
   await app.register(auditLogRoutes, { prefix: "/api/v1/tenants" });
   await app.register(subscriptionRoutes, { prefix: "/api/v1/tenants" });
+
+  // Staff profiles
+  await app.register(
+    async (instance) => { await instance.register(staffProfileRoutes); },
+    { prefix: "/api/v1/tenants/:tenant_id/staff-profiles" }
+  );
+
+  // Staff HR (wages, shifts, attendance, leaves)
+  await app.register(
+    async (instance) => { await instance.register(staffHrRoutes); },
+    { prefix: "/api/v1/tenants/:tenant_id/hr" }
+  );
+
+  // Public staff invite endpoints (no auth, token-based)
+  await app.register(staffInvitePublicRoutes, { prefix: "/api/v1/staff-invite" });
 
   // KDS: public verify endpoint + staff generate endpoint
   await app.register(kdsRoutes, { prefix: "/api/v1/tenants/kds" });

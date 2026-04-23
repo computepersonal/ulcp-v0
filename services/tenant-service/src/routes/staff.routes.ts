@@ -5,6 +5,7 @@ import { apiSuccess, apiError, AppError } from "@ulcp/shared";
 import { authenticateStaff } from "../middleware/authenticate";
 import {
   inviteStaff,
+  getInviteByToken,
   acceptStaffInviteByToken,
   listStaffInvites,
   revokeStaffInvite,
@@ -35,6 +36,8 @@ const inviteStaffSchema = z.object({
 
 const acceptInviteSchema = z.object({
   token: z.string().min(1),
+  name: z.string().min(1, "Name is required"),
+  password: z.string().min(8, "Password must be at least 8 characters"),
 });
 
 type TenantParams = { tenant_id: string };
@@ -142,20 +145,53 @@ export async function staffRoutes(fastify: FastifyInstance): Promise<void> {
     }
   );
 
-  // POST /tenants/:tenant_id/staff/accept — accept invite (no auth needed)
+  // GET /tenants/:tenant_id/staff/validate-invite/:token — validate invite token (no auth needed)
+  fastify.get<{ Params: TenantParams & { token: string } }>(
+    "/validate-invite/:token",
+    {
+      schema: {
+        summary: "Validate an invite token and return invite details",
+        tags: ["Staff"],
+        security: [],
+        params: {
+          type: "object",
+          properties: {
+            tenant_id: { type: "string" },
+            token: { type: "string" },
+          },
+        },
+        response: { 200: genericOk, ...errResponses },
+      },
+    },
+    async (req, reply) => {
+      try {
+        const invite = await getInviteByToken(req.params.token);
+        return reply.send(apiSuccess({ invite }));
+      } catch (err) {
+        if (err instanceof AppError) {
+          return reply.code(err.statusCode).send(apiError(err.message));
+        }
+        throw err;
+      }
+    }
+  );
+
+  // POST /tenants/:tenant_id/staff/accept — accept invite + create account (no auth needed)
   fastify.post<{ Params: TenantParams }>(
     "/accept",
     {
       schema: {
-        summary: "Accept staff invite",
+        summary: "Accept staff invite and create account",
         tags: ["Staff"],
         security: [],
         params: { type: "object", properties: { tenant_id: { type: "string" } } },
         body: {
           type: "object",
-          required: ["token"],
+          required: ["token", "name", "password"],
           properties: {
             token: { type: "string" },
+            name: { type: "string" },
+            password: { type: "string", minLength: 8 },
           },
         },
         response: { 200: genericOk, ...errResponses },
@@ -169,8 +205,8 @@ export async function staffRoutes(fastify: FastifyInstance): Promise<void> {
           .send(apiError(formatZodError(body.error)));
       }
       try {
-        const invite = await acceptStaffInviteByToken(body.data.token);
-        return reply.send(apiSuccess({ invite }));
+        const result = await acceptStaffInviteByToken(body.data);
+        return reply.send(apiSuccess(result));
       } catch (err) {
         if (err instanceof AppError) {
           return reply.code(err.statusCode).send(apiError(err.message));

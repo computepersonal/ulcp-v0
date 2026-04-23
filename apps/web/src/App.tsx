@@ -18,6 +18,7 @@ import Reservations from './pages/Reservations';
 import ActivityLog from './pages/ActivityLog';
 import Customers from './pages/Customers';
 import NewOrder from './pages/NewOrder';
+import InviteAccept from './pages/InviteAccept';
 import ToastContainer from './components/ToastContainer';
 
 function AppRoutes() {
@@ -26,6 +27,7 @@ function AppRoutes() {
       {/* Public */}
       <Route path="/login" element={<Login />} />
       <Route path="/register" element={<Register />} />
+      <Route path="/invite/:token" element={<InviteAccept />} />
 
       {/* Requires auth (any role) — onboarding wizard */}
       <Route path="/onboard" element={<Onboard />} />

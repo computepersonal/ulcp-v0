@@ -64,6 +64,7 @@ model Tenant {
   branches       Branch[]
   partners       Partner[]
   staff_invites  StaffInvite[]
+  staff_profiles StaffProfile[]
   subscriptions  Subscription[]
   kds_setup_codes KdsSetupCode[]
 
@@ -148,6 +149,227 @@ model StaffInvite {
   @@index([tenant_id])
   @@index([email])
   @@map("staff_invites")
+}
+
+// ─── Staff Profiles ──────────────────────────────────────────────────────────
+// Profile data for staff members. user_id references identity-service User (cross-service, no FK).
+
+model StaffProfile {
+  id         String  @id @default(cuid())
+  tenant_id  String
+  user_id    String  @unique // identity-service User.id — one profile per user
+  branch_id  String?
+
+  // Personal
+  phone             String?
+  alt_phone         String?
+  date_of_birth     DateTime?
+  gender            String?   // male | female | other | prefer_not_to_say
+  photo_url         String?
+  address_line1     String?
+  address_line2     String?
+  city              String?
+  state             String?
+  pincode           String?
+
+  // Emergency contact
+  emergency_name    String?
+  emergency_phone   String?
+  emergency_relation String?
+
+  // Employment
+  joining_date      DateTime?
+  department        String?   // kitchen | service | management | delivery | other
+  designation       String?   // custom title e.g. "Senior Chef", "Floor Manager"
+  employment_type   String    @default("full_time") // full_time | part_time | contract | intern
+  bank_account_no   String?
+  bank_ifsc         String?
+  bank_name         String?
+  pan_number        String?
+  aadhaar_last4     String?   // only last 4 digits stored for verification display
+
+  // Documents (URLs)
+  id_proof_url      String?
+  address_proof_url String?
+
+  notes             String?   // internal notes about staff member
+
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+
+  tenant Tenant @relation(fields: [tenant_id], references: [id], onDelete: Cascade)
+
+  @@index([tenant_id])
+  @@index([branch_id])
+  @@map("staff_profiles")
+}
+
+// ─── Staff Wages ─────────────────────────────────────────────────────────────
+
+model StaffWage {
+  id          String  @id @default(cuid())
+  tenant_id   String
+  user_id     String  // identity-service User.id
+  wage_type   String  @default("monthly") // monthly | hourly | daily | per_shift
+  amount      Int     // in paise/cents (integer only)
+  currency    String  @default("INR")
+  effective_from DateTime
+  effective_to   DateTime? // null = current/open-ended
+  notes       String?
+
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+
+  @@index([tenant_id])
+  @@index([user_id])
+  @@map("staff_wages")
+}
+
+// ─── Shift Templates ─────────────────────────────────────────────────────────
+
+model ShiftTemplate {
+  id         String  @id @default(cuid())
+  tenant_id  String
+  branch_id  String?
+  name       String  // e.g. "Morning Shift", "Evening Shift", "Night Shift"
+  start_time String  // HH:mm format (e.g. "09:00")
+  end_time   String  // HH:mm format (e.g. "17:00")
+  break_mins Int     @default(0)
+  color      String  @default("#6366F1") // for calendar display
+  is_active  Boolean @default(true)
+
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+
+  shift_assignments ShiftAssignment[]
+
+  @@index([tenant_id])
+  @@map("shift_templates")
+}
+
+// ─── Shift Assignments (Schedule) ────────────────────────────────────────────
+
+model ShiftAssignment {
+  id           String   @id @default(cuid())
+  tenant_id    String
+  user_id      String   // identity-service User.id
+  branch_id    String?
+  shift_id     String   // ShiftTemplate.id
+  date         DateTime // the specific date (YYYY-MM-DD stored as midnight UTC)
+  status       String   @default("scheduled") // scheduled | completed | missed | swapped
+  notes        String?
+
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+
+  shift ShiftTemplate @relation(fields: [shift_id], references: [id], onDelete: Cascade)
+
+  @@unique([user_id, date, shift_id])
+  @@index([tenant_id])
+  @@index([user_id, date])
+  @@index([date])
+  @@map("shift_assignments")
+}
+
+// ─── Attendance ──────────────────────────────────────────────────────────────
+
+model Attendance {
+  id          String    @id @default(cuid())
+  tenant_id   String
+  user_id     String    // identity-service User.id
+  branch_id   String?
+  date        DateTime  // the date (YYYY-MM-DD stored as midnight UTC)
+  clock_in    DateTime?
+  clock_out   DateTime?
+  clock_in_method  String? // app_pin | gps | manual
+  clock_out_method String?
+  hours_worked     Float?  // computed on clock_out
+  overtime_mins    Int     @default(0)
+  late_by_mins     Int     @default(0)
+  status      String    @default("absent") // present | absent | half_day | on_leave | holiday
+  notes       String?
+
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+
+  @@unique([user_id, date])
+  @@index([tenant_id])
+  @@index([user_id, date])
+  @@map("attendance")
+}
+
+// ─── Leave Types ─────────────────────────────────────────────────────────────
+
+model LeaveType {
+  id          String  @id @default(cuid())
+  tenant_id   String
+  name        String  // e.g. "Casual Leave", "Sick Leave", "Earned Leave"
+  code        String  // e.g. "CL", "SL", "EL"
+  annual_quota Int    @default(12) // days per year
+  is_paid     Boolean @default(true)
+  carry_forward Boolean @default(false)
+  max_carry    Int     @default(0)
+  is_active   Boolean @default(true)
+
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+
+  leave_balances LeaveBalance[]
+  leave_requests LeaveRequest[]
+
+  @@unique([tenant_id, code])
+  @@index([tenant_id])
+  @@map("leave_types")
+}
+
+// ─── Leave Balances ──────────────────────────────────────────────────────────
+
+model LeaveBalance {
+  id          String  @id @default(cuid())
+  tenant_id   String
+  user_id     String  // identity-service User.id
+  leave_type_id String
+  year        Int     // e.g. 2026
+  total       Int     // annual quota (may include carry forward)
+  used        Int     @default(0)
+  pending     Int     @default(0) // pending approval
+
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+
+  leave_type LeaveType @relation(fields: [leave_type_id], references: [id], onDelete: Cascade)
+
+  @@unique([user_id, leave_type_id, year])
+  @@index([tenant_id])
+  @@index([user_id, year])
+  @@map("leave_balances")
+}
+
+// ─── Leave Requests ──────────────────────────────────────────────────────────
+
+model LeaveRequest {
+  id           String   @id @default(cuid())
+  tenant_id    String
+  user_id      String   // identity-service User.id (requester)
+  leave_type_id String
+  start_date   DateTime
+  end_date     DateTime
+  days         Float    // 0.5 for half day, 1, 2, etc.
+  reason       String?
+  status       String   @default("pending") // pending | approved | rejected | cancelled
+  reviewed_by  String?  // user_id of approver
+  reviewed_at  DateTime?
+  review_notes String?
+
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+
+  leave_type LeaveType @relation(fields: [leave_type_id], references: [id], onDelete: Cascade)
+
+  @@index([tenant_id])
+  @@index([user_id])
+  @@index([status])
+  @@map("leave_requests")
 }
 
 // ─── Sections ─────────────────────────────────────────────────────────────────

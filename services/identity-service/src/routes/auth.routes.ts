@@ -9,7 +9,7 @@ import {
   getMe,
   assignTenant,
 } from "../services/auth.service";
-import { findUserByIdOnly, updateUserTenant, findUsersByTenant } from "../repositories/user.repository";
+import { findUserByIdOnly, updateUserTenant, findUsersByTenant, deactivateUser } from "../repositories/user.repository";
 import { authenticateStaff } from "../middleware/authenticate";
 import { storeOtp, verifyOtp } from "../repositories/otp.repository";
 import { logger } from "../lib/logger";
@@ -53,6 +53,16 @@ const refreshSchema = z.object({
 const assignTenantSchema = z.object({
   tenant_id: z.string().min(1),
   role: z.string().default(ROLES.TENANT_OWNER),
+});
+
+const internalRegisterStaffSchema = z.object({
+  email:       z.string().email(),
+  password:    z.string().min(8),
+  name:        z.string().min(1),
+  tenant_id:   z.string().min(1),
+  role:        z.string().min(1),
+  permissions: z.array(z.string()).default([]),
+  branch_id:   z.string().optional(),
 });
 
 // ─── Routes ──────────────────────────────────────────────────────────────────
@@ -627,6 +637,131 @@ export async function authRoutes(fastify: FastifyInstance): Promise<void> {
       return reply.send(apiSuccess({
         social_profile: customer.social_profile ?? defaultProfile,
       }));
+    }
+  );
+
+  // POST /auth/internal/register-staff — internal: called by tenant-service to create an invited staff user
+  // Secured by X-Internal-Secret header. Never exposed through Kong.
+  fastify.post(
+    "/internal/register-staff",
+    {
+      schema: {
+        summary: "[Internal] Register a staff user with tenant, role and permissions pre-set",
+        description: "Called by tenant-service when processing a staff invite. Requires X-Internal-Secret header. Never expose through the API gateway.",
+        tags: ["Internal"],
+        security: [],
+        body: {
+          type: "object",
+          required: ["email", "password", "name", "tenant_id", "role"],
+          properties: {
+            email:       { type: "string", format: "email" },
+            password:    { type: "string", minLength: 8 },
+            name:        { type: "string" },
+            tenant_id:   { type: "string" },
+            role:        { type: "string" },
+            permissions: { type: "array", items: { type: "string" } },
+            branch_id:   { type: "string", description: "Optional — scope user to a specific branch" },
+          },
+        },
+        response: {
+          201: {
+            type: "object",
+            properties: {
+              success: { type: "boolean" },
+              data: { type: "object", properties: { user: { type: "object", additionalProperties: true } } },
+            },
+          },
+          400: { type: "object", properties: { success: { type: "boolean" }, error: { type: "string" } } },
+          401: { type: "object", properties: { success: { type: "boolean" }, error: { type: "string" } } },
+          409: { type: "object", properties: { success: { type: "boolean" }, error: { type: "string" } } },
+        },
+      },
+    },
+    async (req, reply) => {
+      // Verify internal secret
+      const secret = req.headers["x-internal-secret"];
+      if (!INTERNAL_SECRET || secret !== INTERNAL_SECRET) {
+        return reply.code(401).send(apiError("Unauthorized"));
+      }
+
+      const body = internalRegisterStaffSchema.safeParse(req.body);
+      if (!body.success) {
+        return reply
+          .code(400)
+          .send(apiError(body.error.errors[0]?.message ?? "Validation error"));
+      }
+
+      try {
+        const result = await register({
+          email:       body.data.email,
+          password:    body.data.password,
+          name:        body.data.name,
+          tenant_id:   body.data.tenant_id,
+          role:        body.data.role,
+          permissions: body.data.permissions,
+        });
+
+        // If a branch_id was supplied, apply it now — register() doesn't accept it
+        // but the User model supports it; update in-place before returning.
+        let safeUser = result.user;
+        if (body.data.branch_id) {
+          const updated = await prisma.user.update({
+            where: { id: result.user.id },
+            data: { branch_id: body.data.branch_id },
+          });
+          const { password_hash, pin_hash, ...safe } = updated;
+          safeUser = safe;
+        }
+
+        // Return only the user — no tokens issued for internally created staff
+        // (they must go through the normal login flow)
+        return reply.code(201).send(apiSuccess({ user: safeUser }));
+      } catch (err) {
+        if (err instanceof AppError) {
+          return reply.code(err.statusCode).send(apiError(err.message));
+        }
+        throw err;
+      }
+    }
+  );
+
+  // PATCH /auth/internal/users/:id/deactivate — internal: mark a staff user as inactive
+  // Secured by X-Internal-Secret header. Never exposed through Kong.
+  fastify.patch<{ Params: { id: string } }>(
+    "/internal/users/:id/deactivate",
+    {
+      schema: {
+        summary: "[Internal] Deactivate a staff user",
+        description: "Sets is_active=false. Called by tenant-service when an owner deactivates a staff member. Requires X-Internal-Secret header.",
+        tags: ["Internal"],
+        security: [],
+        params: { type: "object", properties: { id: { type: "string" } } },
+        response: {
+          200: {
+            type: "object",
+            properties: {
+              success: { type: "boolean" },
+              data: { type: "object", properties: { user: { type: "object", additionalProperties: true } } },
+            },
+          },
+          401: { type: "object", properties: { success: { type: "boolean" }, error: { type: "string" } } },
+          404: { type: "object", properties: { success: { type: "boolean" }, error: { type: "string" } } },
+        },
+      },
+    },
+    async (req, reply) => {
+      // Verify internal secret
+      const secret = req.headers["x-internal-secret"];
+      if (!INTERNAL_SECRET || secret !== INTERNAL_SECRET) {
+        return reply.code(401).send(apiError("Unauthorized"));
+      }
+
+      const user = await findUserByIdOnly(req.params.id);
+      if (!user) return reply.code(404).send(apiError("User not found"));
+
+      const updated = await deactivateUser(req.params.id);
+      const { password_hash, pin_hash, ...safe } = updated;
+      return reply.send(apiSuccess({ user: safe }));
     }
   );
 

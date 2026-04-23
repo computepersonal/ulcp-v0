@@ -17,6 +17,8 @@
 - Customer OTP send/verify — auto-register on first verify
 - Customer social profile get/update
 - Internal PATCH /users/:id/tenant — X-Internal-Secret, assigns tenant_id + promotes role
+- Internal POST /internal/register-staff — X-Internal-Secret, creates staff with tenant_id + role + permissions pre-set; returns user (no tokens); 409 on duplicate email+tenant_id
+- Internal PATCH /internal/users/:id/deactivate — X-Internal-Secret, sets is_active=false
 - KDS device registration endpoints
 - PIN unlock for shared tablets (POST /staff/pin-unlock)
 
@@ -41,6 +43,9 @@
 - 2026-04-08: permissions[] included in login response and JWT payload
 - 2026-04-16: console.log replaced with logger.info (Pino) for dev OTP logging
 - 2026-04-16: Redis default fallback port corrected to 6380
+- 2026-04-23: POST /internal/register-staff added — tenant-service calls this when processing staff invites
+- 2026-04-23: PATCH /internal/users/:id/deactivate added — tenant-service calls this when owner deactivates staff
+- 2026-04-23: deactivateUser() added to user.repository.ts
 
 ## Environment
 - Dev port: 3001
