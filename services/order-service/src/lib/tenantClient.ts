@@ -64,3 +64,39 @@ export function invalidateTenantKotCache(tenantId: string): Promise<number> {
 function defaultConfig(): TenantKotConfig {
   return { kot_ack_mode: "auto", kot_ack_delay_secs: 60, plan: "free" };
 }
+
+/**
+ * Update table status in tenant-service (internal call).
+ * Used when a dine-in order is placed to mark the table as occupied.
+ */
+export async function updateTableStatus(
+  tenantId: string,
+  branchId: string,
+  tableId: string,
+  status: string
+): Promise<void> {
+  const secret = process.env["INTERNAL_API_SECRET"];
+  if (!secret) {
+    logger.warn("INTERNAL_API_SECRET not set — cannot update table status");
+    return;
+  }
+
+  try {
+    const res = await fetch(
+      `${TENANT_URL}/api/v1/tenants/${tenantId}/branches/${branchId}/tables/${tableId}/status`,
+      {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Internal-Secret": secret,
+        },
+        body: JSON.stringify({ status }),
+      }
+    );
+    if (!res.ok) {
+      logger.warn({ tenantId, tableId, status, httpStatus: res.status }, "Failed to update table status");
+    }
+  } catch (err) {
+    logger.warn({ err, tenantId, tableId }, "Error updating table status");
+  }
+}

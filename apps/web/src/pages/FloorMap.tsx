@@ -18,6 +18,7 @@ interface TableData {
   section_name?: string;
   section_id?: string;
   session_id?: string;
+  payment_done?: boolean; // true when all orders for this table are paid
 }
 
 interface Section {
@@ -461,6 +462,7 @@ export default function FloorMap() {
   })();
 
   const tenantServiceUrl = import.meta.env.VITE_TENANT_SERVICE_URL ?? 'http://localhost:3002';
+  const orderServiceUrl = import.meta.env.VITE_ORDER_SERVICE_URL ?? 'http://localhost:3004';
   const tenantId = auth.user?.tenant_id ?? '';
 
   const loadData = useCallback(async () => {
@@ -516,21 +518,56 @@ export default function FloorMap() {
           }>;
         };
       };
+      // Fetch active orders to determine table occupancy + payment status
+      const ordersRes = await apiFetch(
+        `${orderServiceUrl}/api/v1/orders/${tenantId}?branch_id=${primary.id}&status=pending,confirmed,preparing,ready,completed`,
+        { headers: { Authorization: `Bearer ${auth.token}` } }
+      ).catch(() => null);
+
+      // Build lookup: table_id → { hasActiveOrders, allPaid }
+      const tableOrderInfo: Record<string, { hasActiveOrders: boolean; allPaid: boolean }> = {};
+      if (ordersRes?.ok) {
+        const od = (await ordersRes.json()) as {
+          success: boolean;
+          data?: { orders: Array<{ table_id?: string | null; status: string; payment_status: string }> };
+        };
+        for (const o of od.data?.orders ?? []) {
+          if (!o.table_id) continue;
+          if (!tableOrderInfo[o.table_id]) {
+            tableOrderInfo[o.table_id] = { hasActiveOrders: true, allPaid: true };
+          }
+          // An order that isn't completed+paid means not all paid
+          if (o.status !== 'completed' || o.payment_status !== 'paid') {
+            tableOrderInfo[o.table_id].allPaid = false;
+          }
+        }
+      }
+
       setTables(
-        (td.data?.tables ?? []).map((t) => ({
-          id: t.id, name: t.name, capacity: t.capacity,
-          status: t.status ?? 'available',
-          is_active: t.is_active !== false,
-          section_id: t.section_id ?? undefined,
-          section_name: t.section_id ? sectionMap[t.section_id] : undefined,
-        }))
+        (td.data?.tables ?? []).map((t) => {
+          const info = tableOrderInfo[t.id];
+          // If table has active orders but DB says available, override to occupied
+          const dbStatus = t.status ?? 'available';
+          let status: TableStatus = dbStatus;
+          if (dbStatus === 'available' && info?.hasActiveOrders && !info.allPaid) {
+            status = 'occupied';
+          }
+          return {
+            id: t.id, name: t.name, capacity: t.capacity,
+            status,
+            is_active: t.is_active !== false,
+            section_id: t.section_id ?? undefined,
+            section_name: t.section_id ? sectionMap[t.section_id] : undefined,
+            payment_done: info?.allPaid === true && dbStatus === 'billed',
+          };
+        })
       );
     } catch {
       // silently fail
     } finally {
       setLoading(false);
     }
-  }, [tenantId, auth.token, tenantServiceUrl]);
+  }, [tenantId, auth.token, tenantServiceUrl, orderServiceUrl]);
 
   useEffect(() => { void loadData(); }, [loadData]);
 
@@ -678,16 +715,30 @@ export default function FloorMap() {
   };
 
   const handleCloseTable = async (table: TableData) => {
-    if (!table.session_id) return;
     setActionLoading(true);
     setActionError('');
     try {
-      const res = await apiFetch(
-        `${tenantServiceUrl}/api/v1/tenants/${tenantId}/branches/${branchId}/sessions/${table.session_id}/close`,
-        { method: 'PATCH', headers: { Authorization: `Bearer ${auth.token}` } }
-      );
-      const data = (await res.json()) as { success: boolean; error?: string };
-      if (!res.ok || !data.success) throw new Error(data.error ?? 'Failed to close table');
+      // If table has a session, close it via session endpoint
+      if (table.session_id) {
+        const res = await apiFetch(
+          `${tenantServiceUrl}/api/v1/tenants/${tenantId}/branches/${branchId}/sessions/${table.session_id}/close`,
+          { method: 'PATCH', headers: { Authorization: `Bearer ${auth.token}` } }
+        );
+        const data = (await res.json()) as { success: boolean; error?: string };
+        if (!res.ok || !data.success) throw new Error(data.error ?? 'Failed to close table');
+      } else {
+        // No session — directly set table status back to available
+        const res = await apiFetch(
+          `${tenantServiceUrl}/api/v1/tenants/${tenantId}/branches/${branchId}/tables/${table.id}`,
+          {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${auth.token}` },
+            body: JSON.stringify({ status: 'available' }),
+          }
+        );
+        const data = (await res.json()) as { success: boolean; error?: string };
+        if (!res.ok || !data.success) throw new Error(data.error ?? 'Failed to close table');
+      }
       setTables((prev) => prev.map((t) =>
         t.id === table.id ? { ...t, status: 'available', session_id: undefined, occupied_since: undefined } : t
       ));
@@ -1091,46 +1142,152 @@ export default function FloorMap() {
             </div>
           )}
 
-          {/* Table grid */}
-          <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))' }}>
-            {filteredTables.map((table) => {
-              const zoneDisabled = table.section_id
-                ? sections.find((s) => s.id === table.section_id)?.is_active === false
-                : false;
-              const tableDisabled = !table.is_active;
-              const cardColor = zoneDisabled || tableDisabled
-                ? 'border-orange-300 bg-orange-50 hover:bg-orange-100 opacity-70'
-                : statusColors[table.status];
-              return (
-              <button
-                key={table.id}
-                onClick={() => { setSelectedTable(table); setEditingCapacity(null); setActionError(''); setConfirmDelete(false); }}
-                className={`border-2 rounded-xl p-4 text-left transition-all ${cardColor} ${
-                  selectedTable?.id === table.id ? 'ring-2 ring-brand-500' : ''
-                }`}
-              >
-                <div className="font-bold text-gray-900">{table.name}</div>
-                <div className="text-xs text-gray-500">{table.capacity} seats</div>
-                {table.waiter_name && (
-                  <div className="text-xs text-gray-600 mt-1 truncate">👤 {table.waiter_name}</div>
-                )}
-                {table.item_count !== undefined && table.item_count > 0 && (
-                  <div className="text-xs text-gray-500">{table.item_count} items</div>
-                )}
-                {table.occupied_since && (
-                  <div className="text-xs font-medium text-amber-600 mt-1">⏱ {getElapsed(table.occupied_since)}</div>
-                )}
-                <div className={`mt-2 text-xs font-medium capitalize ${
-                  zoneDisabled || tableDisabled ? 'text-orange-500' :
-                  table.status === 'available' ? 'text-green-600' :
-                  table.status === 'billed' ? 'text-red-600' : 'text-amber-600'
-                }`}>
-                  {tableDisabled ? 'table closed' : zoneDisabled ? 'zone closed' : table.status.replace(/_/g, ' ')}
-                </div>
-              </button>
-              );
-            })}
-          </div>
+          {/* Table grid — grouped by zone when showing All */}
+          {activeSection === 'All' ? (
+            <>
+              {sections.map((section) => {
+                const zoneTables = filteredTables.filter((t) => t.section_id === section.id);
+                if (zoneTables.length === 0) return null;
+                return (
+                  <div key={section.id} className="mb-6">
+                    <div className="flex items-center gap-2 mb-2">
+                      <h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wide">{section.name}</h3>
+                      <span className="text-xs text-gray-400">({zoneTables.length})</span>
+                      {section.is_active === false && (
+                        <span className="text-xs bg-orange-100 text-orange-600 px-2 py-0.5 rounded-full font-medium">closed</span>
+                      )}
+                    </div>
+                    <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))' }}>
+                      {zoneTables.map((table) => {
+                        const zoneDisabled = section.is_active === false;
+                        const tableDisabled = !table.is_active;
+                        const cardColor = zoneDisabled || tableDisabled
+                          ? 'border-orange-300 bg-orange-50 hover:bg-orange-100 opacity-70'
+                          : statusColors[table.status];
+                        return (
+                          <button
+                            key={table.id}
+                            onClick={() => { setSelectedTable(table); setEditingCapacity(null); setActionError(''); setConfirmDelete(false); }}
+                            className={`border-2 rounded-xl p-4 text-left transition-all ${cardColor} ${
+                              selectedTable?.id === table.id ? 'ring-2 ring-brand-500' : ''
+                            }`}
+                          >
+                            <div className="font-bold text-gray-900">{table.name}</div>
+                            <div className="text-xs text-gray-500">{table.capacity} seats</div>
+                            {table.waiter_name && (
+                              <div className="text-xs text-gray-600 mt-1 truncate">👤 {table.waiter_name}</div>
+                            )}
+                            {table.item_count !== undefined && table.item_count > 0 && (
+                              <div className="text-xs text-gray-500">{table.item_count} items</div>
+                            )}
+                            {table.occupied_since && (
+                              <div className="text-xs font-medium text-amber-600 mt-1">⏱ {getElapsed(table.occupied_since)}</div>
+                            )}
+                            <div className={`mt-2 text-xs font-medium capitalize ${
+                              zoneDisabled || tableDisabled ? 'text-orange-500' :
+                              table.status === 'available' ? 'text-green-600' :
+                              table.status === 'billed' ? 'text-red-600' : 'text-amber-600'
+                            }`}>
+                              {tableDisabled ? 'table closed' : zoneDisabled ? 'zone closed' : table.status.replace(/_/g, ' ')}
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })}
+              {/* Unassigned tables (no zone) */}
+              {(() => {
+                const noZoneTables = filteredTables.filter((t) => !t.section_id);
+                if (noZoneTables.length === 0) return null;
+                return (
+                  <div className="mb-6">
+                    <div className="flex items-center gap-2 mb-2">
+                      <h3 className="text-sm font-semibold text-gray-400 uppercase tracking-wide">Unassigned</h3>
+                      <span className="text-xs text-gray-400">({noZoneTables.length})</span>
+                    </div>
+                    <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))' }}>
+                      {noZoneTables.map((table) => {
+                        const tableDisabled = !table.is_active;
+                        const cardColor = tableDisabled
+                          ? 'border-orange-300 bg-orange-50 hover:bg-orange-100 opacity-70'
+                          : statusColors[table.status];
+                        return (
+                          <button
+                            key={table.id}
+                            onClick={() => { setSelectedTable(table); setEditingCapacity(null); setActionError(''); setConfirmDelete(false); }}
+                            className={`border-2 rounded-xl p-4 text-left transition-all ${cardColor} ${
+                              selectedTable?.id === table.id ? 'ring-2 ring-brand-500' : ''
+                            }`}
+                          >
+                            <div className="font-bold text-gray-900">{table.name}</div>
+                            <div className="text-xs text-gray-500">{table.capacity} seats</div>
+                            {table.waiter_name && (
+                              <div className="text-xs text-gray-600 mt-1 truncate">👤 {table.waiter_name}</div>
+                            )}
+                            {table.item_count !== undefined && table.item_count > 0 && (
+                              <div className="text-xs text-gray-500">{table.item_count} items</div>
+                            )}
+                            {table.occupied_since && (
+                              <div className="text-xs font-medium text-amber-600 mt-1">⏱ {getElapsed(table.occupied_since)}</div>
+                            )}
+                            <div className={`mt-2 text-xs font-medium capitalize ${
+                              tableDisabled ? 'text-orange-500' :
+                              table.status === 'available' ? 'text-green-600' :
+                              table.status === 'billed' ? 'text-red-600' : 'text-amber-600'
+                            }`}>
+                              {tableDisabled ? 'table closed' : table.status.replace(/_/g, ' ')}
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })()}
+            </>
+          ) : (
+            <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))' }}>
+              {filteredTables.map((table) => {
+                const zoneDisabled = table.section_id
+                  ? sections.find((s) => s.id === table.section_id)?.is_active === false
+                  : false;
+                const tableDisabled = !table.is_active;
+                const cardColor = zoneDisabled || tableDisabled
+                  ? 'border-orange-300 bg-orange-50 hover:bg-orange-100 opacity-70'
+                  : statusColors[table.status];
+                return (
+                  <button
+                    key={table.id}
+                    onClick={() => { setSelectedTable(table); setEditingCapacity(null); setActionError(''); setConfirmDelete(false); }}
+                    className={`border-2 rounded-xl p-4 text-left transition-all ${cardColor} ${
+                      selectedTable?.id === table.id ? 'ring-2 ring-brand-500' : ''
+                    }`}
+                  >
+                    <div className="font-bold text-gray-900">{table.name}</div>
+                    <div className="text-xs text-gray-500">{table.capacity} seats</div>
+                    {table.waiter_name && (
+                      <div className="text-xs text-gray-600 mt-1 truncate">👤 {table.waiter_name}</div>
+                    )}
+                    {table.item_count !== undefined && table.item_count > 0 && (
+                      <div className="text-xs text-gray-500">{table.item_count} items</div>
+                    )}
+                    {table.occupied_since && (
+                      <div className="text-xs font-medium text-amber-600 mt-1">⏱ {getElapsed(table.occupied_since)}</div>
+                    )}
+                    <div className={`mt-2 text-xs font-medium capitalize ${
+                      zoneDisabled || tableDisabled ? 'text-orange-500' :
+                      table.status === 'available' ? 'text-green-600' :
+                      table.status === 'billed' ? 'text-red-600' : 'text-amber-600'
+                    }`}>
+                      {tableDisabled ? 'table closed' : zoneDisabled ? 'zone closed' : table.status.replace(/_/g, ' ')}
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          )}
 
           {/* Unassigned tables — shown when a section tab is active */}
           {activeSection_obj && unassignedTables.length > 0 && (
@@ -1160,8 +1317,13 @@ export default function FloorMap() {
                 <span className="text-gray-500">Status</span>
                 <span className={`font-medium capitalize ${
                   selectedTable.status === 'available' ? 'text-green-600' :
+                  selectedTable.status === 'billed' && selectedTable.payment_done ? 'text-green-600' :
                   selectedTable.status === 'billed' ? 'text-red-600' : 'text-amber-600'
-                }`}>{selectedTable.status.replace(/_/g, ' ')}</span>
+                }`}>{
+                  selectedTable.status === 'billed' && selectedTable.payment_done ? 'Paid'
+                  : selectedTable.status === 'billed' ? 'Awaiting Payment'
+                  : selectedTable.status.replace(/_/g, ' ')
+                }</span>
               </div>
               <div className="flex justify-between items-center">
                 <span className="text-gray-500">Capacity</span>
@@ -1313,15 +1475,26 @@ export default function FloorMap() {
                   </button>
                 </>
               )}
-              {selectedTable.status === 'billed' && (
+              {selectedTable.status === 'billed' && !selectedTable.payment_done && (
                 <>
                   <div className="text-center text-xs text-red-600 font-medium py-1">Bill generated — awaiting payment</div>
+                  <button
+                    onClick={() => navigate('/orders')}
+                    className="w-full py-2.5 bg-brand-500 hover:bg-brand-600 text-white text-sm font-semibold rounded-xl transition-colors"
+                  >
+                    Go to Orders (Collect Payment)
+                  </button>
+                </>
+              )}
+              {selectedTable.status === 'billed' && selectedTable.payment_done && (
+                <>
+                  <div className="text-center text-xs text-green-600 font-medium py-1">Payment received — close table to free it</div>
                   <button
                     onClick={() => void handleCloseTable(selectedTable)}
                     disabled={actionLoading}
                     className="w-full py-2.5 bg-green-500 hover:bg-green-600 disabled:opacity-40 text-white text-sm font-semibold rounded-xl transition-colors"
                   >
-                    {actionLoading ? 'Closing...' : 'Close Table (Paid)'}
+                    {actionLoading ? 'Closing...' : 'Close Table'}
                   </button>
                 </>
               )}

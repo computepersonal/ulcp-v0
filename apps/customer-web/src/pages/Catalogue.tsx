@@ -221,6 +221,7 @@ export default function Catalogue() {
   // Session state for dine-in
   const [_sessionId, setSessionId] = useState<string | null>(null);
   const [sessionStatus, setSessionStatus] = useState<string | null>(null);
+  const [tableName, setTableName] = useState<string | null>(null);
   const isDineIn = !!tableId && DINE_IN_TYPES.includes(tenantInfo?.business_type ?? '');
 
   const tenantServiceUrl = import.meta.env.VITE_TENANT_SERVICE_URL ?? 'http://localhost:3002';
@@ -272,6 +273,22 @@ export default function Catalogue() {
             setItems(catData.data.items);
           }
         }
+
+        // Fetch table info if dine-in with table param
+        if (tableId && tenantData.data.branch_id) {
+          try {
+            const tableRes = await fetch(`${tenantServiceUrl}/api/v1/tenants/${tenantData.data.tenant_id}/branches/${tenantData.data.branch_id}/tables/public/${tableId}`);
+            if (tableRes.ok) {
+              const tableData = (await tableRes.json()) as { success: boolean; data?: { id: string; name: string; is_active: boolean; zone_active: boolean; can_order: boolean } };
+              if (tableData.success && tableData.data) {
+                setTableName(tableData.data.name);
+                if (!tableData.data.can_order) {
+                  setNotOpen(true);
+                }
+              }
+            }
+          } catch { /* ignore */ }
+        }
       } catch { /* ignore */ }
       finally { setLoading(false); }
     };
@@ -294,7 +311,7 @@ export default function Catalogue() {
     if (existing) {
       dispatch(updateQuantity({ id: existing.id, quantity: existing.quantity + 1 }));
     } else {
-      dispatch(addItem({ id: item.id, item_id: item.id, name: item.name, price: item.price, quantity: 1, tenant_id: tenantInfo.tenant_id, branch_id: tenantInfo.branch_id, business_type: tenantInfo.business_type ?? 'seated_food_only', slug }));
+      dispatch(addItem({ id: item.id, item_id: item.id, name: item.name, price: item.price, quantity: 1, tenant_id: tenantInfo.tenant_id, branch_id: tenantInfo.branch_id, business_type: tenantInfo.business_type ?? 'seated_food_only', slug, ...(tableId ? { table_id: tableId } : {}), ...(tableName ? { table_name: tableName } : {}) }));
     }
   };
 

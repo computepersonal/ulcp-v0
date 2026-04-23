@@ -1,13 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAppSelector } from '../hooks/redux';
-import {
-  getSetupProgress,
-  startSetupTask,
-  allTasksDone,
-  type SetupProgress,
-  type SetupTaskId,
-} from '../lib/setupProgress';
 
 // ─── Business type helpers ────────────────────────────────────────────────────
 
@@ -21,7 +14,16 @@ const DELIVERY_TYPES = [
   'food_truck', 'catering', 'gated_community',
 ];
 
-// ─── Task definitions ─────────────────────────────────────────────────────────
+// ─── Types ───────────────────────────────────────────────────────────────────
+
+type SetupTaskId = 'catalogue' | 'tables' | 'staff' | 'qr';
+
+interface SetupTasks {
+  catalogue: boolean;
+  tables: boolean;
+  staff: boolean;
+  qr: boolean;
+}
 
 interface SetupTask {
   id: SetupTaskId;
@@ -72,7 +74,7 @@ const ALL_TASKS: SetupTask[] = [
   },
 ];
 
-// ─── Tenant API response ──────────────────────────────────────────────────────
+// ─── API response types ──────────────────────────────────────────────────────
 
 interface TenantData {
   name: string;
@@ -83,6 +85,11 @@ interface TenantData {
 interface TenantResponse {
   success: boolean;
   data?: { tenant: TenantData };
+}
+
+interface SetupTasksResponse {
+  success: boolean;
+  data?: { setup_tasks: SetupTasks };
 }
 
 // ─── Setup page ───────────────────────────────────────────────────────────────
@@ -96,32 +103,31 @@ export default function Setup() {
   const tenantUrl = import.meta.env.VITE_TENANT_SERVICE_URL ?? 'http://localhost:3002';
 
   const [tenant, setTenant] = useState<TenantData | null>(null);
-  const [progress, setProgress] = useState<SetupProgress>(getSetupProgress(tenantId));
+  const [tasks, setTasks] = useState<SetupTasks>({ catalogue: false, tables: false, staff: false, qr: false });
   const [loading, setLoading] = useState(true);
 
-  // Re-read progress from localStorage whenever the page gains focus
-  // (user comes back from a task page via browser back or sidebar)
-  useEffect(() => {
-    const refresh = () => setProgress(getSetupProgress(tenantId));
-    window.addEventListener('focus', refresh);
-    document.addEventListener('visibilitychange', refresh);
-    return () => {
-      window.removeEventListener('focus', refresh);
-      document.removeEventListener('visibilitychange', refresh);
-    };
-  }, [tenantId]);
-
-  // Fetch tenant details (business_type, name)
+  // Fetch tenant details + setup tasks from server
   useEffect(() => {
     if (!tenantId || !token) return;
     void (async () => {
       try {
-        const res = await fetch(`${tenantUrl}/api/v1/tenants/${tenantId}`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        const data = (await res.json()) as TenantResponse;
-        if (data.success && data.data?.tenant) {
-          setTenant(data.data.tenant);
+        const [tenantRes, tasksRes] = await Promise.all([
+          fetch(`${tenantUrl}/api/v1/tenants/${tenantId}`, {
+            headers: { Authorization: `Bearer ${token}` },
+          }),
+          fetch(`${tenantUrl}/api/v1/onboarding/${tenantId}/setup-tasks`, {
+            headers: { Authorization: `Bearer ${token}` },
+          }),
+        ]);
+
+        const tenantData = (await tenantRes.json()) as TenantResponse;
+        if (tenantData.success && tenantData.data?.tenant) {
+          setTenant(tenantData.data.tenant);
+        }
+
+        const tasksData = (await tasksRes.json()) as SetupTasksResponse;
+        if (tasksData.success && tasksData.data?.setup_tasks) {
+          setTasks(tasksData.data.setup_tasks);
         }
       } finally {
         setLoading(false);
@@ -129,10 +135,28 @@ export default function Setup() {
     })();
   }, [tenantId, token, tenantUrl]);
 
-  // Also re-read progress on mount (in case user came back and banner marked a task)
+  // Re-fetch setup tasks when page regains focus (user comes back from completing a task)
   useEffect(() => {
-    setProgress(getSetupProgress(tenantId));
-  }, [tenantId]);
+    const refresh = async () => {
+      if (!tenantId || !token) return;
+      try {
+        const res = await fetch(`${tenantUrl}/api/v1/onboarding/${tenantId}/setup-tasks`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        const data = (await res.json()) as SetupTasksResponse;
+        if (data.success && data.data?.setup_tasks) {
+          setTasks(data.data.setup_tasks);
+        }
+      } catch { /* ignore */ }
+    };
+    const handler = () => void refresh();
+    window.addEventListener('focus', handler);
+    document.addEventListener('visibilitychange', handler);
+    return () => {
+      window.removeEventListener('focus', handler);
+      document.removeEventListener('visibilitychange', handler);
+    };
+  }, [tenantId, token, tenantUrl]);
 
   const businessType = tenant?.business_type ?? '';
 
@@ -142,12 +166,26 @@ export default function Setup() {
   );
 
   const taskIds = visibleTasks.map((t) => t.id);
-  const completedCount = taskIds.filter((id) => progress[id]).length;
-  const allDone = allTasksDone(progress, taskIds);
+  const completedCount = taskIds.filter((id) => tasks[id]).length;
+  const allDone = taskIds.every((id) => tasks[id]);
   const progressPct = taskIds.length > 0 ? Math.round((completedCount / taskIds.length) * 100) : 0;
 
-  const handleTaskClick = (task: SetupTask) => {
-    startSetupTask(tenantId, task.id);
+  // Mark task done on server when user navigates to it
+  const handleTaskClick = async (task: SetupTask) => {
+    // Mark as done on server (fire-and-forget)
+    if (!tasks[task.id]) {
+      try {
+        await fetch(`${tenantUrl}/api/v1/onboarding/${tenantId}/setup-tasks`, {
+          method: 'PATCH',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({ task_id: task.id }),
+        });
+        setTasks((prev) => ({ ...prev, [task.id]: true }));
+      } catch { /* ignore */ }
+    }
     navigate(task.to);
   };
 
@@ -182,7 +220,7 @@ export default function Setup() {
               onClick={() => navigate('/floor-map')}
               className="text-xs text-gray-400 hover:text-brand-500 transition-colors whitespace-nowrap ml-4"
             >
-              Skip to dashboard →
+              Skip to dashboard
             </button>
           </div>
 
@@ -204,7 +242,6 @@ export default function Setup() {
 
       {/* Task cards */}
       <div className="max-w-2xl mx-auto px-4 py-6 space-y-3">
-
         {/* Business type context pill */}
         {businessType && (
           <div className="flex items-center gap-2 mb-4">
@@ -218,13 +255,13 @@ export default function Setup() {
         )}
 
         {visibleTasks.map((task) => {
-          const done = progress[task.id];
+          const done = tasks[task.id];
           return (
             <TaskCard
               key={task.id}
               task={task}
               done={done}
-              onClick={() => handleTaskClick(task)}
+              onClick={() => void handleTaskClick(task)}
             />
           );
         })}
@@ -236,7 +273,7 @@ export default function Setup() {
               onClick={() => navigate('/floor-map')}
               className="w-full py-4 bg-brand-500 hover:bg-brand-600 text-white font-semibold rounded-xl text-base transition-colors"
             >
-              Go to dashboard →
+              Go to dashboard
             </button>
           ) : (
             <button
@@ -248,12 +285,12 @@ export default function Setup() {
           )}
         </div>
 
-        {/* Trial reminder */}
-        {tenant?.plan === 'starter' && (
+        {/* Plan info */}
+        {tenant?.plan === 'free' && (
           <div className="bg-brand-50 border border-brand-100 rounded-xl p-4 mt-2">
-            <p className="text-xs font-semibold text-brand-600">30-day Starter trial active</p>
+            <p className="text-xs font-semibold text-brand-600">Free plan active</p>
             <p className="text-xs text-brand-500 mt-0.5">
-              Inventory management, kitchen display, and more are unlocked. Enjoy!
+              Start with the free plan. Upgrade anytime to unlock inventory, analytics, and more.
             </p>
           </div>
         )}

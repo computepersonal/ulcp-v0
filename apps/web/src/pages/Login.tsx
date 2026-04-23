@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAppDispatch } from '../hooks/redux';
-import { setAuth } from '../store/authSlice';
+import { setAuth, setOnboardingStatus } from '../store/authSlice';
 
 interface TenantChoice {
   tenant_id: string;
@@ -48,6 +48,7 @@ export default function Login() {
   const [pickingTenant, setPickingTenant] = useState(false);
 
   const identityUrl = import.meta.env.VITE_IDENTITY_SERVICE_URL ?? 'http://localhost:3001';
+  const tenantServiceUrl = import.meta.env.VITE_TENANT_SERVICE_URL ?? 'http://localhost:3002';
 
   const doLogin = async (tenant_id?: string) => {
     setLoading(true);
@@ -75,13 +76,44 @@ export default function Login() {
         return;
       }
 
-      dispatch(setAuth({ token: loginData.data.access_token, user: loginData.data.user }));
+      const { access_token, user: loggedInUser } = loginData.data;
+      dispatch(setAuth({ token: access_token, user: loggedInUser }));
+
       // pending_onboarding → hasn't created a business yet
-      if (loginData.data.user.role === 'pending_onboarding') {
+      if (loggedInUser.role === 'pending_onboarding') {
         navigate('/onboard');
-      } else {
-        navigate('/floor-map');
+        return;
       }
+
+      // Has a tenant — check if onboarding is complete
+      if (loggedInUser.tenant_id) {
+        try {
+          const obRes = await fetch(
+            `${tenantServiceUrl}/api/v1/onboarding/${loggedInUser.tenant_id}`,
+            { headers: { Authorization: `Bearer ${access_token}` } }
+          );
+          if (obRes.ok) {
+            const obData = (await obRes.json()) as {
+              success: boolean;
+              data?: { onboarding_completed: boolean; onboarding_step: number };
+            };
+            if (obData.success && obData.data) {
+              dispatch(setOnboardingStatus({
+                completed: obData.data.onboarding_completed,
+                step: obData.data.onboarding_step,
+              }));
+              if (!obData.data.onboarding_completed) {
+                navigate('/onboard');
+                return;
+              }
+            }
+          }
+        } catch {
+          // If onboarding check fails, let them through — don't block login
+        }
+      }
+
+      navigate('/floor-map');
     } catch {
       setError('Unable to connect. Please check your connection.');
     } finally {

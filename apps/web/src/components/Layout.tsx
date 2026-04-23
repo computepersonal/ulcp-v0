@@ -17,7 +17,7 @@ import {
 } from 'lucide-react';
 
 import { useAppSelector, useAppDispatch } from '../hooks/redux';
-import { clearAuth } from '../store/authSlice';
+import { clearAuth, setOnboardingStatus } from '../store/authSlice';
 import { useSocket } from '../hooks/useSocket';
 
 interface NavItem {
@@ -51,19 +51,30 @@ const BASE_NAV_ITEMS: NavItem[] = [
   { to: '/settings', icon: <Settings size={20} />, label: 'Settings' }
 ];
 
+interface SetupTasks {
+  catalogue: boolean;
+  tables: boolean;
+  staff: boolean;
+  qr: boolean;
+}
+
 export default function Layout() {
   const [expanded, setExpanded] = useState(false);
   const [businessName, setBusinessName] = useState<string | null>(null);
+  const [setupTasks, setSetupTasks] = useState<SetupTasks | null>(null);
   const user = useAppSelector((s) => s.auth.user);
   const token = useAppSelector((s) => s.auth.token);
+  const onboardingCompleted = useAppSelector((s) => s.auth.onboardingCompleted);
   const dispatch = useAppDispatch();
   const navigate = useNavigate();
   useSocket(); // Initialize socket connection
 
-  // Fetch tenant name once on mount (or when tenant changes)
+  const tenantServiceUrl = import.meta.env.VITE_TENANT_SERVICE_URL ?? 'http://localhost:3002';
+
+  // Fetch tenant name + onboarding state once on mount
   useEffect(() => {
     if (!user?.tenant_id || !token) return;
-    const tenantServiceUrl = import.meta.env.VITE_TENANT_SERVICE_URL ?? 'http://localhost:3002';
+    // Fetch tenant info
     fetch(`${tenantServiceUrl}/api/v1/tenants/${user.tenant_id}`, {
       headers: { Authorization: `Bearer ${token}` },
     })
@@ -74,7 +85,30 @@ export default function Layout() {
         }
       })
       .catch(() => undefined);
-  }, [user?.tenant_id, token]);
+
+    // Fetch onboarding state
+    fetch(`${tenantServiceUrl}/api/v1/onboarding/${user.tenant_id}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+      .then((r) => r.json())
+      .then((data: {
+        success: boolean;
+        data?: {
+          onboarding_completed: boolean;
+          onboarding_step: number;
+          setup_tasks: SetupTasks;
+        };
+      }) => {
+        if (data.success && data.data) {
+          dispatch(setOnboardingStatus({
+            completed: data.data.onboarding_completed,
+            step: data.data.onboarding_step,
+          }));
+          setSetupTasks(data.data.setup_tasks);
+        }
+      })
+      .catch(() => undefined);
+  }, [user?.tenant_id, token, tenantServiceUrl, dispatch]);
 
   const navItems: NavItem[] = [
     ...BASE_NAV_ITEMS.slice(0, 3), // floor-map, orders, catalogue
@@ -168,11 +202,68 @@ export default function Layout() {
           </div>
         </header>
 
+        {/* Onboarding / setup banner */}
+        {onboardingCompleted && setupTasks && !allSetupDone(setupTasks) && (
+          <SetupBanner tasks={setupTasks} onGoToSetup={() => navigate('/setup')} />
+        )}
+
         {/* Page content */}
         <main className="flex-1 overflow-auto">
           <Outlet />
         </main>
       </div>
+    </div>
+  );
+}
+
+// ─── Helpers ─────────────────────────────────────────────────────────────────
+
+function allSetupDone(tasks: SetupTasks): boolean {
+  return tasks.catalogue && tasks.tables && tasks.staff && tasks.qr;
+}
+
+function countSetupDone(tasks: SetupTasks): number {
+  return [tasks.catalogue, tasks.tables, tasks.staff, tasks.qr].filter(Boolean).length;
+}
+
+// ─── Setup progress banner ───────────────────────────────────────────────────
+
+function SetupBanner({ tasks, onGoToSetup }: { tasks: SetupTasks; onGoToSetup: () => void }) {
+  const done = countSetupDone(tasks);
+  const total = 4;
+  const pct = Math.round((done / total) * 100);
+
+  const pendingItems: string[] = [];
+  if (!tasks.catalogue) pendingItems.push('Add catalogue');
+  if (!tasks.tables) pendingItems.push('Set up tables');
+  if (!tasks.staff) pendingItems.push('Invite staff');
+  if (!tasks.qr) pendingItems.push('Get QR code');
+
+  return (
+    <div className="bg-amber-50 border-b border-amber-200 px-6 py-2.5 flex items-center justify-between shrink-0">
+      <div className="flex items-center gap-3 min-w-0">
+        <div className="w-8 h-8 rounded-full bg-amber-100 flex items-center justify-center text-amber-600 text-sm font-bold shrink-0">
+          {done}/{total}
+        </div>
+        <div className="min-w-0">
+          <span className="text-sm font-medium text-amber-800">
+            Setup {pct}% complete
+          </span>
+          <span className="text-xs text-amber-600 ml-2 hidden sm:inline">
+            — {pendingItems.join(', ')}
+          </span>
+        </div>
+        {/* Mini progress bar */}
+        <div className="w-24 h-1.5 bg-amber-200 rounded-full overflow-hidden hidden md:block">
+          <div className="h-full bg-amber-500 rounded-full transition-all" style={{ width: `${pct}%` }} />
+        </div>
+      </div>
+      <button
+        onClick={onGoToSetup}
+        className="text-xs font-semibold text-amber-700 hover:text-amber-900 bg-amber-100 hover:bg-amber-200 px-3 py-1.5 rounded-lg transition-colors whitespace-nowrap"
+      >
+        Complete setup →
+      </button>
     </div>
   );
 }

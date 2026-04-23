@@ -19,7 +19,8 @@ model Tenant {
   // home_kitchen | cloud_kitchen | restaurant_plus_delivery | catering | food_truck |
   // gated_community | kirana | boutique | nursery | pharmacy | handicrafts |
   // bakery | stationery | custom
-  plan         String  @default("free") // free | starter | pro | enterprise
+  plan         String  @default("free") // free | premium | allinone
+  active_addons String[] @default([])   // add-on IDs: social_jukebox, inventory_procurement, customer_crm, advertising
   country      String  @default("IN")
   currency     String  @default("INR")
   timezone     String  @default("Asia/Kolkata")
@@ -46,14 +47,16 @@ model Tenant {
 
   // KOT acknowledgment mode — how kitchen acknowledges a new KOT
   // "auto"    → auto-ack after kot_ack_delay_secs (default for free plan)
-  // "kds"     → manual tap on KDS screen (default for starter+)
+  // "kds"     → manual tap on KDS screen (default for premium+)
   // "printer" → auto-ack on successful thermal print job
   kot_ack_mode       String @default("auto") // auto | kds | printer
   kot_ack_delay_secs Int    @default(60)     // seconds before auto-ack (mode=auto only)
 
   onboarding_step      Int      @default(1)
   onboarding_completed Boolean  @default(false)
-  trial_ends_at        DateTime?
+  setup_tasks          Json?    // { catalogue: bool, tables: bool, staff: bool, qr: bool } — post-onboarding checklist (server-persisted)
+  free_trial_used      Boolean   @default(false) // true once free trial has been consumed — one-time per tenant lifetime
+  trial_ends_at        DateTime? // free plan: 1 month from signup, null if no trial granted
 
   created_at DateTime @default(now())
   updated_at DateTime @updatedAt
@@ -235,11 +238,14 @@ model TableSession {
 model Subscription {
   id                       String    @id @default(cuid())
   tenant_id                String
-  plan                     String    // free | starter | pro | enterprise
+  plan                     String    // free | premium | allinone
+  type                     String    @default("plan") // "plan" | "addon"
+  addon_id                 String?   // set when type="addon" — e.g. "social_jukebox"
   started_at               DateTime  @default(now())
   expires_at               DateTime?
   razorpay_subscription_id String?
   is_active                Boolean   @default(true)
+  amount                   Int       @default(0) // monthly charge in paise
 
   created_at DateTime @default(now())
 

@@ -2,7 +2,7 @@
 
 ## Status
 
-Last updated: 2026-04-17
+Last updated: 2026-04-23
 
 ---
 
@@ -52,7 +52,8 @@ Last updated: 2026-04-17
 - **Floor map Sections:** CRUD per branch, color + position; `POST /:id/rename` atomically renames section + all prefixed tables in a single Prisma `$transaction`
 - **Audit Log:** AuditLog model (id, tenant_id, branch_id, actor_id, actor_name, actor_role, action, entity_type, entity_id, entity_name, metadata, created_at) with 5 DB indexes; `createAuditLog()` + `listAuditLogs()` with pagination/filter; `GET /:tenant_id/audit-logs` route (role-gated); table + section routes emit audit events fire-and-forget on every write operation
 - **Plan enforcement:** PLAN_ITEM_LIMITS, PLAN_BRANCH_LIMITS, PLAN_STAFF_LIMITS
-- **Onboarding wizard:** 6-step state persistence, resume support, 30-day Starter trial on completion
+- **Onboarding wizard:** 6-step state persistence, server-side resume, Zod validation per step, step ordering enforced, completeOnboarding() validates prereqs
+- **Setup tasks (post-onboarding):** `setup_tasks` JSONB field on Tenant (server-persisted), GET/PATCH endpoints, replaces localStorage-based checklist
 - **Subscription:** updateTenantPlan, transfer ownership
 - **Zod errors:** include field path (e.g. "website: Invalid url")
 
@@ -337,7 +338,8 @@ Last updated: 2026-04-17
 - **Layout:** 64px collapsed / 240px hover sidebar (lucide-react icons), top bar with branch info, `<Outlet />` routing
   - **Permission-gated Reports nav:** `canViewReports(user)` helper — owner roles bypass check, others need `reports:view` in JWT `permissions[]`; Reports link hidden from cashier/waiter/etc.
   - **Activity Log nav** — shown to tenant_owner, managing_partner, branch_manager, operations_partner, reports_analyst only
-- **ProtectedRoute:** redirects to /login if no token
+- **ProtectedRoute:** redirects to /login if no token; gates on `onboardingCompleted === false` → redirects to /onboard
+- **Onboarding gate:** Login checks onboarding state after auth; ProtectedRoute enforces it; Layout shows amber setup banner until setup tasks done
 - **ToastContainer:** fixed top-right, auto-dismiss 4s, info/success/warning/error colors
 - **useSocket hook:** Socket.io connects on login, dispatches toasts for order:new, kot:ready, inventory:critical
 - **Screens:**

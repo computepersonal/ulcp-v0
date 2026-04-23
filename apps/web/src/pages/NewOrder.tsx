@@ -160,11 +160,13 @@ export default function NewOrder() {
         );
       }
 
-      // 3. If no table from URL, fetch tables + sessions for the picker
+      // 3. If no table from URL, fetch tables + sessions + floor sections + active orders for the picker
       if (!paramTableId) {
-        const [tableRes, sessionRes] = await Promise.all([
+        const [tableRes, sessionRes, floorSectionRes, ordersRes] = await Promise.all([
           apiFetch(`${tenantUrl}/api/v1/tenants/${tenantId}/branches/${primary.id}/tables`, { headers }),
           apiFetch(`${tenantUrl}/api/v1/tenants/${tenantId}/branches/${primary.id}/sessions?status=open,pending_confirmation`, { headers }),
+          apiFetch(`${tenantUrl}/api/v1/tenants/${tenantId}/branches/${primary.id}/sections`, { headers }),
+          apiFetch(`${orderUrl}/api/v1/orders/${tenantId}?branch_id=${primary.id}&status=pending,confirmed,preparing,ready`, { headers }),
         ]);
 
         // Build session lookup: table_id → session_id
@@ -179,17 +181,46 @@ export default function NewOrder() {
           }
         }
 
+        // Build set of table IDs with active orders
+        const occupiedTableIds = new Set<string>();
+        if (ordersRes.ok) {
+          const ordData = (await ordersRes.json()) as {
+            success: boolean;
+            data?: { orders: Array<{ table_id?: string | null }> };
+          };
+          for (const o of ordData.data?.orders ?? []) {
+            if (o.table_id) occupiedTableIds.add(o.table_id);
+          }
+        }
+
+        // Build disabled zone lookup
+        const disabledZones = new Set<string>();
+        if (floorSectionRes.ok) {
+          const zoneData = (await floorSectionRes.json()) as {
+            success: boolean;
+            data?: { sections: Array<{ id: string; is_active?: boolean }> };
+          };
+          for (const z of zoneData.data?.sections ?? []) {
+            if (z.is_active === false) disabledZones.add(z.id);
+          }
+        }
+
         if (tableRes.ok) {
           const tableData = (await tableRes.json()) as {
             success: boolean;
-            data?: { tables: Array<{ id: string; name: string; status: string }> };
+            data?: { tables: Array<{ id: string; name: string; status: string; section_id?: string | null; is_active?: boolean }> };
           };
           if (tableData.success) {
             setTables(
-              (tableData.data?.tables ?? []).map((t) => ({
-                ...t,
-                session_id: sessionMap[t.id],
-              }))
+              (tableData.data?.tables ?? [])
+                // Filter out tables that are individually disabled or in a disabled zone
+                .filter((t) => t.is_active !== false && !(t.section_id && disabledZones.has(t.section_id)))
+                .map((t) => ({
+                  ...t,
+                  // If table has an active session OR active orders, it's occupied
+                  status: (sessionMap[t.id] || occupiedTableIds.has(t.id)) ? 'occupied' : t.status,
+                  session_id: sessionMap[t.id],
+                }))
             );
           }
         }
@@ -354,13 +385,16 @@ export default function NewOrder() {
                   className="px-3 py-1.5 border border-gray-200 rounded-lg text-sm outline-none focus:border-brand-400 bg-white"
                 >
                   <option value="">Select table...</option>
-                  {tables
-                    .filter((t) => t.status === 'occupied' || t.status === 'available')
-                    .map((t) => (
+                  {tables.map((t) => {
+                    const label = t.status === 'available' ? 'free'
+                      : t.status === 'pending_confirmation' ? 'pending'
+                      : t.status;
+                    return (
                       <option key={t.id} value={t.id}>
-                        {t.name} ({t.status === 'occupied' ? 'occupied' : 'free'})
+                        {t.name} ({label})
                       </option>
-                    ))}
+                    );
+                  })}
                 </select>
               )}
 

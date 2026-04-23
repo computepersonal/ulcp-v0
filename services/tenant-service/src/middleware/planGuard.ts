@@ -1,9 +1,9 @@
 import { FastifyRequest, FastifyReply } from "fastify";
-import { PlanTier, ForbiddenError } from "@ulcp/shared";
+import { PlanTier, ForbiddenError, hasFeature } from "@ulcp/shared";
 import { redisGet } from "../lib/redis";
 import { prisma } from "../lib/prisma";
 
-const PLAN_ORDER: PlanTier[] = ["free", "starter", "pro", "enterprise"];
+const PLAN_ORDER: PlanTier[] = ["free", "premium", "allinone"];
 
 function planRank(plan: string): number {
   const idx = PLAN_ORDER.indexOf(plan as PlanTier);
@@ -50,6 +50,37 @@ export function requirePlan(required: PlanTier) {
     if (planRank(plan) < planRank(required)) {
       throw new ForbiddenError(
         `This feature requires the ${required} plan or higher`
+      );
+    }
+  };
+}
+
+/**
+ * Middleware factory: ensures tenant has access to a specific feature.
+ * Checks plan tier + active add-ons.
+ */
+export function requireFeature(feature: string) {
+  return async (req: FastifyRequest, reply: FastifyReply): Promise<void> => {
+    if (!req.staff) {
+      return reply.code(401).send({ success: false, error: "Unauthorized" });
+    }
+
+    const tenantId = req.staff.tenant_id;
+    if (!tenantId) {
+      return reply.code(403).send({ success: false, error: "No tenant assigned yet" });
+    }
+
+    const tenant = await prisma.tenant.findUnique({
+      where: { id: tenantId },
+      select: { plan: true, active_addons: true },
+    });
+
+    const plan = (tenant?.plan ?? "free") as PlanTier;
+    const addons = tenant?.active_addons ?? [];
+
+    if (!hasFeature(plan, feature, addons)) {
+      throw new ForbiddenError(
+        `Feature "${feature}" is not available on your current plan. Upgrade or purchase the add-on.`
       );
     }
   };

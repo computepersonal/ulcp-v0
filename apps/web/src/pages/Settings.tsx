@@ -1,37 +1,10 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useAppSelector } from '../hooks/redux';
 import { apiFetch } from '../lib/apiFetch';
 import SetupReturnBanner from '../components/SetupReturnBanner';
+import { QRCodeSVG } from 'qrcode.react';
 
 type SettingsTab = 'business' | 'branches' | 'qr' | 'subscription' | 'promotions' | 'jukebox';
-
-const PLAN_LIMITS = {
-  free: { items: 200, staff: 5, branches: 1, price: 0 },
-  starter: { items: 500, staff: 20, branches: 3, price: 999 },
-  pro: { items: Infinity, staff: Infinity, branches: Infinity, price: 2499 }
-};
-
-function UsageMeter({ label, used, max }: { label: string; used: number; max: number }) {
-  const pct = max === Infinity ? 0 : Math.min(100, (used / max) * 100);
-  return (
-    <div>
-      <div className="flex justify-between text-sm mb-1">
-        <span className="text-gray-600">{label}</span>
-        <span className="font-medium text-gray-900">
-          {used} / {max === Infinity ? '∞' : max}
-        </span>
-      </div>
-      {max !== Infinity && (
-        <div className="h-2 bg-gray-100 rounded-full">
-          <div
-            className={`h-2 rounded-full transition-all ${pct > 80 ? 'bg-red-500' : pct > 60 ? 'bg-yellow-500' : 'bg-brand-500'}`}
-            style={{ width: `${pct}%` }}
-          />
-        </div>
-      )}
-    </div>
-  );
-}
 
 interface Promotion {
   id: string;
@@ -51,6 +24,390 @@ const VALID_PLACEMENTS = [
 ];
 
 const ADS_URL = import.meta.env.VITE_ADS_SERVICE_URL ?? 'http://localhost:3015';
+
+// ─── Subscription Tab ────────────────────────────────────────────────────────
+
+interface SubData {
+  plan: string;
+  planInfo: { name: string; tagline: string; highlights: string[] } | null;
+  monthlyPrice: number;
+  trialActive: boolean;
+  trialEndsAt: string | null;
+  freeTrialUsed: boolean;
+  activeAddons: string[];
+  addonTotal: number;
+  totalMonthly: number;
+  availableAddons: Array<{
+    id: string;
+    name: string;
+    description: string;
+    price: number;
+    active: boolean;
+  }>;
+  availablePlans: Array<{
+    tier: string;
+    name: string;
+    tagline: string;
+    price: number;
+    trialMonths?: number;
+    highlights: string[];
+  }>;
+}
+
+function SubscriptionTab({ tenantId, token }: { tenantId: string; token: string }) {
+  const [data, setData] = useState<SubData | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [upgrading, setUpgrading] = useState('');
+  const [togglingAddon, setTogglingAddon] = useState('');
+  const tenantUrl = import.meta.env.VITE_TENANT_SERVICE_URL ?? 'http://localhost:3002';
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await apiFetch(`${tenantUrl}/api/v1/tenants/${tenantId}/subscription`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.ok) {
+        const json = (await res.json()) as { success: boolean; data?: SubData };
+        if (json.data) setData(json.data);
+      }
+    } catch { /* silently fail */ }
+    setLoading(false);
+  }, [tenantId, token, tenantUrl]);
+
+  useEffect(() => { void load(); }, [load]);
+
+  const handleUpgrade = async (plan: string) => {
+    setUpgrading(plan);
+    try {
+      const res = await apiFetch(`${tenantUrl}/api/v1/tenants/${tenantId}/subscription/upgrade`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ plan }),
+      });
+      if (res.ok) await load();
+    } catch { /* silently fail */ }
+    setUpgrading('');
+  };
+
+  const handleToggleAddon = async (addonId: string, currentlyActive: boolean) => {
+    setTogglingAddon(addonId);
+    try {
+      const res = await apiFetch(`${tenantUrl}/api/v1/tenants/${tenantId}/subscription/addon`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ addon_id: addonId, action: currentlyActive ? 'remove' : 'add' }),
+      });
+      if (res.ok) await load();
+    } catch { /* silently fail */ }
+    setTogglingAddon('');
+  };
+
+  if (loading) return <div className="text-sm text-gray-400 py-8 text-center">Loading subscription...</div>;
+  if (!data) return <div className="text-sm text-red-500 py-8 text-center">Failed to load subscription details</div>;
+
+  const trialDaysLeft = data.trialEndsAt
+    ? Math.max(0, Math.ceil((new Date(data.trialEndsAt).getTime() - Date.now()) / 86400000))
+    : 0;
+
+  return (
+    <div className="max-w-3xl space-y-6">
+      {/* Trial banner */}
+      {data.plan === 'free' && data.trialActive && (
+        <div className="bg-green-50 border border-green-200 rounded-xl p-4 flex items-center justify-between">
+          <div>
+            <div className="font-semibold text-green-800">Free trial active</div>
+            <div className="text-sm text-green-600">{trialDaysLeft} days remaining — no charges until trial ends</div>
+          </div>
+          <span className="text-xs bg-green-100 text-green-700 px-3 py-1 rounded-full font-medium">TRIAL</span>
+        </div>
+      )}
+      {data.plan === 'free' && !data.trialActive && data.freeTrialUsed && (
+        <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 flex items-center justify-between">
+          <div>
+            <div className="font-semibold text-amber-800">Free trial ended</div>
+            <div className="text-sm text-amber-600">Your 1-month free trial has been used. You are now charged ₹{data.monthlyPrice}/month.</div>
+          </div>
+          <span className="text-xs bg-amber-100 text-amber-700 px-3 py-1 rounded-full font-medium">EXPIRED</span>
+        </div>
+      )}
+
+      {/* Current plan card */}
+      <div className="bg-white border-2 border-brand-200 rounded-2xl p-5 shadow-sm">
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="font-bold text-gray-900">Current Plan</h3>
+          <span className="bg-brand-100 text-brand-700 text-xs px-3 py-1 rounded-full font-semibold">
+            {data.planInfo?.name ?? data.plan}
+          </span>
+        </div>
+        <div className="text-sm text-gray-500 mb-3">{data.planInfo?.tagline}</div>
+        <div className="flex items-baseline gap-1 mb-3">
+          <span className="text-2xl font-bold text-gray-900">
+            {data.trialActive ? '₹0' : `₹${data.monthlyPrice}`}
+          </span>
+          <span className="text-sm text-gray-400">/month</span>
+          {data.trialActive && (
+            <span className="ml-2 text-xs text-gray-400 line-through">₹{data.monthlyPrice}</span>
+          )}
+        </div>
+        {data.activeAddons.length > 0 && (
+          <div className="text-sm text-gray-500 mb-1">
+            + ₹{data.addonTotal} add-ons = <span className="font-semibold text-gray-900">₹{data.totalMonthly}/month total</span>
+          </div>
+        )}
+        <ul className="mt-3 space-y-1">
+          {data.planInfo?.highlights.map((h, i) => (
+            <li key={i} className="text-sm text-gray-600 flex items-start gap-2">
+              <span className="text-green-500 mt-0.5">&#10003;</span> {h}
+            </li>
+          ))}
+        </ul>
+      </div>
+
+      {/* Plan comparison cards */}
+      <div>
+        <h3 className="font-bold text-gray-900 mb-3">Plans</h3>
+        <div className="grid gap-4" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))' }}>
+          {data.availablePlans.map((plan) => {
+            const isCurrent = plan.tier === data.plan;
+            return (
+              <div
+                key={plan.tier}
+                className={`bg-white border-2 rounded-2xl p-5 shadow-sm ${
+                  isCurrent ? 'border-brand-400 ring-1 ring-brand-200' : 'border-gray-100'
+                }`}
+              >
+                <div className="flex items-center justify-between mb-2">
+                  <h4 className="font-bold text-gray-900">{plan.name}</h4>
+                  {isCurrent && (
+                    <span className="text-[10px] bg-brand-100 text-brand-700 px-2 py-0.5 rounded-full font-semibold">CURRENT</span>
+                  )}
+                </div>
+                <div className="text-sm text-gray-500 mb-3">{plan.tagline}</div>
+                <div className="flex items-baseline gap-1 mb-4">
+                  <span className="text-xl font-bold text-gray-900">₹{plan.price}</span>
+                  <span className="text-xs text-gray-400">/month</span>
+                </div>
+                {plan.trialMonths && (
+                  <div className="text-xs text-green-600 font-medium mb-3">
+                    Free for first {plan.trialMonths} months
+                  </div>
+                )}
+                <ul className="space-y-1 mb-4">
+                  {plan.highlights.map((h, i) => (
+                    <li key={i} className="text-xs text-gray-600 flex items-start gap-1.5">
+                      <span className="text-green-500 mt-0.5">&#10003;</span> {h}
+                    </li>
+                  ))}
+                </ul>
+                {!isCurrent && (
+                  <button
+                    onClick={() => void handleUpgrade(plan.tier)}
+                    disabled={upgrading === plan.tier}
+                    className="w-full py-2 bg-brand-500 hover:bg-brand-600 disabled:opacity-50 text-white text-sm font-semibold rounded-xl transition-colors"
+                  >
+                    {upgrading === plan.tier ? 'Switching...' : `Switch to ${plan.name}`}
+                  </button>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Add-on features */}
+      <div>
+        <h3 className="font-bold text-gray-900 mb-1">Add-on Features</h3>
+        <p className="text-sm text-gray-500 mb-3">Purchase individually at ₹500/month each, works with any plan</p>
+        <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))' }}>
+          {data.availableAddons.map((addon) => (
+            <div
+              key={addon.id}
+              className={`bg-white border-2 rounded-xl p-4 shadow-sm ${
+                addon.active ? 'border-green-300 bg-green-50/30' : 'border-gray-100'
+              }`}
+            >
+              <div className="flex items-center justify-between mb-1">
+                <h4 className="font-semibold text-gray-900 text-sm">{addon.name}</h4>
+                <span className="text-sm font-bold text-gray-700">₹{addon.price}/mo</span>
+              </div>
+              <p className="text-xs text-gray-500 mb-3">{addon.description}</p>
+              <button
+                onClick={() => void handleToggleAddon(addon.id, addon.active)}
+                disabled={togglingAddon === addon.id}
+                className={`w-full py-2 text-sm font-semibold rounded-lg transition-colors disabled:opacity-50 ${
+                  addon.active
+                    ? 'bg-red-50 text-red-600 hover:bg-red-100 border border-red-200'
+                    : 'bg-brand-500 hover:bg-brand-600 text-white'
+                }`}
+              >
+                {togglingAddon === addon.id
+                  ? 'Updating...'
+                  : addon.active
+                    ? 'Remove Add-on'
+                    : 'Add to Plan'}
+              </button>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── QR Codes Tab ────────────────────────────────────────────────────────────
+
+interface QRTable {
+  id: string;
+  name: string;
+  section_name?: string;
+}
+
+function QRCodesTab({ tenantId, token }: { tenantId: string; token: string }) {
+  const [tables, setTables] = useState<QRTable[]>([]);
+  const [loading, setLoading] = useState(true);
+  const tenantUrl = import.meta.env.VITE_TENANT_SERVICE_URL ?? 'http://localhost:3002';
+  const customerBaseUrl = import.meta.env.VITE_CUSTOMER_WEB_URL ?? 'http://localhost:5174';
+
+  const loadTables = useCallback(async () => {
+    setLoading(true);
+    const headers = { Authorization: `Bearer ${token}` };
+    try {
+      // Fetch branches
+      const brRes = await apiFetch(`${tenantUrl}/api/v1/tenants/${tenantId}/branches`, { headers });
+      if (!brRes.ok) { setLoading(false); return; }
+      const brData = (await brRes.json()) as { data?: { branches?: Array<{ id: string; is_primary?: boolean }> } };
+      const primary = (brData.data?.branches ?? []).find((b) => b.is_primary) ?? brData.data?.branches?.[0];
+      if (!primary) { setLoading(false); return; }
+
+      // Fetch tables + sections in parallel
+      const [tableRes, secRes] = await Promise.all([
+        apiFetch(`${tenantUrl}/api/v1/tenants/${tenantId}/branches/${primary.id}/tables`, { headers }),
+        apiFetch(`${tenantUrl}/api/v1/tenants/${tenantId}/branches/${primary.id}/sections`, { headers }),
+      ]);
+
+      const sectionMap: Record<string, string> = {};
+      if (secRes.ok) {
+        const sd = (await secRes.json()) as { data?: { sections?: Array<{ id: string; name: string }> } };
+        for (const s of sd.data?.sections ?? []) sectionMap[s.id] = s.name;
+      }
+
+      if (tableRes.ok) {
+        const td = (await tableRes.json()) as {
+          data?: { tables?: Array<{ id: string; name: string; section_id?: string | null }> };
+        };
+        setTables(
+          (td.data?.tables ?? []).map((t) => ({
+            id: t.id,
+            name: t.name,
+            section_name: t.section_id ? sectionMap[t.section_id] : undefined,
+          }))
+        );
+      }
+    } catch { /* silently fail */ }
+    setLoading(false);
+  }, [tenantId, token, tenantUrl]);
+
+  useEffect(() => { void loadTables(); }, [loadTables]);
+
+  const getQRUrl = (tableId: string) =>
+    `${customerBaseUrl}/?tenant=${tenantId}&table=${tableId}`;
+
+  const downloadQR = (table: QRTable) => {
+    const svg = document.getElementById(`qr-${table.id}`);
+    if (!svg) return;
+    const svgData = new XMLSerializer().serializeToString(svg);
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d');
+    const img = new Image();
+    img.onload = () => {
+      canvas.width = 512;
+      canvas.height = 512;
+      if (ctx) {
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(0, 0, 512, 512);
+        ctx.drawImage(img, 0, 0, 512, 512);
+      }
+      const a = document.createElement('a');
+      a.download = `${table.name.replace(/\s+/g, '-')}-qr.png`;
+      a.href = canvas.toDataURL('image/png');
+      a.click();
+    };
+    img.src = `data:image/svg+xml;base64,${btoa(svgData)}`;
+  };
+
+  if (loading) {
+    return <div className="text-sm text-gray-400 py-8 text-center">Loading tables...</div>;
+  }
+
+  if (tables.length === 0) {
+    return (
+      <div className="text-center py-12 text-gray-400">
+        <div className="text-sm">No tables found. Add tables in the Floor Map first.</div>
+      </div>
+    );
+  }
+
+  // Group by zone
+  const zoneGroups: Record<string, QRTable[]> = {};
+  const noZone: QRTable[] = [];
+  for (const t of tables) {
+    if (t.section_name) {
+      if (!zoneGroups[t.section_name]) zoneGroups[t.section_name] = [];
+      zoneGroups[t.section_name].push(t);
+    } else {
+      noZone.push(t);
+    }
+  }
+
+  const renderQRCard = (table: QRTable) => (
+    <div key={table.id} className="bg-white border border-gray-100 rounded-xl p-4 text-center shadow-sm">
+      <QRCodeSVG
+        id={`qr-${table.id}`}
+        value={getQRUrl(table.id)}
+        size={120}
+        level="M"
+        includeMargin
+        className="mx-auto"
+      />
+      <div className="text-sm font-medium text-gray-700 mt-2">{table.name}</div>
+      <button
+        onClick={() => downloadQR(table)}
+        className="mt-2 text-xs text-brand-500 hover:text-brand-600 font-medium"
+      >
+        Download PNG
+      </button>
+    </div>
+  );
+
+  return (
+    <div className="space-y-6">
+      <div className="text-sm text-gray-500">
+        Print and place these QR codes on each table. Customers scan to view your menu and place orders.
+      </div>
+      {Object.entries(zoneGroups).map(([zone, zoneTables]) => (
+        <div key={zone}>
+          <h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wide mb-3">{zone}</h3>
+          <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))' }}>
+            {zoneTables.map(renderQRCard)}
+          </div>
+        </div>
+      ))}
+      {noZone.length > 0 && (
+        <div>
+          {Object.keys(zoneGroups).length > 0 && (
+            <h3 className="text-sm font-semibold text-gray-400 uppercase tracking-wide mb-3">Unassigned</h3>
+          )}
+          <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))' }}>
+            {noZone.map(renderQRCard)}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Promotions Tab ──────────────────────────────────────────────────────────
 
 function PromotionsTab({ tenantId, token }: { tenantId: string; token: string }) {
   const [promos, setPromos] = useState<Promotion[]>([]);
@@ -612,8 +969,7 @@ export default function Settings() {
   const auth = useAppSelector((s) => s.auth);
   const [tab, setTab] = useState<SettingsTab>('business');
 
-  const currentPlan = 'free' as keyof typeof PLAN_LIMITS;
-  const limits = PLAN_LIMITS[currentPlan];
+  const auth_token = auth.token ?? '';
 
   const tabs: Array<{ id: SettingsTab; label: string }> = [
     { id: 'business', label: 'Business' },
@@ -674,10 +1030,6 @@ export default function Settings() {
           <div className="bg-white border border-gray-100 rounded-xl p-4 shadow-sm">
             <div className="font-medium text-gray-900">Main Branch</div>
             <div className="text-sm text-gray-500 mt-1">Primary location</div>
-            <div className="flex gap-4 mt-2 text-sm text-gray-400">
-              <span>8 tables</span>
-              <span>3 sections</span>
-            </div>
           </div>
           <button className="w-full py-3 border-2 border-dashed border-gray-200 rounded-xl text-sm text-gray-400 hover:border-brand-300 hover:text-brand-500 transition-colors">
             + Add Branch (requires Starter plan)
@@ -685,22 +1037,8 @@ export default function Settings() {
         </div>
       )}
 
-      {tab === 'qr' && (
-        <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))' }}>
-          {[1, 2, 3, 4, 5, 6, 7, 8].map((n) => (
-            <div key={n} className="bg-white border border-gray-100 rounded-xl p-4 text-center shadow-sm">
-              <div className="w-16 h-16 mx-auto bg-gray-900 rounded-lg mb-2 flex items-center justify-center">
-                <div className="w-12 h-12 grid grid-cols-3 gap-0.5">
-                  {Array.from({ length: 9 }).map((_, i) => (
-                    <div key={i} className={`rounded-sm ${Math.random() > 0.5 ? 'bg-white' : 'bg-transparent'}`} />
-                  ))}
-                </div>
-              </div>
-              <div className="text-sm font-medium text-gray-700">Table {n}</div>
-              <button className="mt-2 text-xs text-brand-500 hover:text-brand-600 font-medium">Download</button>
-            </div>
-          ))}
-        </div>
+      {tab === 'qr' && auth.user?.tenant_id && auth.token && (
+        <QRCodesTab tenantId={auth.user.tenant_id} token={auth.token} />
       )}
 
       {tab === 'promotions' && auth.user?.tenant_id && auth.token && (
@@ -711,39 +1049,8 @@ export default function Settings() {
         <JukeboxTab tenantId={auth.user.tenant_id} token={auth.token} />
       )}
 
-      {tab === 'subscription' && (
-        <div className="max-w-md">
-          <div className="bg-white border-2 border-brand-200 rounded-2xl p-5 shadow-sm mb-4">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="font-bold text-gray-900">Current Plan</h3>
-              <span className="bg-brand-100 text-brand-700 text-xs px-3 py-1 rounded-full font-semibold capitalize">{currentPlan}</span>
-            </div>
-            <div className="space-y-3 mb-4">
-              <UsageMeter label="Menu Items" used={3} max={limits.items} />
-              <UsageMeter label="Staff Members" used={5} max={limits.staff} />
-              <UsageMeter label="Branches" used={1} max={limits.branches} />
-            </div>
-            <div className="text-lg font-bold text-gray-900">
-              ₹{limits.price}/month
-            </div>
-          </div>
-
-          <div className="space-y-3">
-            {(['starter', 'pro'] as const).map((plan) => (
-              <div key={plan} className="bg-white border border-gray-100 rounded-xl p-4 shadow-sm flex items-center justify-between">
-                <div>
-                  <div className="font-semibold text-gray-900 capitalize">{plan}</div>
-                  <div className="text-sm text-gray-500">
-                    {PLAN_LIMITS[plan].items === Infinity ? 'Unlimited' : PLAN_LIMITS[plan].items} items · ₹{PLAN_LIMITS[plan].price}/mo
-                  </div>
-                </div>
-                <button className="px-4 py-2 bg-brand-500 hover:bg-brand-600 text-white text-sm font-semibold rounded-xl">
-                  Upgrade
-                </button>
-              </div>
-            ))}
-          </div>
-        </div>
+      {tab === 'subscription' && auth.user?.tenant_id && (
+        <SubscriptionTab tenantId={auth.user.tenant_id} token={auth_token} />
       )}
     </div>
     </div>

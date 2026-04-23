@@ -1584,6 +1584,16 @@ CHANGE LOG ADDITIONS:
 2026-04-16: apps/web: FloorMap — zone rename cascades to all tables in that zone (atomic via new /rename endpoint); zone delete moves tables to general floor; source zone renumbers on table move
 2026-04-16: apps/web: ActivityLog page — paginated audit log (25/page), filter by entity type (tables/zones/reservations), date picker, action badge color coding, actor name + role, relative + absolute timestamps; role-gated nav item
 2026-04-16: apps/web: Catalogue — full rewrite with real API calls: add section modal, add item modal (food/veg classification, price, section assignment), availability toggle per item, section hide/show/rename/delete, delete item with confirm; empty state with action buttons
+2026-04-23: tenant-service: Tenant.setup_tasks (JSONB) — server-persisted post-onboarding checklist (catalogue/tables/staff/qr), replaces localStorage-based tracking
+2026-04-23: tenant-service: onboarding.service.ts rewritten — Zod validation per step, step ordering enforced (can't skip), completeOnboarding() validates prereqs (min step 3, business_type required), idempotent completion
+2026-04-23: tenant-service: GET /onboarding/:id returns richer state (name, business_type, slug, setup_tasks, plan, trial_ends_at)
+2026-04-23: tenant-service: GET /onboarding/:id/setup-tasks + PATCH /onboarding/:id/setup-tasks — server-side setup task progress endpoints
+2026-04-23: apps/web: authSlice extended — onboardingCompleted + onboardingStep persisted in localStorage, setOnboardingStatus() action
+2026-04-23: apps/web: Login.tsx — after login, fetches onboarding state from tenant-service; redirects to /onboard if not completed
+2026-04-23: apps/web: ProtectedRoute — gates on onboardingCompleted === false → redirects to /onboard (prevents accessing dashboard before onboarding)
+2026-04-23: apps/web: Layout — fetches onboarding + setup_tasks on mount; shows amber SetupBanner below top bar when setup tasks incomplete (progress count, percentage, pending items, "Complete setup →" link)
+2026-04-23: apps/web: Onboard.tsx — full 6-step wizard (was 4): Business Type → Details → Profile → Catalogue → Operations → Go Live; resumes from server-side step on reload; pre-populates fields from server state
+2026-04-23: apps/web: Setup.tsx — migrated from localStorage to server-side setup_tasks API; re-fetches on page focus; marks tasks done via PATCH endpoint; works across devices/browsers
 
 ---
 

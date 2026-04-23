@@ -20,12 +20,13 @@ import { redisPublish } from "../lib/redis";
 import { logger } from "../lib/logger";
 import { Prisma } from "../generated/prisma";
 import { scheduleKotAutoAck, cancelKotAutoAck } from "../lib/queue";
+import { updateTableStatus } from "../lib/tenantClient";
 
-// Commission rates from env (fallback to CLAUDE.md constants)
+// Commission rates from env (fallback to plan constants)
 const COMMISSION_RATES: Record<string, number> = {
   free: parseFloat(process.env["COMMISSION_FREE"] ?? "3"),
-  starter: parseFloat(process.env["COMMISSION_STARTER"] ?? "2"),
-  pro: parseFloat(process.env["COMMISSION_PRO"] ?? "1.5"),
+  premium: parseFloat(process.env["COMMISSION_PREMIUM"] ?? "2"),
+  allinone: parseFloat(process.env["COMMISSION_ALLINONE"] ?? "1.5"),
 };
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -253,6 +254,12 @@ export async function placeOrder(input: CreateOrderInput) {
   // Record initial status in history
   await createStatusHistory(order.id, "pending", input.placed_by);
 
+  // Mark table as occupied in tenant-service (fire-and-forget)
+  if (input.table_id && input.type === "dine_in") {
+    updateTableStatus(input.tenant_id, input.branch_id, input.table_id, "occupied")
+      .catch((err: unknown) => logger.warn({ err, table_id: input.table_id }, "Failed to mark table occupied"));
+  }
+
   // Publish event — non-blocking
   const orderItems = input.items as Array<{ quantity?: number }>;
   const item_count = orderItems.reduce((sum, i) => sum + (i.quantity ?? 1), 0);
@@ -357,6 +364,12 @@ export async function changeOrderStatus(
     await handleOrderCompleted(order_id, tenant_id, order.total);
   }
 
+  // When order reaches "ready", mark table as billed (bill generated, awaiting payment)
+  if (new_status === "ready" && order.table_id && order.branch_id) {
+    updateTableStatus(tenant_id, order.branch_id, order.table_id, "billed")
+      .catch((err: unknown) => logger.warn({ err, table_id: order.table_id }, "Failed to mark table billed on ready"));
+  }
+
   await redisPublish(
     "ORDER_STATUS_CHANGED",
     JSON.stringify({ order_id, tenant_id, status: new_status })
@@ -384,6 +397,12 @@ export async function recordPayment(
 
   // Commission calculation on completion
   await handleOrderCompleted(order_id, tenant_id, order.total);
+
+  // Mark table as billed (fire-and-forget) — staff must "Close Table" to free it
+  if (order.table_id && order.branch_id) {
+    updateTableStatus(tenant_id, order.branch_id, order.table_id, "billed")
+      .catch((err: unknown) => logger.warn({ err, table_id: order.table_id }, "Failed to mark table billed"));
+  }
 
   await redisPublish(
     "PAYMENT_COMPLETED",

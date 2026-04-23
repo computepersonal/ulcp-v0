@@ -9,6 +9,8 @@ import {
   updateTableById,
   deleteTableById,
 } from "../services/table.service";
+import { findTableById, updateTable } from "../repositories/table.repository";
+import { prisma } from "../lib/prisma";
 import { createAuditLog } from "../repositories/auditLog.repository";
 import { logger } from "../lib/logger";
 
@@ -40,12 +42,42 @@ const updateTableSchema = z.object({
   position: z.number().int().min(0).optional(),
   is_active: z.boolean().optional(),
   section_id: z.string().nullable().optional(),
+  status: z.enum(['available', 'occupied', 'billed', 'pending_confirmation']).optional(),
 });
 
 type BranchParams = { tenant_id: string; branch_id: string };
 type TableParams = { tenant_id: string; branch_id: string; id: string };
 
 export async function tableRoutes(fastify: FastifyInstance): Promise<void> {
+  // GET /tenants/:tenant_id/branches/:branch_id/tables/public/:id — public table info (for QR scan)
+  fastify.get<{ Params: TableParams }>(
+    "/public/:id",
+    { schema: { summary: "Get public table info (no auth)", tags: ["Tables"] } },
+    async (req, reply) => {
+      const table = await findTableById(req.params.id, req.params.tenant_id);
+      if (!table) {
+        return reply.code(404).send(apiError("Table not found"));
+      }
+      // Check zone status if table has a section
+      let zoneActive = true;
+      if (table.section_id) {
+        const section = await prisma.section.findFirst({
+          where: { id: table.section_id, tenant_id: req.params.tenant_id },
+          select: { is_active: true, name: true },
+        });
+        if (section && !section.is_active) zoneActive = false;
+      }
+      return reply.send(apiSuccess({
+        id: table.id,
+        name: table.name,
+        capacity: table.capacity,
+        is_active: table.is_active,
+        zone_active: zoneActive,
+        can_order: table.is_active && zoneActive,
+      }));
+    }
+  );
+
   // POST /tenants/:tenant_id/branches/:branch_id/tables
   fastify.post<{ Params: BranchParams }>(
     "/",
@@ -284,6 +316,38 @@ export async function tableRoutes(fastify: FastifyInstance): Promise<void> {
         if (err instanceof AppError) return reply.code(err.statusCode).send(apiError(err.message));
         throw err;
       }
+    }
+  );
+
+  // PATCH /tenants/:tenant_id/branches/:branch_id/tables/:id/status — internal: update table status
+  // Secured by X-Internal-Secret header (service-to-service only)
+  fastify.patch<{ Params: TableParams; Body: { status: string } }>(
+    "/:id/status",
+    {
+      schema: {
+        summary: "Update table status (internal)",
+        tags: ["Tables"],
+      },
+    },
+    async (req, reply) => {
+      const internalSecret = req.headers["x-internal-secret"] as string | undefined;
+      if (!internalSecret || internalSecret !== process.env["INTERNAL_API_SECRET"]) {
+        return reply.code(403).send(apiError("Forbidden"));
+      }
+
+      const { status } = req.body ?? {};
+      const validStatuses = ["available", "occupied", "billed", "pending_confirmation"];
+      if (!status || !validStatuses.includes(status)) {
+        return reply.code(400).send(apiError("Invalid status"));
+      }
+
+      const table = await findTableById(req.params.id, req.params.tenant_id);
+      if (!table || table.branch_id !== req.params.branch_id) {
+        return reply.code(404).send(apiError("Table not found"));
+      }
+
+      const updated = await updateTable(req.params.id, { status });
+      return reply.send(apiSuccess({ table: updated }));
     }
   );
 }

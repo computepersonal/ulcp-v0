@@ -27,6 +27,7 @@ interface OrderDetail {
   id: string;
   order_number: string;
   table_id?: string;
+  table_name?: string;
   type: string;
   status: OrderStatus;
   subtotal: number;
@@ -43,6 +44,7 @@ interface OrderData {
   id: string;
   order_number: string;
   table_id?: string;
+  table_name?: string;
   type?: string;
   item_count: number;
   total: number;
@@ -333,7 +335,12 @@ export default function Orders() {
                       onClick={() => { void openOrder(order); }}
                       className={`bg-white border border-l-4 ${STATUS_COLORS[order.status]} border-gray-100 rounded-xl p-4 shadow-sm cursor-pointer hover:shadow-md transition-shadow ${selectedOrder?.id === order.id ? 'ring-2 ring-brand-500' : ''}`}
                     >
-                      <div className="font-bold text-gray-900 text-sm">{order.order_number}</div>
+                      <div className="flex items-center justify-between">
+                        <div className="font-bold text-gray-900 text-sm">{order.order_number}</div>
+                        {order.table_name && (
+                          <span className="text-xs font-semibold bg-brand-50 text-brand-700 px-2 py-0.5 rounded-full">{order.table_name}</span>
+                        )}
+                      </div>
                       <div className="text-xs text-gray-500 capitalize mt-0.5">{order.type?.replace(/_/g, ' ')}</div>
                       <div className="flex justify-between items-center mt-2">
                         <span className="text-xs text-gray-400">{order.item_count} items</span>
@@ -393,6 +400,12 @@ export default function Orders() {
                   <span>Type</span>
                   <span className="capitalize font-medium text-gray-700">{selectedOrder.type.replace(/_/g, ' ')}</span>
                 </div>
+                {selectedOrder.table_name && (
+                  <div className="flex justify-between">
+                    <span>Table</span>
+                    <span className="font-semibold text-brand-600">{selectedOrder.table_name}</span>
+                  </div>
+                )}
                 <div className="flex justify-between">
                   <span>Placed</span>
                   <span className="font-medium text-gray-700">{getElapsed(selectedOrder.created_at)}</span>

@@ -52,6 +52,8 @@ export default function Checkout() {
           branch_id: cart.branch_id,
           type: 'dine_in',
           business_type: cart.business_type ?? 'seated_food_only',
+          ...(cart.table_id ? { table_id: cart.table_id } : {}),
+          ...(cart.table_name ? { table_name: cart.table_name } : {}),
           items: cart.items.map(i => ({
             id: i.item_id,
             name: i.name,
