@@ -59,7 +59,7 @@ export function HomeAdBanner({ ad, onImpression, onClick }: Props) {
           className="text-xs font-semibold px-3 py-1.5 rounded-lg text-white shrink-0 transition-colors"
           style={{ background: ad.brand_color ?? "#6366F1" }}
         >
-          {ad.cta_text}
+          {ad.cta_text ?? 'Learn More'}
         </button>
       </div>
     </div>

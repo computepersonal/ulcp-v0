@@ -56,6 +56,7 @@ interface CreateModalProps {
 
 function CreateModal({ tables, defaultDate, onClose, onSave }: CreateModalProps) {
   const [name, setName] = useState('');
+  const [countryCode, setCountryCode] = useState('+91');
   const [phone, setPhone] = useState('');
   const [email, setEmail] = useState('');
   const [pax, setPax] = useState(2);
@@ -68,11 +69,13 @@ function CreateModal({ tables, defaultDate, onClose, onSave }: CreateModalProps)
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!name.trim() || !phone.trim()) { setError('Name and phone are required'); return; }
+    const digits = phone.replace(/\D/g, '');
+    if (!name.trim() || !digits) { setError('Name and phone are required'); return; }
+    if (digits.length !== 10) { setError('Phone number must be exactly 10 digits'); return; }
     setSaving(true);
     setError('');
     try {
-      await onSave({ customer_name: name.trim(), customer_phone: phone.trim(), customer_email: email.trim(), pax, date, time_slot: timeSlot, table_id: tableId, notes: notes.trim() });
+      await onSave({ customer_name: name.trim(), customer_phone: `${countryCode} ${digits}`, customer_email: email.trim(), pax, date, time_slot: timeSlot, table_id: tableId, notes: notes.trim() });
       onClose();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to create reservation');
@@ -107,15 +110,36 @@ function CreateModal({ tables, defaultDate, onClose, onSave }: CreateModalProps)
                 className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm outline-none focus:border-brand-500"
               />
             </div>
-            <div>
+            <div className="col-span-2">
               <label className="text-sm font-medium text-gray-700 block mb-1">Phone *</label>
-              <input
-                type="tel" value={phone} onChange={(e) => setPhone(e.target.value)}
-                placeholder="+91 98765 43210"
-                className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm outline-none focus:border-brand-500"
-              />
+              <div className="flex gap-2">
+                <select
+                  value={countryCode} onChange={(e) => setCountryCode(e.target.value)}
+                  className="border border-gray-200 rounded-xl px-2 py-2.5 text-sm outline-none focus:border-brand-500 bg-white w-[90px] shrink-0"
+                >
+                  <option value="+91">+91</option>
+                  <option value="+1">+1</option>
+                  <option value="+44">+44</option>
+                  <option value="+971">+971</option>
+                  <option value="+65">+65</option>
+                  <option value="+61">+61</option>
+                  <option value="+81">+81</option>
+                  <option value="+86">+86</option>
+                  <option value="+49">+49</option>
+                  <option value="+33">+33</option>
+                </select>
+                <input
+                  type="tel" value={phone}
+                  onChange={(e) => { const v = e.target.value.replace(/\D/g, '').slice(0, 10); setPhone(v); }}
+                  placeholder="9876543210" maxLength={10}
+                  className="flex-1 border border-gray-200 rounded-xl px-4 py-2.5 text-sm outline-none focus:border-brand-500"
+                />
+              </div>
+              {phone && phone.replace(/\D/g, '').length > 0 && phone.replace(/\D/g, '').length !== 10 && (
+                <p className="text-xs text-amber-600 mt-1">{phone.replace(/\D/g, '').length}/10 digits</p>
+              )}
             </div>
-            <div>
+            <div className="col-span-2">
               <label className="text-sm font-medium text-gray-700 block mb-1">Email</label>
               <input
                 type="email" value={email} onChange={(e) => setEmail(e.target.value)}
@@ -217,7 +241,7 @@ function ReservationCard({ res, onStatusChange, onDelete }: ReservationCardProps
               {STATUS_LABELS[res.status]}
             </span>
           </div>
-          <div className="text-sm text-gray-500 mt-0.5">{res.customer_phone}</div>
+          <div className="text-sm text-gray-500 mt-0.5 font-mono">{res.customer_phone}</div>
         </div>
         <div className="text-right shrink-0">
           <div className="font-mono text-sm font-semibold text-gray-900">{res.time_slot}</div>

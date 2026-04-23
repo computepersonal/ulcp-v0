@@ -439,11 +439,7 @@ function PromotionsTab({ tenantId, token }: { tenantId: string; token: string })
   const handleSave = async () => {
     setFormError(null);
 
-    // Validate CTA URL if provided
-    if (form.cta_url && !/^https?:\/\/.+/.test(form.cta_url)) {
-      setFormError('CTA Link must be a valid URL (e.g. https://example.com)');
-      return;
-    }
+    // No URL validation — for in-house promotions cta_url can be a section name (e.g. "desserts")
 
     setSaving(true);
     try {
@@ -591,11 +587,11 @@ function PromotionsTab({ tenantId, token }: { tenantId: string; token: string })
               />
             </div>
             <div>
-              <label className="text-xs font-medium text-gray-500 uppercase tracking-wide">CTA Link <span className="text-gray-400 normal-case">(optional)</span></label>
+              <label className="text-xs font-medium text-gray-500 uppercase tracking-wide">Menu Section <span className="text-gray-400 normal-case">(optional)</span></label>
               <input
                 value={form.cta_url}
                 onChange={e => setForm(f => ({ ...f, cta_url: e.target.value }))}
-                placeholder="https://example.com"
+                placeholder="e.g. desserts, starters, drinks"
                 className="mt-1 w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-brand-500"
               />
             </div>

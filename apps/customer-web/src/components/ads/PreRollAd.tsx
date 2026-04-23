@@ -44,12 +44,12 @@ export function PreRollAd({ ad, onSkip, onComplete }: Props) {
         <div className="text-white text-2xl font-bold mb-2">{ad.headline}</div>
         {ad.body && <div className="text-white/80 text-sm mb-4">{ad.body}</div>}
         <a
-          href={ad.cta_url}
+          href={ad.cta_url ?? '#'}
           target="_blank"
           rel="noreferrer"
           className="inline-block px-6 py-2.5 rounded-full font-semibold text-sm text-white border border-white/60 hover:bg-white/10 transition-colors"
         >
-          {ad.cta_text}
+          {ad.cta_text ?? 'Learn More'}
         </a>
       </div>
 

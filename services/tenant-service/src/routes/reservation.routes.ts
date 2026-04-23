@@ -8,7 +8,9 @@ import {
   findReservationById,
   updateReservation,
   deleteReservation,
+  countActiveReservations,
 } from "../repositories/reservation.repository";
+import { prisma } from "../lib/prisma";
 
 const genericOk = {
   type: "object",
@@ -81,9 +83,35 @@ export async function reservationRoutes(fastify: FastifyInstance): Promise<void>
       if (!body.success) {
         return reply.code(400).send(apiError(body.error.errors[0]?.message ?? "Validation error"));
       }
+
+      const { tenant_id, branch_id } = req.params;
+      const { date, time_slot, table_id } = body.data;
+
+      // ── Capacity check: active reservations vs total tables ──
+      const [activeCount, totalTables] = await Promise.all([
+        countActiveReservations(tenant_id, branch_id, date, time_slot),
+        prisma.table.count({ where: { tenant_id, branch_id, is_active: true } }),
+      ]);
+
+      if (activeCount >= totalTables) {
+        return reply.code(400).send(apiError(
+          `All ${totalTables} tables are reserved for ${time_slot} on ${date}. No availability.`
+        ));
+      }
+
+      // ── If a specific table is requested, check it's not already booked ──
+      if (table_id) {
+        const tableConflict = await countActiveReservations(tenant_id, branch_id, date, time_slot, table_id);
+        if (tableConflict > 0) {
+          return reply.code(400).send(apiError(
+            `This table is already reserved for ${time_slot} on ${date}. Please choose another table.`
+          ));
+        }
+      }
+
       const reservation = await createReservation({
-        tenant_id: req.params.tenant_id,
-        branch_id: req.params.branch_id,
+        tenant_id,
+        branch_id,
         created_by: req.staff?.user_id,
         ...body.data,
       });

@@ -63,3 +63,26 @@ export async function updateReservation(
 export async function deleteReservation(id: string, tenant_id: string) {
   return prisma.reservation.deleteMany({ where: { id, tenant_id } });
 }
+
+/**
+ * Count active (non-cancelled, non-no_show) reservations for a date + time slot.
+ * Optionally filter by a specific table_id.
+ */
+export async function countActiveReservations(
+  tenant_id: string,
+  branch_id: string,
+  date: string,
+  time_slot: string,
+  table_id?: string
+): Promise<number> {
+  return prisma.reservation.count({
+    where: {
+      tenant_id,
+      branch_id,
+      date,
+      time_slot,
+      status: { notIn: ["cancelled", "no_show", "completed"] },
+      ...(table_id ? { table_id } : {}),
+    },
+  });
+}

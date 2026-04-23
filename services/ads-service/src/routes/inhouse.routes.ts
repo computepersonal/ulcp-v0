@@ -8,7 +8,7 @@ const createInHouseSchema = z.object({
   headline: z.string().max(60),
   body: z.string().max(150).optional(),
   cta_text: z.string().optional(),
-  cta_url: z.string().url().optional(),
+  cta_url: z.string().optional(),
   image_url: z.string().optional(),
   logo_url: z.string().optional(),
   brand_color: z.string().optional(),

@@ -1,11 +1,13 @@
 export interface ServedAd {
   campaign_id: string;
   creative_id: string;
+  type: string;
+  tenant_id: string | null;
   format: string;
   headline: string;
   body: string | null;
-  cta_text: string;
-  cta_url: string;
+  cta_text: string | null;
+  cta_url: string | null;
   image_url: string | null;
   logo_url: string | null;
   brand_color: string | null;

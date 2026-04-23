@@ -37,11 +37,13 @@ export interface AdContext {
 export interface ServedAd {
   campaign_id: string;
   creative_id: string;
+  type: string;
+  tenant_id: string | null;
   format: string;
   headline: string;
   body: string | null;
-  cta_text: string;
-  cta_url: string;
+  cta_text: string | null;
+  cta_url: string | null;
   image_url: string | null;
   logo_url: string | null;
   brand_color: string | null;
@@ -109,6 +111,8 @@ export async function getAdsForContext(ctx: AdContext): Promise<ServedAd[]> {
     // Daily budget check — skip if > 0 (would need spend tracking; for now 0 = unlimited)
     // Placement allowed by plan
     if (c.type === "in_house") {
+      // In-house promotions never appear on explore (only external ads)
+      if (placement === "explore_nearby") return false;
       // In-house: only show for the matching tenant
       if (tenant_id && c.tenant_id !== tenant_id) return false;
       return true;
@@ -149,6 +153,8 @@ export async function getAdsForContext(ctx: AdContext): Promise<ServedAd[]> {
     result.push({
       campaign_id: campaign.id,
       creative_id: creative.id,
+      type: campaign.type,
+      tenant_id: campaign.tenant_id,
       format: creative.format,
       headline: creative.headline,
       body: creative.body,

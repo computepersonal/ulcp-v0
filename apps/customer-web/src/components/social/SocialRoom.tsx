@@ -1,6 +1,8 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import { useSocial, SocialMessage, SocialUser, SocialContent, PrivateChatMeta } from '../../context/SocialContext';
 import { useJukebox, type NowPlaying } from '../../context/JukeboxContext';
+import { useAds } from '../ads/useAds';
+import type { ServedAd } from '../ads/types';
 import { useAppSelector } from '../../hooks/redux';
 import PeoplePanel from './PeoplePanel';
 import ActionMenu from './ActionMenu';
@@ -28,7 +30,8 @@ interface Props {
 type UnifiedItem =
   | { kind: 'text'; timestamp: number; data: SocialMessage }
   | { kind: 'rich'; timestamp: number; data: SocialContent }
-  | { kind: 'jukebox_np'; timestamp: number; data: NowPlaying };
+  | { kind: 'jukebox_np'; timestamp: number; data: NowPlaying }
+  | { kind: 'ad_bot'; timestamp: number; data: ServedAd };
 
 const BROADCAST_EMOJIS = ['🎉', '🔥', '❤️', '😂', '😮', '🥳', '🙌', '💃', '🍹', '🎊', '👏', '✨'];
 
@@ -49,6 +52,56 @@ export default function SocialRoom({ tenantId, branchId, placeName, onClose, onL
   } = useSocial();
 
   const { nowPlaying, pricePerSong, fetchStatus } = useJukebox();
+
+  // ─── Ads ─────────────────────────────────────────────────────────────────
+  const { ads: socialAds, recordClick: recordAdClick } = useAds({
+    placement: 'social_room',
+    tenant_id: tenantId,
+    branch_id: branchId,
+    limit: 10,
+  });
+
+  // Rotating banner index
+  const [bannerIdx, setBannerIdx] = useState(0);
+  useEffect(() => {
+    if (socialAds.length <= 1) return;
+    const interval = setInterval(() => {
+      setBannerIdx(prev => (prev + 1) % socialAds.length);
+    }, 8000);
+    return () => clearInterval(interval);
+  }, [socialAds.length]);
+
+  // Bot ad messages injected into chat — one every 2 minutes, cycling through ads
+  const [botAdCards, setBotAdCards] = useState<Array<{ id: string; timestamp: number; ad: ServedAd }>>([]);
+  const botAdTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const botAdIndexRef = useRef(0);
+
+  useEffect(() => {
+    if (socialAds.length === 0) return;
+    // Inject first one after 30 seconds, then every 2 minutes
+    const injectAd = () => {
+      const ad = socialAds[botAdIndexRef.current % socialAds.length];
+      botAdIndexRef.current += 1;
+      setBotAdCards(prev => [...prev, { id: crypto.randomUUID(), timestamp: Date.now(), ad }]);
+    };
+    const firstTimeout = setTimeout(injectAd, 30000);
+    botAdTimerRef.current = setInterval(injectAd, 120000);
+    return () => {
+      clearTimeout(firstTimeout);
+      if (botAdTimerRef.current) clearInterval(botAdTimerRef.current);
+    };
+  }, [socialAds]);
+
+  const handleAdClick = useCallback(async (ad: ServedAd) => {
+    await recordAdClick(ad, crypto.randomUUID());
+    if (ad.type === 'in_house') {
+      // In-house promotions navigate to catalogue — cta_url holds section/path hint
+      const cataloguePath = ad.cta_url ? `/menu?section=${encodeURIComponent(ad.cta_url)}` : '/menu';
+      window.location.href = cataloguePath;
+    } else if (ad.cta_url) {
+      window.open(ad.cta_url, '_blank', 'noopener');
+    }
+  }, [recordAdClick]);
 
   const [input, setInput] = useState('');
   const [showPeople, setShowPeople] = useState(false);
@@ -96,7 +149,7 @@ export default function SocialRoom({ tenantId, branchId, placeName, onClose, onL
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [state.messages, state.richMessages, jukeboxNpCards]);
+  }, [state.messages, state.richMessages, jukeboxNpCards, botAdCards]);
 
   useEffect(() => {
     requestUsers(tenantId, branchId);
@@ -148,6 +201,7 @@ export default function SocialRoom({ tenantId, branchId, placeName, onClose, onL
     ...state.messages.map((m): UnifiedItem => ({ kind: 'text', timestamp: m.timestamp, data: m })),
     ...state.richMessages.map((m): UnifiedItem => ({ kind: 'rich', timestamp: m.timestamp, data: m })),
     ...jukeboxNpCards.map((c): UnifiedItem => ({ kind: 'jukebox_np', timestamp: c.timestamp, data: c.data })),
+    ...botAdCards.map((c): UnifiedItem => ({ kind: 'ad_bot', timestamp: c.timestamp, data: c.ad })),
   ].sort((a, b) => a.timestamp - b.timestamp);
 
   const renderTextMessage = (msg: SocialMessage) => {
@@ -205,6 +259,33 @@ export default function SocialRoom({ tenantId, branchId, placeName, onClose, onL
         {np.dedication_message && (
           <p className="text-gray-400 text-xs mt-1 italic">&ldquo;{np.dedication_message}&rdquo;</p>
         )}
+      </div>
+    </div>
+  );
+
+  const renderBotAdCard = (ad: ServedAd, key: string) => (
+    <div key={key} className="flex gap-2 mb-3">
+      <div className="w-8 h-8 rounded-full bg-gradient-to-br from-amber-500 to-orange-500 flex items-center justify-center text-sm shrink-0">📢</div>
+      <div className="max-w-xs">
+        <span className="text-xs text-gray-500 ml-1 mb-0.5 block">Sponsored</span>
+        <div
+          className="rounded-2xl rounded-tl-sm px-4 py-3 border cursor-pointer hover:brightness-110 transition-all"
+          style={{
+            background: ad.brand_color ? `${ad.brand_color}20` : 'rgba(99,102,241,0.15)',
+            borderColor: ad.brand_color ? `${ad.brand_color}40` : 'rgba(99,102,241,0.3)',
+          }}
+          onClick={() => { void handleAdClick(ad); }}
+        >
+          <p className="text-white text-sm font-semibold">{ad.headline}</p>
+          {ad.body && <p className="text-gray-300 text-xs mt-1">{ad.body}</p>}
+          {ad.cta_text && (
+            <span className="inline-block mt-2 text-xs font-semibold px-3 py-1 rounded-full text-white"
+              style={{ background: ad.brand_color ?? '#6366F1' }}
+            >
+              {ad.cta_text} →
+            </span>
+          )}
+        </div>
       </div>
     </div>
   );
@@ -285,6 +366,40 @@ export default function SocialRoom({ tenantId, branchId, placeName, onClose, onL
         ))}
       </div>
 
+      {/* Rotating Ad Banner */}
+      {socialAds.length > 0 && (() => {
+        const ad = socialAds[bannerIdx % socialAds.length];
+        return (
+          <div
+            className="flex items-center gap-3 px-4 py-2 border-b border-white/10 cursor-pointer hover:bg-white/5 transition-colors"
+            style={{ background: ad.brand_color ? `${ad.brand_color}15` : 'rgba(99,102,241,0.08)' }}
+            onClick={() => { void handleAdClick(ad); }}
+          >
+            <div
+              className="w-6 h-6 rounded-md flex items-center justify-center text-white text-xs font-bold shrink-0"
+              style={{ background: ad.brand_color ?? '#6366F1' }}
+            >
+              📢
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-white text-xs font-semibold truncate">{ad.headline}</p>
+              {ad.body && <p className="text-gray-400 text-[10px] truncate">{ad.body}</p>}
+            </div>
+            {ad.cta_text && (
+              <span
+                className="text-[10px] font-semibold px-2.5 py-1 rounded-full text-white shrink-0"
+                style={{ background: ad.brand_color ?? '#6366F1' }}
+              >
+                {ad.cta_text}
+              </span>
+            )}
+            {socialAds.length > 1 && (
+              <span className="text-[9px] text-gray-600 shrink-0">{bannerIdx + 1}/{socialAds.length}</span>
+            )}
+          </div>
+        );
+      })()}
+
       {/* Pinned Trivia Card */}
       {state.trivia.status !== 'idle' && state.trivia.status !== 'finished' && (
         <TriviaCard
@@ -303,6 +418,9 @@ export default function SocialRoom({ tenantId, branchId, placeName, onClose, onL
           }
           if (item.kind === 'jukebox_np') {
             return renderJukeboxNpCard(item.data, `jnp-${item.timestamp}`);
+          }
+          if (item.kind === 'ad_bot') {
+            return renderBotAdCard(item.data, `ad-${item.timestamp}`);
           }
           return (
             <RichMessageCard

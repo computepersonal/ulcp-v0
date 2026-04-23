@@ -66,7 +66,7 @@ export function NativeAdCard({ ad, onDismiss, onImpression, onClick }: Props) {
           onClick={onClick}
           className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-brand-500 text-white hover:bg-brand-600 transition-colors"
         >
-          {ad.cta_text}
+          {ad.cta_text ?? 'Learn More'}
         </button>
         {onDismiss && (
           <button
