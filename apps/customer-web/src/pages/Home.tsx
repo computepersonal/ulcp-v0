@@ -1,5 +1,8 @@
+import { useState } from 'react';
 import { useAppSelector } from '../hooks/redux';
 import BottomNav from '../components/BottomNav';
+import ProfileDrawer from '../components/ProfileDrawer';
+import ExploreDrawer from '../components/ExploreDrawer';
 
 interface SavedPlace {
   tenantId: string;
@@ -20,6 +23,8 @@ function getGreeting(): string {
 
 export default function Home() {
   const name = useAppSelector(s => s.auth.name);
+  const [showProfile, setShowProfile] = useState(false);
+  const [showExplore, setShowExplore] = useState(false);
 
   const savedPlaces: SavedPlace[] = (() => {
     try {
@@ -43,9 +48,9 @@ export default function Home() {
       {/* Header */}
       <header className="bg-white sticky top-0 z-20 border-b border-gray-100">
         <div className="max-w-lg mx-auto px-4 h-14 flex items-center justify-between">
-          <button className="text-gray-600 text-xl">☰</button>
+          <button onClick={() => setShowExplore(true)} className="text-gray-600 text-xl">☰</button>
           <div className="font-bold text-brand-500 text-lg">LocalCommerce</div>
-          <button className="w-8 h-8 bg-brand-100 rounded-full flex items-center justify-center text-brand-500 text-sm font-bold">
+          <button onClick={() => setShowProfile(true)} className="w-8 h-8 bg-brand-100 rounded-full flex items-center justify-center text-brand-500 text-sm font-bold">
             {name ? name[0].toUpperCase() : '?'}
           </button>
         </div>
@@ -115,6 +120,16 @@ export default function Home() {
       </div>
 
       <BottomNav homeLink="/" showMenu={false} />
+
+      {/* Left drawer — Explore, places, events, party packages */}
+      <ExploreDrawer isOpen={showExplore} onClose={() => setShowExplore(false)} />
+
+      {/* Right drawer — Profile, orders, rewards, settings */}
+      <ProfileDrawer
+        isOpen={showProfile}
+        onClose={() => setShowProfile(false)}
+        onLoginRequest={() => setShowProfile(false)}
+      />
     </div>
   );
 }

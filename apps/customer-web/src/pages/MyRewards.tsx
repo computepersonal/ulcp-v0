@@ -100,10 +100,15 @@ export default function MyRewards() {
 
   if (!auth.token) {
     return (
-      <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center px-6 text-center">
-        <div className="text-5xl mb-4">🔐</div>
-        <h1 className="text-xl font-bold text-gray-900">Sign in to view rewards</h1>
-        <p className="text-gray-500 text-sm mt-2">Your loyalty points and offers will appear here</p>
+      <div className="min-h-screen bg-gray-50 flex flex-col">
+        <div className="px-4 pt-4">
+          <button onClick={() => navigate(-1)} className="text-gray-500 hover:text-gray-900 text-sm font-medium">← Back</button>
+        </div>
+        <div className="flex-1 flex flex-col items-center justify-center px-6 text-center">
+          <div className="text-5xl mb-4">🔐</div>
+          <h1 className="text-xl font-bold text-gray-900">Sign in to view rewards</h1>
+          <p className="text-gray-500 text-sm mt-2">Your loyalty points and offers will appear here</p>
+        </div>
       </div>
     );
   }
@@ -114,10 +119,15 @@ export default function MyRewards() {
 
   if (!profile) {
     return (
-      <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center px-6 text-center">
-        <div className="text-5xl mb-4">🎁</div>
-        <h1 className="text-xl font-bold text-gray-900">No rewards yet</h1>
-        <p className="text-gray-500 text-sm mt-2">Place your first order to start earning points!</p>
+      <div className="min-h-screen bg-gray-50 flex flex-col">
+        <div className="px-4 pt-4">
+          <button onClick={() => navigate(-1)} className="text-gray-500 hover:text-gray-900 text-sm font-medium">← Back</button>
+        </div>
+        <div className="flex-1 flex flex-col items-center justify-center px-6 text-center">
+          <div className="text-5xl mb-4">🎁</div>
+          <h1 className="text-xl font-bold text-gray-900">No rewards yet</h1>
+          <p className="text-gray-500 text-sm mt-2">Place your first order to start earning points!</p>
+        </div>
       </div>
     );
   }

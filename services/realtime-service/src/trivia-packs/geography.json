@@ -1,0 +1,22 @@
+[
+  {"question": "What is the longest river in the world?", "answer": "nile", "fun_fact": "The Nile flows through 11 countries and is approximately 6,650 km long."},
+  {"question": "Which is the largest desert in the world?", "answer": "sahara", "fun_fact": "The Sahara is almost as large as the entire United States and is expanding southward."},
+  {"question": "What is the capital of Japan?", "answer": "tokyo", "fun_fact": "Tokyo is the most populous metropolitan area in the world with over 37 million people."},
+  {"question": "Which country has the most natural lakes?", "answer": "canada", "fun_fact": "Canada has over 2 million lakes, containing 20% of the world's fresh water."},
+  {"question": "What is the deepest ocean trench?", "answer": "mariana trench", "fun_fact": "The Mariana Trench is nearly 11 km deep — if you placed Mount Everest inside, it would still be submerged."},
+  {"question": "Which continent has the most countries?", "answer": "africa", "fun_fact": "Africa has 54 recognized countries and is home to over 1.4 billion people."},
+  {"question": "What is the capital of Brazil?", "answer": "brasilia", "fun_fact": "Brasilia was purpose-built as the capital in 1960 and is shaped like an airplane when viewed from above."},
+  {"question": "Which mountain range separates Europe and Asia?", "answer": "ural mountains", "fun_fact": "The Ural Mountains are over 250 million years old, making them one of the oldest mountain ranges in the world."},
+  {"question": "What is the smallest continent?", "answer": "australia", "fun_fact": "Australia is the only continent that is also a single country, often called the island continent."},
+  {"question": "Which river flows through Paris?", "answer": "seine", "fun_fact": "The Seine has 37 bridges crossing it within Paris, the oldest being Pont Neuf built in 1607."},
+  {"question": "What is the largest country by area?", "answer": "russia", "fun_fact": "Russia spans 11 time zones and covers more than one-eighth of Earth's inhabited land area."},
+  {"question": "Which African country was formerly called Abyssinia?", "answer": "ethiopia", "fun_fact": "Ethiopia is the only African country that was never colonized by a European power."},
+  {"question": "What sea borders Israel and Jordan?", "answer": "dead sea", "fun_fact": "The Dead Sea is so salty that you can float on its surface without any effort."},
+  {"question": "Which city is on two continents?", "answer": "istanbul", "fun_fact": "Istanbul straddles Europe and Asia, separated by the Bosphorus Strait."},
+  {"question": "What is the highest waterfall in the world?", "answer": "angel falls", "fun_fact": "Angel Falls in Venezuela drops 979 meters — so high that water turns to mist before reaching the bottom."},
+  {"question": "Which country has the longest coastline?", "answer": "canada", "fun_fact": "Canada's coastline is over 202,080 km long, more than the next 4 countries combined."},
+  {"question": "What is the capital of New Zealand?", "answer": "wellington", "fun_fact": "Wellington is the southernmost capital city in the world and is known as the windiest city."},
+  {"question": "Which strait separates Africa from Europe?", "answer": "strait of gibraltar", "fun_fact": "At its narrowest point, the Strait of Gibraltar is only 14.3 km wide."},
+  {"question": "What is the largest island in the world?", "answer": "greenland", "fun_fact": "Despite its name, about 80% of Greenland is covered by an ice sheet."},
+  {"question": "Which river flows through Egypt?", "answer": "nile", "fun_fact": "Ancient Egyptians built their entire civilization around the Nile's annual flooding cycle."}
+]

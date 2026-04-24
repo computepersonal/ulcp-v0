@@ -1,0 +1,22 @@
+[
+  {"question": "What is the hardest natural substance on Earth?", "answer": "diamond", "fun_fact": "Diamonds are made of carbon atoms arranged in a crystal structure, formed under extreme heat and pressure deep in the Earth."},
+  {"question": "How many bones are in the adult human body?", "answer": "206", "fun_fact": "Babies are born with about 270 bones, but many fuse together as they grow."},
+  {"question": "What is the smallest country in the world by area?", "answer": "vatican city", "fun_fact": "Vatican City is only 0.44 square kilometers and has a population of about 800 people."},
+  {"question": "Which planet is known as the Red Planet?", "answer": "mars", "fun_fact": "Mars appears red because its surface is covered in iron oxide, commonly known as rust."},
+  {"question": "What is the largest ocean on Earth?", "answer": "pacific", "fun_fact": "The Pacific Ocean covers more area than all the land on Earth combined."},
+  {"question": "What gas do plants absorb from the atmosphere?", "answer": "carbon dioxide", "fun_fact": "Plants convert CO2 into oxygen through photosynthesis, producing about 50% of Earth's oxygen."},
+  {"question": "Which animal can sleep for up to 3 years?", "answer": "snail", "fun_fact": "Snails can enter a state of hibernation called estivation when conditions are too dry."},
+  {"question": "What is the chemical symbol for gold?", "answer": "au", "fun_fact": "Au comes from the Latin word 'aurum', meaning shining dawn."},
+  {"question": "How many continents are there?", "answer": "7", "fun_fact": "Antarctica is the only continent with no permanent human residents."},
+  {"question": "What is the speed of light in km per second?", "answer": "300000", "fun_fact": "Light can travel around the Earth 7.5 times in one second."},
+  {"question": "Which organ in the human body is the largest?", "answer": "skin", "fun_fact": "An adult's skin weighs about 3.6 kilograms and covers about 2 square meters."},
+  {"question": "What year did World War II end?", "answer": "1945", "fun_fact": "The war ended on September 2, 1945, when Japan formally surrendered aboard the USS Missouri."},
+  {"question": "What is the most spoken language in the world?", "answer": "english", "fun_fact": "English is spoken by about 1.5 billion people worldwide, though Mandarin has more native speakers."},
+  {"question": "Who wrote Romeo and Juliet?", "answer": "shakespeare", "fun_fact": "Shakespeare invented over 1,700 words in the English language including 'eyeball' and 'bedroom'."},
+  {"question": "What is the capital of Australia?", "answer": "canberra", "fun_fact": "Most people guess Sydney, but Canberra was purpose-built as the capital in 1913 as a compromise."},
+  {"question": "How many teeth does an adult human have?", "answer": "32", "fun_fact": "Tooth enamel is the hardest substance in the human body, even harder than bone."},
+  {"question": "What is the tallest mountain in the world?", "answer": "everest", "fun_fact": "Mount Everest grows about 4mm taller every year due to geological forces."},
+  {"question": "Which country has the most islands?", "answer": "sweden", "fun_fact": "Sweden has approximately 267,570 islands, though only about 1,000 are inhabited."},
+  {"question": "What is the main component of the sun?", "answer": "hydrogen", "fun_fact": "The Sun converts about 600 million tons of hydrogen into helium every second."},
+  {"question": "How many hearts does an octopus have?", "answer": "3", "fun_fact": "Two hearts pump blood to the gills, while one pumps it to the rest of the body."}
+]

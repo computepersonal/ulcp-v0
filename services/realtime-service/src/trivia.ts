@@ -1,9 +1,9 @@
-import Anthropic from "@anthropic-ai/sdk";
+import { readFileSync } from "fs";
+import { join } from "path";
 import { Namespace, Socket } from "socket.io";
 import { Redis } from "ioredis";
+import { logger } from "./lib/logger";
 
-const client = new Anthropic({ apiKey: process.env["ANTHROPIC_API_KEY"] ?? "" });
-const TRIVIA_CACHE_TTL = parseInt(process.env["TRIVIA_CACHE_TTL_SECS"] ?? "86400", 10);
 const QUESTION_COUNT = 5;
 const ANSWER_TIME_SECS = 30;
 const VOTE_TIME_SECS = 30;
@@ -24,62 +24,81 @@ interface TriviaGame {
   answered_by?: string; // socket_id of first correct answer this round
 }
 
-async function getQuestions(topic: string, redis: Redis): Promise<TriviaQuestion[]> {
-  const cacheKey = `trivia:questions:${topic.toLowerCase().replace(/\s+/g, "_")}`;
-  const cached = await redis.get(cacheKey);
-  if (cached) {
+// ── Pre-loaded trivia packs (in-memory, loaded once at startup) ──
+
+const TOPIC_MAP: Record<string, string> = {
+  "general knowledge": "general-knowledge",
+  "food and drinks": "food-and-drinks",
+  "cricket": "cricket",
+  "bollywood movies": "bollywood",
+  "bollywood": "bollywood",
+  "music": "music",
+  "world geography": "geography",
+  "geography": "geography",
+  "football soccer": "football",
+  "football": "football",
+  "science": "science",
+  "tv shows and ott content": "tv-and-ott",
+  "tv and ott": "tv-and-ott",
+  "sports": "sports",
+};
+
+const triviaPacks: Map<string, TriviaQuestion[]> = new Map();
+
+function loadTriviaPacks(): void {
+  const packsDir = join(__dirname, "trivia-packs");
+  for (const [, filename] of Object.entries(TOPIC_MAP)) {
+    if (triviaPacks.has(filename)) continue; // already loaded
     try {
-      return JSON.parse(cached) as TriviaQuestion[];
+      const raw = readFileSync(join(packsDir, `${filename}.json`), "utf-8");
+      const questions = JSON.parse(raw) as TriviaQuestion[];
+      triviaPacks.set(filename, questions);
     } catch {
-      // regenerate
+      // pack file missing — skip silently
     }
   }
+}
 
-  if (!process.env["ANTHROPIC_API_KEY"]) {
-    // Fallback questions when no API key
+// Load all packs into memory immediately
+loadTriviaPacks();
+logger.info({ packsLoaded: triviaPacks.size, topics: [...triviaPacks.keys()] }, "Trivia packs loaded");
+
+/** Available topic keys the client can request */
+export function getAvailableTopics(): string[] {
+  return [...new Set(Object.values(TOPIC_MAP))].filter(f => triviaPacks.has(f));
+}
+
+function getQuestions(topic: string): TriviaQuestion[] {
+  const key = TOPIC_MAP[topic.toLowerCase()] ?? topic.toLowerCase().replace(/\s+/g, "-");
+  const pack = triviaPacks.get(key);
+
+  if (!pack || pack.length === 0) {
+    // Fallback to general-knowledge if requested topic not found
+    const fallback = triviaPacks.get("general-knowledge");
+    if (fallback && fallback.length > 0) {
+      return shuffleAndPick(fallback, QUESTION_COUNT);
+    }
+    // Ultimate fallback — should never hit if packs are loaded
     return [
-      { question: "What is the most popular pizza topping in the world?", answer: "cheese", fun_fact: "Mozzarella cheese is used on over 80% of all pizzas worldwide." },
-      { question: "Which country invented pasta?", answer: "china", fun_fact: "Pasta was brought to Italy from China by Marco Polo in the 13th century." },
-      { question: "What is the world's most expensive spice by weight?", answer: "saffron", fun_fact: "Saffron costs up to $5,000 per pound because harvesting it is entirely done by hand." },
-      { question: "Which fruit has its seeds on the outside?", answer: "strawberry", fun_fact: "A strawberry is not actually a berry — it's an accessory fruit." },
-      { question: "What is the main ingredient in guacamole?", answer: "avocado", fun_fact: "Avocados are technically berries, and they ripen faster when placed next to bananas." },
+      { question: "What is the capital of France?", answer: "paris", fun_fact: "Paris has been the capital of France since 987 AD." },
+      { question: "How many continents are there?", answer: "7", fun_fact: "Antarctica is the only continent with no permanent human residents." },
+      { question: "What is H2O?", answer: "water", fun_fact: "Water covers about 71% of Earth's surface." },
+      { question: "Who painted the Mona Lisa?", answer: "leonardo da vinci", fun_fact: "It took Leonardo da Vinci approximately 4 years to paint the Mona Lisa." },
+      { question: "What is the largest planet in our solar system?", answer: "jupiter", fun_fact: "Jupiter is so large that all other planets in our solar system could fit inside it." },
     ];
   }
 
-  const message = await client.messages.create({
-    model: "claude-sonnet-4-20250514",
-    max_tokens: 1000,
-    messages: [{
-      role: "user",
-      content: `Generate ${QUESTION_COUNT} trivia questions about "${topic}" for a fun pub quiz game.
-Return ONLY a valid JSON array, no markdown, no explanation:
-[{"question":"...","answer":"...","fun_fact":"one interesting sentence about the answer"}]
-Make questions moderately challenging. Answers should be short (1-4 words ideally).`,
-    }],
-  });
+  return shuffleAndPick(pack, QUESTION_COUNT);
+}
 
-  const text = message.content[0]?.type === "text" ? message.content[0].text.trim() : "[]";
-  let questions: TriviaQuestion[] = [];
-  try {
-    // Extract JSON array from response
-    const match = text.match(/\[[\s\S]*\]/);
-    questions = match ? (JSON.parse(match[0]) as TriviaQuestion[]) : [];
-  } catch {
-    questions = [];
+/** Fisher-Yates shuffle + pick first N */
+function shuffleAndPick(arr: TriviaQuestion[], n: number): TriviaQuestion[] {
+  const copy = [...arr];
+  for (let i = copy.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [copy[i], copy[j]] = [copy[j]!, copy[i]!];
   }
-
-  if (questions.length >= QUESTION_COUNT) {
-    await redis.set(cacheKey, JSON.stringify(questions.slice(0, QUESTION_COUNT)), "EX", TRIVIA_CACHE_TTL);
-    return questions.slice(0, QUESTION_COUNT);
-  }
-  // Return fallback if generation failed
-  return [
-    { question: "What is the capital of France?", answer: "paris", fun_fact: "Paris has been the capital of France since 987 AD." },
-    { question: "How many continents are there?", answer: "7", fun_fact: "Antarctica is the only continent with no permanent human residents." },
-    { question: "What is H2O?", answer: "water", fun_fact: "Water covers about 71% of Earth's surface." },
-    { question: "Who painted the Mona Lisa?", answer: "leonardo da vinci", fun_fact: "It took Leonardo da Vinci approximately 4 years to paint the Mona Lisa." },
-    { question: "What is the largest planet in our solar system?", answer: "jupiter", fun_fact: "Jupiter is so large that all other planets in our solar system could fit inside it." },
-  ];
+  return copy.slice(0, n);
 }
 
 function isCorrectAnswer(userAnswer: string, correctAnswer: string): boolean {
@@ -143,6 +162,12 @@ export function setupTriviaHandlers(social: Namespace, redis: Redis): void {
       timer_secs: ANSWER_TIME_SECS,
     });
 
+    // Inject question into chat so everyone sees it
+    social.to(room).emit("social:bot:message", {
+      message: `🎯 **Q${game.current_question + 1}/${game.questions.length}:** ${q.question}`,
+      type: "info",
+    });
+
     const key = `${tenant_id}:${branch_id}`;
     const timer = setTimeout(() => {
       void (async () => {
@@ -161,6 +186,12 @@ export function setupTriviaHandlers(social: Namespace, redis: Redis): void {
           scores: current.scores,
         });
 
+        // Inject reveal into chat
+        social.to(room).emit("social:bot:message", {
+          message: `⏰ Time's up! The answer was **${q.answer}**\n💡 ${q.fun_fact}`,
+          type: "info",
+        });
+
         setTimeout(() => void startQuestion(tenant_id, branch_id), 3000);
       })();
     }, ANSWER_TIME_SECS * 1000);
@@ -176,10 +207,19 @@ export function setupTriviaHandlers(social: Namespace, redis: Redis): void {
     const sorted = Object.entries(game.scores).sort((a, b) => b[1].score - a[1].score);
     await saveGame(tenant_id, branch_id, game);
 
+    const scoreList = sorted.map(([, v]) => v);
     social.to(room).emit("social:trivia:end", {
-      scores: sorted.map(([, v]) => v),
+      scores: scoreList,
       winner: sorted[0]?.[1] ?? null,
     });
+
+    // Inject final podium into chat
+    const medals = ["🥇", "🥈", "🥉"];
+    const podiumLines = scoreList.slice(0, 3).map((s, i) => `${medals[i]} ${s.alias} — ${s.score} pts`);
+    const podiumMsg = podiumLines.length > 0
+      ? `🏆 **TRIVIA OVER!** Topic: ${game.topic}\n\n${podiumLines.join("\n")}`
+      : `🏆 **TRIVIA OVER!** No one scored any points.`;
+    social.to(room).emit("social:bot:message", { message: podiumMsg, type: "info" });
 
     // Floating celebration for winner
     if (sorted[0]) {
@@ -193,12 +233,7 @@ export function setupTriviaHandlers(social: Namespace, redis: Redis): void {
   }
 
   async function launchGame(tenant_id: string, branch_id: string, topic: string, room: string): Promise<void> {
-    social.to(room).emit("social:bot:message", {
-      message: `🎮 TRIVIA TIME! Generating questions about **${topic}**... ⏳`,
-      type: "info",
-    });
-
-    const questions = await getQuestions(topic, redis);
+    const questions = getQuestions(topic);
     const game = await getGame(tenant_id, branch_id);
     if (!game) return;
 
@@ -208,8 +243,15 @@ export function setupTriviaHandlers(social: Namespace, redis: Redis): void {
     game.current_question = 0;
     await saveGame(tenant_id, branch_id, game);
 
+    social.to(room).emit("social:trivia:update", {
+      status: "countdown",
+      topic,
+      total_questions: questions.length,
+      timer_secs: ANSWER_TIME_SECS,
+    });
+
     social.to(room).emit("social:bot:message", {
-      message: `🎮 **TRIVIA TIME!** Starting in 5 seconds...\nTopic: **${topic}**\n${questions.length} questions • 30 seconds each\nType your answer in the chat!`,
+      message: `🎮 **TRIVIA TIME!** Starting in 5 seconds...\nTopic: **${topic}** • ${questions.length} questions • ${ANSWER_TIME_SECS}s each\nType your answer in the chat!`,
       type: "trivia_start",
     });
 
@@ -218,14 +260,18 @@ export function setupTriviaHandlers(social: Namespace, redis: Redis): void {
 
   // Attach trivia event handlers to each connecting socket
   social.on("connection", (socket: Socket) => {
+    logger.info({ socket_id: socket.id }, "Trivia handlers attached to socket");
     socket.on(
       "social:trivia:command",
       async (data: { topic?: string; tenant_id: string; branch_id: string }) => {
         const room = `social:${data.tenant_id}:${data.branch_id}`;
         const roomKey = `social:room:${data.tenant_id}:${data.branch_id}`;
 
+        logger.info({ topic: data.topic, tenant_id: data.tenant_id, branch_id: data.branch_id, socket_id: socket.id, room }, "Trivia command received");
+
         const existing = await getGame(data.tenant_id, data.branch_id);
         if (existing && existing.status !== "finished") {
+          logger.info({ status: existing.status }, "Trivia game already in progress");
           socket.emit("social:bot:message", {
             message: "🎮 A trivia game is already in progress! Join in by answering in the chat.",
             type: "info",
@@ -235,6 +281,7 @@ export function setupTriviaHandlers(social: Namespace, redis: Redis): void {
 
         const userRaw = await redis.hget(roomKey, socket.id);
         const user = userRaw ? (JSON.parse(userRaw) as { alias: string; emoji: string }) : null;
+        logger.info({ userRaw: !!userRaw, user, roomKey, socket_id: socket.id }, "Trivia user lookup");
         if (!user) return;
 
         const topic = data.topic ?? "general knowledge";
@@ -249,6 +296,9 @@ export function setupTriviaHandlers(social: Namespace, redis: Redis): void {
           votes: { start: [socket.id], skip: [] },
         };
         await saveGame(data.tenant_id, data.branch_id, game);
+
+        const roomSockets = await social.in(room).fetchSockets();
+        logger.info({ room, socketCount: roomSockets.length, socketIds: roomSockets.map(s => s.id) }, "Trivia emitting vote to room");
 
         social.to(room).emit("social:bot:message", {
           message: `🎮 **${user.alias}** wants to play trivia! Topic: **${topic}** 🎯\nVote to start! [▶️ Let's play!] [⏭️ Skip]`,
@@ -342,6 +392,12 @@ export function setupTriviaHandlers(social: Namespace, redis: Redis): void {
             winner_alias: user.alias,
             scores: game.scores,
             no_winner: false,
+          });
+
+          // Inject winner reveal into chat
+          social.to(room).emit("social:bot:message", {
+            message: `🎉 **${user.alias}** got it right! Answer: **${q.answer}** (+10 pts)\n💡 ${q.fun_fact}`,
+            type: "info",
           });
 
           setTimeout(() => void startQuestion(data.tenant_id, data.branch_id), 3000);

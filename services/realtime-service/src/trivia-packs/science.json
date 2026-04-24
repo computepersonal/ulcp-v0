@@ -1,0 +1,22 @@
+[
+  {"question": "What planet is closest to the Sun?", "answer": "mercury", "fun_fact": "Mercury has no atmosphere, so temperatures swing from 430°C during the day to -180°C at night."},
+  {"question": "What is the chemical formula for water?", "answer": "h2o", "fun_fact": "Water is the only substance that exists naturally in all three states: solid, liquid, and gas."},
+  {"question": "How many elements are in the periodic table?", "answer": "118", "fun_fact": "The most recently discovered element, Oganesson, was confirmed in 2016 and is highly radioactive."},
+  {"question": "What force keeps us on the ground?", "answer": "gravity", "fun_fact": "Gravity on Mars is about 38% of Earth's, so you could jump nearly 3 times higher there."},
+  {"question": "What is the powerhouse of the cell?", "answer": "mitochondria", "fun_fact": "Mitochondria have their own DNA, separate from the cell's nucleus, suggesting they were once independent organisms."},
+  {"question": "What does DNA stand for?", "answer": "deoxyribonucleic acid", "fun_fact": "If you uncoiled all the DNA in your body, it would stretch to the sun and back about 600 times."},
+  {"question": "What is the closest star to Earth?", "answer": "sun", "fun_fact": "The Sun is about 150 million km away and its light takes 8 minutes and 20 seconds to reach us."},
+  {"question": "Who developed the theory of relativity?", "answer": "einstein", "fun_fact": "Einstein was offered the presidency of Israel in 1952 but declined, saying he lacked the aptitude."},
+  {"question": "What type of animal is a whale?", "answer": "mammal", "fun_fact": "Blue whales are the largest animals that have ever lived, with hearts the size of a small car."},
+  {"question": "What gas do we breathe in to survive?", "answer": "oxygen", "fun_fact": "Oxygen makes up only 21% of Earth's atmosphere — nitrogen makes up about 78%."},
+  {"question": "How many planets are in our solar system?", "answer": "8", "fun_fact": "Pluto was reclassified as a dwarf planet in 2006 by the International Astronomical Union."},
+  {"question": "What is the hardest rock?", "answer": "diamond", "fun_fact": "Diamond scores 10 on the Mohs hardness scale and can only be scratched by another diamond."},
+  {"question": "What part of the brain controls balance?", "answer": "cerebellum", "fun_fact": "The cerebellum contains more neurons than the rest of the brain combined despite being only 10% of its volume."},
+  {"question": "What is absolute zero in Celsius?", "answer": "-273", "fun_fact": "At absolute zero, atoms stop moving entirely — it's the theoretical lowest possible temperature."},
+  {"question": "What element does the Sun primarily fuse?", "answer": "hydrogen", "fun_fact": "The Sun converts 600 million tons of hydrogen to helium every second through nuclear fusion."},
+  {"question": "Who discovered penicillin?", "answer": "alexander fleming", "fun_fact": "Fleming discovered penicillin by accident in 1928 when mold contaminated one of his petri dishes."},
+  {"question": "How fast does light travel per second?", "answer": "300000 km", "fun_fact": "Nothing in the universe can travel faster than light — it's the cosmic speed limit."},
+  {"question": "What is the largest organ inside the human body?", "answer": "liver", "fun_fact": "The liver performs over 500 different functions and is the only organ that can regenerate itself."},
+  {"question": "What force causes tides on Earth?", "answer": "moon gravity", "fun_fact": "The Moon's gravitational pull creates two high tides per day on opposite sides of Earth."},
+  {"question": "What is the most abundant gas in Earth's atmosphere?", "answer": "nitrogen", "fun_fact": "Nitrogen makes up 78% of the atmosphere and is essential for all living organisms."}
+]

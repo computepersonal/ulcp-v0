@@ -295,6 +295,32 @@ export default function Catalogue() {
     void load();
   }, [slug, tenantServiceUrl, catalogueServiceUrl]);
 
+  // Scroll to section when ?section= param is present (e.g. from in-house ad click)
+  const sectionParam = searchParams.get('section');
+  useEffect(() => {
+    if (!sectionParam || sections.length === 0) return;
+    const sectionSlug = sectionParam.toLowerCase().replace(/\s+/g, '-');
+    // Try exact match first, then partial match
+    const el = document.getElementById(`section-${sectionSlug}`)
+      ?? Array.from(document.querySelectorAll('[id^="section-"]')).find(
+        e => e.id.includes(sectionSlug)
+      );
+    if (el) {
+      // Ensure section is not collapsed
+      const matchedSection = sections.find(s =>
+        s.name.toLowerCase().replace(/\s+/g, '-').includes(sectionSlug)
+      );
+      if (matchedSection && collapsedSections.has(matchedSection.id)) {
+        setCollapsedSections(prev => {
+          const next = new Set(prev);
+          next.delete(matchedSection.id);
+          return next;
+        });
+      }
+      setTimeout(() => el.scrollIntoView({ behavior: 'smooth', block: 'start' }), 100);
+    }
+  }, [sectionParam, sections, collapsedSections]);
+
   const filteredItems = items.filter(item => {
     if (!item.is_available) return false;
     if (vegOnly && item.veg_type !== 'veg' && item.veg_type !== 'vegan') return false;
@@ -311,7 +337,7 @@ export default function Catalogue() {
     if (existing) {
       dispatch(updateQuantity({ id: existing.id, quantity: existing.quantity + 1 }));
     } else {
-      dispatch(addItem({ id: item.id, item_id: item.id, name: item.name, price: item.price, quantity: 1, tenant_id: tenantInfo.tenant_id, branch_id: tenantInfo.branch_id, business_type: tenantInfo.business_type ?? 'seated_food_only', slug, ...(tableId ? { table_id: tableId } : {}), ...(tableName ? { table_name: tableName } : {}) }));
+      dispatch(addItem({ id: item.id, item_id: item.id, name: item.name, price: item.price, quantity: 1, tenant_id: tenantInfo.tenant_id, branch_id: tenantInfo.branch_id, business_type: tenantInfo.business_type ?? 'seated_food_only', slug, place_name: tenantInfo.name, ...(tableId ? { table_id: tableId } : {}), ...(tableName ? { table_name: tableName } : {}) }));
     }
   };
 
@@ -450,12 +476,26 @@ export default function Catalogue() {
           {/* Profile button */}
           <button onClick={() => setShowProfileDrawer(true)} className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center text-sm flex-shrink-0">👤</button>
           {/* Social Room button */}
-          <button onClick={handleOpenSocial} className="relative flex items-center gap-1 bg-brand-50 border border-brand-200 text-brand-600 text-xs font-semibold px-2.5 py-1.5 rounded-full flex-shrink-0">
-            👥
-            {socialState.publicCount > 0 && (
-              <span className="bg-brand-500 text-white text-xs rounded-full px-1 min-w-[16px] text-center">{socialState.publicCount}</span>
-            )}
-          </button>
+          {(() => {
+            const unreadDMs = Object.values(socialState.privateChatMeta).reduce((s, m) => s + m.unread, 0);
+            const isDetour = !showSocialRoom && !!socialState.alias; // closed but still connected
+            return (
+              <button onClick={handleOpenSocial} className="relative flex items-center gap-1 bg-brand-50 border border-brand-200 text-brand-600 text-xs font-semibold px-2.5 py-1.5 rounded-full flex-shrink-0">
+                👥
+                {socialState.publicCount > 0 && (
+                  <span className="bg-brand-500 text-white text-xs rounded-full px-1 min-w-[16px] text-center">{socialState.publicCount}</span>
+                )}
+                {isDetour && unreadDMs > 0 && (
+                  <span className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-red-500 rounded-full text-white text-[10px] flex items-center justify-center font-bold animate-bounce">
+                    {unreadDMs > 9 ? '9+' : unreadDMs}
+                  </span>
+                )}
+                {isDetour && unreadDMs === 0 && (
+                  <span className="absolute -top-0.5 -right-0.5 w-2 h-2 bg-green-500 rounded-full" title="You're still in the room" />
+                )}
+              </button>
+            );
+          })()}
         </div>
       </div>
 
@@ -532,7 +572,7 @@ export default function Catalogue() {
             if (sectionItems.length === 0) return null;
             const collapsed = collapsedSections.has(section.id);
             return (
-              <div key={section.id} className="mb-6">
+              <div key={section.id} id={`section-${section.name.toLowerCase().replace(/\s+/g, '-')}`} className="mb-6">
                 <button onClick={() => toggleSection(section.id)} className="w-full flex items-center justify-between py-2 text-left">
                   <h3 className="font-semibold text-gray-900">{section.name} ({sectionItems.length})</h3>
                   <span className="text-gray-400">{collapsed ? '▶' : '▼'}</span>
@@ -604,12 +644,12 @@ export default function Catalogue() {
           tenantId={tenantInfo.tenant_id}
           branchId={tenantInfo.branch_id}
           placeName={tenantInfo.name}
+          slug={slug ?? ''}
           onClose={() => setShowSocialRoom(false)}
           onLeaveRoom={() => {
             leaveRoom(tenantInfo.tenant_id, tenantInfo.branch_id);
-            localStorage.removeItem(`social:alias:${tenantInfo.tenant_id}`);
-            localStorage.removeItem(`social:mode:${tenantInfo.tenant_id}`);
-            localStorage.removeItem(`social:intent:${tenantInfo.tenant_id}`);
+            // Keep alias, mode, and intent in localStorage so re-entering
+            // skips the alias/vibe select and joins directly with same identity
             setShowSocialRoom(false);
           }}
         />

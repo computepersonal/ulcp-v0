@@ -107,24 +107,49 @@ export default function ProfileDrawer({ isOpen, onClose, onLoginRequest }: Profi
             </button>
           )}
 
-          {[
-            { id: 'orders', icon: '📦', label: 'Order History', sub: 'All past orders' },
-            { id: 'places', icon: '📍', label: 'Saved Places', sub: `${savedPlaces.length} places saved` },
-            { id: 'favourites', icon: '❤️', label: 'Favourites', sub: 'Saved items' },
-          ].map(item => (
+          {/* Order History */}
+          {isLoggedIn && (
             <button
-              key={item.id}
-              onClick={() => setActiveSection(activeSection === item.id ? null : item.id)}
+              onClick={() => {
+                onClose();
+                navigate('/orders');
+              }}
               className="w-full flex items-center gap-3 px-5 py-4 hover:bg-gray-50 transition-colors text-left"
             >
-              <span className="text-xl w-7 text-center">{item.icon}</span>
+              <span className="text-xl w-7 text-center">📦</span>
               <div className="flex-1">
-                <div className="text-sm font-semibold text-gray-800">{item.label}</div>
-                <div className="text-xs text-gray-400">{item.sub}</div>
+                <div className="text-sm font-semibold text-gray-800">Order History</div>
+                <div className="text-xs text-gray-400">All past orders</div>
               </div>
-              <span className="text-gray-300 text-xs">{activeSection === item.id ? '▲' : '▶'}</span>
+              <span className="text-gray-300 text-xs">▶</span>
             </button>
-          ))}
+          )}
+
+          {/* Saved Places */}
+          <button
+            onClick={() => setActiveSection(activeSection === 'places' ? null : 'places')}
+            className="w-full flex items-center gap-3 px-5 py-4 hover:bg-gray-50 transition-colors text-left"
+          >
+            <span className="text-xl w-7 text-center">📍</span>
+            <div className="flex-1">
+              <div className="text-sm font-semibold text-gray-800">Saved Places</div>
+              <div className="text-xs text-gray-400">{savedPlaces.length} places saved</div>
+            </div>
+            <span className="text-gray-300 text-xs">{activeSection === 'places' ? '▲' : '▶'}</span>
+          </button>
+
+          {/* Favourites */}
+          <button
+            onClick={() => setActiveSection(activeSection === 'favourites' ? null : 'favourites')}
+            className="w-full flex items-center gap-3 px-5 py-4 hover:bg-gray-50 transition-colors text-left"
+          >
+            <span className="text-xl w-7 text-center">❤️</span>
+            <div className="flex-1">
+              <div className="text-sm font-semibold text-gray-800">Favourites</div>
+              <div className="text-xs text-gray-400">Saved items</div>
+            </div>
+            <span className="text-gray-300 text-xs">{activeSection === 'favourites' ? '▲' : '▶'}</span>
+          </button>
 
           {/* Saved Places expandable */}
           {activeSection === 'places' && (

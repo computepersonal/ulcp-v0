@@ -49,7 +49,8 @@
       "Bash([ -f \"$path/.env.example\" ])",
       "Bash(node -e *)",
       "Bash(git add *)",
-      "Bash(git stash *)"
+      "Bash(git stash *)",
+      "Bash(npx tsx:*)"
     ]
   }
 }

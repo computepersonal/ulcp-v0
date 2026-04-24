@@ -12,6 +12,7 @@ import Checkout from './pages/Checkout';
 import OrderTracking from './pages/OrderTracking';
 import Explore from './pages/Explore';
 import MyRewards from './pages/MyRewards';
+import OrderHistory from './pages/OrderHistory';
 
 function GuestLanding() {
   return (
@@ -48,6 +49,8 @@ function AppWithProviders() {
             <Route path="/place/:slug/checkout" element={<Checkout />} />
             <Route path="/place/:slug/order/:id" element={<OrderTracking />} />
             <Route path="/place/:slug/rewards" element={<MyRewards />} />
+            <Route path="/orders" element={<OrderHistory />} />
+            <Route path="/place/:slug/orders" element={<OrderHistory />} />
             <Route path="/explore" element={<Explore />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>

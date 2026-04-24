@@ -7,12 +7,12 @@ const TOPICS = [
   { emoji: '🎲', label: 'General Knowledge', value: 'general knowledge' },
   { emoji: '🍕', label: 'Food & Drinks', value: 'food and drinks' },
   { emoji: '🏏', label: 'Cricket', value: 'cricket' },
-  { emoji: '🎬', label: 'Bollywood', value: 'Bollywood movies' },
+  { emoji: '🎬', label: 'Bollywood', value: 'bollywood' },
   { emoji: '🎵', label: 'Music', value: 'music' },
-  { emoji: '🌍', label: 'Geography', value: 'world geography' },
-  { emoji: '⚽', label: 'Football', value: 'football soccer' },
+  { emoji: '🌍', label: 'Geography', value: 'geography' },
+  { emoji: '⚽', label: 'Football', value: 'football' },
   { emoji: '🔬', label: 'Science', value: 'science' },
-  { emoji: '📺', label: 'TV & OTT', value: 'TV shows and OTT content' },
+  { emoji: '📺', label: 'TV & OTT', value: 'tv and ott' },
   { emoji: '🏆', label: 'Sports', value: 'sports' },
 ];
 

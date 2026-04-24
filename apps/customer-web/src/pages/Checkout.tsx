@@ -66,6 +66,25 @@ export default function Checkout() {
       });
       const data = (await res.json()) as { success: boolean; data?: { id: string }; error?: string };
       if (res.ok && data.success && data.data) {
+        // Save to order history in localStorage
+        try {
+          const history = JSON.parse(localStorage.getItem('order_history') ?? '[]') as Array<Record<string, unknown>>;
+          history.unshift({
+            id: data.data.id,
+            tenant_id: cart.tenant_id,
+            branch_id: cart.branch_id,
+            place_name: cart.place_name ?? slug ?? 'Unknown',
+            slug: slug ?? '',
+            items: cart.items.map(i => ({ name: i.name, quantity: i.quantity, price: i.price, variant: i.variant })),
+            total,
+            payment_method: paymentMethod,
+            placed_at: new Date().toISOString(),
+            status: 'placed',
+          });
+          // Keep last 50 orders
+          localStorage.setItem('order_history', JSON.stringify(history.slice(0, 50)));
+        } catch { /* ignore */ }
+
         dispatch(clearCart());
         setConfirmedOrderId(data.data.id);
       } else {

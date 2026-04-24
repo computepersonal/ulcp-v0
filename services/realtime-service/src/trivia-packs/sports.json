@@ -1,0 +1,22 @@
+[
+  {"question": "How many rings are on the Olympic flag?", "answer": "5", "fun_fact": "The five rings represent the five continents and every national flag contains at least one of the ring colors."},
+  {"question": "In which sport do you perform a slam dunk?", "answer": "basketball", "fun_fact": "The slam dunk was actually banned in college basketball from 1967 to 1976."},
+  {"question": "Which country has won the most Olympic gold medals?", "answer": "usa", "fun_fact": "The USA has won over 1,000 gold medals in the Summer Olympics alone."},
+  {"question": "How long is a marathon in kilometers?", "answer": "42", "fun_fact": "The marathon distance was standardized at 42.195 km at the 1908 London Olympics to pass the royal box."},
+  {"question": "Which sport uses a shuttlecock?", "answer": "badminton", "fun_fact": "A shuttlecock can travel over 400 km/h during a smash, making badminton the fastest racket sport."},
+  {"question": "Who is known as the fastest man alive?", "answer": "usain bolt", "fun_fact": "Usain Bolt's top speed was 44.72 km/h, reached during his world record 9.58s 100m sprint."},
+  {"question": "What sport is played at Wimbledon?", "answer": "tennis", "fun_fact": "Wimbledon is the oldest tennis tournament in the world, first played in 1877."},
+  {"question": "How many points is a touchdown worth in American football?", "answer": "6", "fun_fact": "Originally a touchdown was worth just 2 points when football rules were first codified in 1883."},
+  {"question": "Which country invented basketball?", "answer": "usa", "fun_fact": "Basketball was invented by Canadian James Naismith in 1891 at a YMCA in Springfield, Massachusetts."},
+  {"question": "What is the highest score possible in a single frame of bowling?", "answer": "30", "fun_fact": "A perfect game in bowling is 300 points, achieved by rolling 12 consecutive strikes."},
+  {"question": "In which sport can you score a birdie?", "answer": "golf", "fun_fact": "The term birdie comes from 19th century American slang where 'bird' meant something wonderful."},
+  {"question": "Who has won the most Grand Slam tennis titles?", "answer": "novak djokovic", "fun_fact": "Djokovic has won 24 Grand Slam singles titles, surpassing both Federer and Nadal."},
+  {"question": "What martial art originated in Japan?", "answer": "judo", "fun_fact": "Judo means 'gentle way' and was created by Jigoro Kano in 1882."},
+  {"question": "How many players are in a volleyball team on court?", "answer": "6", "fun_fact": "Volleyball was invented in 1895 as a less strenuous alternative to basketball."},
+  {"question": "Which country is most associated with sumo wrestling?", "answer": "japan", "fun_fact": "Sumo wrestlers eat a special stew called chankonabe and can consume over 7,000 calories per day."},
+  {"question": "What is the national sport of India?", "answer": "hockey", "fun_fact": "India has won 8 Olympic gold medals in field hockey, more than any other country."},
+  {"question": "In Formula 1, what color is the flag that ends the race?", "answer": "checkered", "fun_fact": "The checkered flag has been used in racing since at least 1906, though its exact origin is debated."},
+  {"question": "Who is the most decorated Olympian of all time?", "answer": "michael phelps", "fun_fact": "Phelps won 28 Olympic medals, including 23 gold — more than 65 countries in Olympic history."},
+  {"question": "What sport does PV Sindhu play?", "answer": "badminton", "fun_fact": "PV Sindhu is the first Indian woman to win an Olympic silver medal and a World Championship gold."},
+  {"question": "How many holes are played in a standard round of golf?", "answer": "18", "fun_fact": "The Old Course at St Andrews originally had 22 holes, but 4 were combined to make 18 in 1764."}
+]

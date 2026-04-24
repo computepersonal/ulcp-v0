@@ -1,7 +1,10 @@
+import { useState } from 'react';
 import { SocialUser } from '../../context/SocialContext';
 
 interface Props {
   users: SocialUser[];
+  currentMode: 'public' | 'private';
+  onToggleMode: (mode: 'public' | 'private') => void;
   onClose: () => void;
   onSelectUser: (user: SocialUser, x: number, y: number) => void;
   selectedUserId: string | null;
@@ -16,7 +19,9 @@ function timeAgo(ts: number): string {
   return `${Math.floor(mins / 60)}h ago`;
 }
 
-export default function PeoplePanel({ users, onClose, onSelectUser, selectedUserId }: Props) {
+export default function PeoplePanel({ users, currentMode, onToggleMode, onClose, onSelectUser, selectedUserId }: Props) {
+  const [confirmMode, setConfirmMode] = useState<'public' | 'private' | null>(null);
+
   return (
     <>
       <div className="fixed inset-0 z-60" onClick={onClose} />
@@ -25,7 +30,7 @@ export default function PeoplePanel({ users, onClose, onSelectUser, selectedUser
         style={{ background: 'rgba(10,10,20,0.95)', backdropFilter: 'blur(20px)', borderLeft: '1px solid rgba(255,255,255,0.1)' }}
       >
         <div className="flex items-center justify-between px-5 py-4 border-b border-white/10">
-          <h3 className="text-white font-semibold">👥 People here ({users.length})</h3>
+          <h3 className="text-white font-semibold">👥 Vibing souls here ({users.length})</h3>
           <button onClick={onClose} className="text-gray-400 text-xl">✕</button>
         </div>
         <div className="flex-1 overflow-y-auto py-2">
@@ -57,7 +62,7 @@ export default function PeoplePanel({ users, onClose, onSelectUser, selectedUser
                     <div className="text-white text-sm font-medium flex items-center gap-1.5 flex-wrap">
                       {user.alias}
                       {user.is_you && <span className="text-brand-400 text-xs">(you)</span>}
-                      {user.mode === 'private' && <span className="text-xs">🔒</span>}
+                      {user.mode === 'private' && !user.is_you && <span className="text-xs">🔒</span>}
                     </div>
                     <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
                       <span className="text-gray-500 text-xs">
@@ -71,18 +76,64 @@ export default function PeoplePanel({ users, onClose, onSelectUser, selectedUser
                       )}
                     </div>
                   </div>
-                  {user.is_you
-                    ? <span className="text-brand-400 text-xs">⭐ YOU</span>
-                    : user.mode === 'private'
-                      ? null
-                      : <span className="text-gray-600 text-xs">›</span>
-                  }
+                  {user.is_you ? (
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        const target = currentMode === 'public' ? 'private' : 'public';
+                        setConfirmMode(target);
+                      }}
+                      className={`flex items-center gap-1 text-xs font-semibold px-2.5 py-1.5 rounded-full transition-colors ${
+                        currentMode === 'public'
+                          ? 'bg-green-500/20 text-green-400 hover:bg-green-500/30'
+                          : 'bg-amber-500/20 text-amber-400 hover:bg-amber-500/30'
+                      }`}
+                    >
+                      {currentMode === 'public' ? '🌐' : '🔒'}
+                      {currentMode === 'public' ? 'Public' : 'Private'}
+                    </button>
+                  ) : user.mode === 'private' ? null : (
+                    <span className="text-gray-600 text-xs">›</span>
+                  )}
                 </button>
               );
             })
           )}
         </div>
       </div>
+
+      {/* Mode switch confirmation */}
+      {confirmMode && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/60 px-6">
+          <div className="bg-[#1A1F2E] rounded-2xl p-6 max-w-xs w-full shadow-2xl border border-white/10">
+            <div className="text-center mb-5">
+              <div className="text-2xl mb-2">{confirmMode === 'private' ? '🔒' : '🌐'}</div>
+              <h3 className="text-white font-semibold text-base">
+                Switch to {confirmMode === 'private' ? 'Private' : 'Public'}?
+              </h3>
+              <p className="text-gray-400 text-sm mt-1">
+                {confirmMode === 'private'
+                  ? 'Others won\'t see your messages in the public chat. You can still receive DMs.'
+                  : 'Your messages will be visible to everyone in the room.'}
+              </p>
+            </div>
+            <div className="space-y-2.5">
+              <button
+                onClick={() => { onToggleMode(confirmMode); setConfirmMode(null); }}
+                className="w-full py-2.5 rounded-xl bg-brand-500 text-white font-semibold text-sm hover:bg-brand-600 transition-colors"
+              >
+                Yes, go {confirmMode === 'private' ? 'Private' : 'Public'}
+              </button>
+              <button
+                onClick={() => setConfirmMode(null)}
+                className="w-full py-2 text-gray-500 text-xs hover:text-gray-300 transition-colors"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 }
