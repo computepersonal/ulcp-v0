@@ -9,9 +9,14 @@ import {
   cancelOrder,
   changeOrderStatus,
   recordPayment,
+  recordPrepayment,
   getOrderBill,
   findOrders,
   findOrderById,
+  addLineItem,
+  removeLineItem,
+  getTableBill,
+  recordTablePayment,
 } from "../services/order.service";
 import type { OrderItem } from "../services/order.service";
 import { fetchTenantKotConfig } from "../lib/tenantClient";
@@ -84,6 +89,7 @@ const updateStatusSchema = z.object({
     "confirmed",
     "preparing",
     "ready",
+    "served",
     "picked_up",
     "delivered",
     "completed",
@@ -103,7 +109,8 @@ const paymentSchema = z.object({
 const addLineItemSchema = z.object({
   tenant_id: z.string(),
   branch_id: z.string(),
-  customer_id: z.string(),
+  customer_id: z.string().optional(),
+  table_id: z.string().optional(),
   item: z.object({
     name: z.string(),
     price: z.number().int().min(0),
@@ -115,6 +122,7 @@ const addLineItemSchema = z.object({
 const removeLineItemSchema = z.object({
   order_id: z.string(),
   line_item_id: z.string(),
+  tenant_id: z.string(),
 });
 
 // ─── Route params interfaces ──────────────────────────────────────────────────
@@ -467,6 +475,52 @@ export async function orderRoutes(fastify: FastifyInstance): Promise<void> {
     }
   );
 
+  // GET /customer/:tenant_id/:id — customer fetches their own order for tracking
+  fastify.get<{ Params: OrderParams }>(
+    "/customer/:tenant_id/:id",
+    {
+      schema: {
+        summary: "Get order tracking detail (customer)",
+        tags: ["Orders"],
+        response: { 200: genericOk, ...errResponses },
+      },
+      preHandler: [authenticateCustomer],
+    },
+    async (req, reply) => {
+      const { tenant_id, id } = req.params;
+      const customer_id = req.customer?.customer_id;
+      if (!customer_id) return reply.code(401).send(apiError("Unauthorized"));
+
+      try {
+        const order = await findOrderById(id, tenant_id);
+        if (!order) return reply.code(404).send(apiError("Order not found"));
+        if (order.customer_id !== customer_id) {
+          return reply.code(403).send(apiError("Forbidden"));
+        }
+        return reply.send(
+          apiSuccess({
+            order: {
+              id: order.id,
+              order_number: order.order_number,
+              status: order.status,
+              type: order.type,
+              table_name: order.table_name,
+              items: order.items,
+              total: order.total,
+              payment_status: order.payment_status,
+              created_at: order.created_at,
+            },
+          })
+        );
+      } catch (err) {
+        if (err instanceof AppError) {
+          return reply.code(err.statusCode).send(apiError(err.message));
+        }
+        throw err;
+      }
+    }
+  );
+
   // PATCH /:tenant_id/:id/status — update status
   fastify.patch<{ Params: OrderParams; Body: unknown }>(
     "/:tenant_id/:id/status",
@@ -478,7 +532,7 @@ export async function orderRoutes(fastify: FastifyInstance): Promise<void> {
           type: "object" as const,
           required: ["status"],
           properties: {
-            status: { type: "string" as const, enum: ["confirmed", "preparing", "ready", "picked_up", "delivered", "completed"] },
+            status: { type: "string" as const, enum: ["confirmed", "preparing", "ready", "served", "picked_up", "delivered", "completed"] },
           },
         },
         response: { 200: genericOk, ...errResponses },
@@ -577,6 +631,55 @@ export async function orderRoutes(fastify: FastifyInstance): Promise<void> {
     }
   );
 
+  // POST /customer/:tenant_id/:id/payment — customer confirms prepaid (UPI / Card) at checkout.
+  // In production this is replaced by the Razorpay payment-success webhook (signature-verified).
+  // For now customer JWT + ownership check keeps it safely scoped.
+  fastify.post<{ Params: OrderParams; Body: unknown }>(
+    "/customer/:tenant_id/:id/payment",
+    {
+      schema: {
+        summary: "Customer confirms prepaid order (dev stub for Razorpay webhook)",
+        tags: ["Orders"],
+        body: {
+          type: "object" as const,
+          required: ["payment_method"],
+          properties: {
+            payment_method: { type: "string" as const, enum: ["upi", "card", "online"] },
+          },
+        },
+        response: { 200: genericOk, ...errResponses },
+      },
+      preHandler: [authenticateCustomer],
+    },
+    async (req, reply) => {
+      const bodySchema = z.object({ payment_method: z.enum(["upi", "card", "online"]) });
+      const parsed = bodySchema.safeParse(req.body);
+      if (!parsed.success) {
+        return reply.code(400).send(apiError(formatZodError(parsed.error)));
+      }
+
+      const { tenant_id, id } = req.params;
+      const customer_id = req.customer?.customer_id;
+      if (!customer_id) return reply.code(401).send(apiError("Unauthorized"));
+
+      try {
+        const order = await findOrderById(id, tenant_id);
+        if (!order) return reply.code(404).send(apiError("Order not found"));
+        if (order.customer_id !== customer_id) return reply.code(403).send(apiError("Forbidden"));
+        if (order.payment_status === "paid") {
+          return reply.send(apiSuccess({ order, already_paid: true }));
+        }
+        const updated = await recordPrepayment(id, tenant_id, parsed.data.payment_method);
+        return reply.send(apiSuccess({ order: updated }));
+      } catch (err) {
+        if (err instanceof AppError) {
+          return reply.code(err.statusCode).send(apiError(err.message));
+        }
+        throw err;
+      }
+    }
+  );
+
   // POST /:tenant_id/:id/payment — record payment
   fastify.post<{ Params: OrderParams; Body: unknown }>(
     "/:tenant_id/:id/payment",
@@ -661,14 +764,15 @@ export async function orderRoutes(fastify: FastifyInstance): Promise<void> {
       }
 
       const data = parsed.data;
-      // Placeholder: in a full implementation this would find/create an active order
-      // for the customer+branch and append a line item.
-      const mockOrderId = `jukebox-${data.tenant_id}-${Date.now()}`;
-      const mockLineItemId = `li-${Date.now()}`;
+      const result = await addLineItem({
+        tenant_id: data.tenant_id,
+        branch_id: data.branch_id,
+        table_id: data.table_id,
+        customer_id: data.customer_id,
+        item: data.item,
+      });
 
-      return reply.code(201).send(
-        apiSuccess({ order_id: mockOrderId, line_item_id: mockLineItemId })
-      );
+      return reply.code(201).send(apiSuccess(result));
     }
   );
 
@@ -701,7 +805,48 @@ export async function orderRoutes(fastify: FastifyInstance): Promise<void> {
         return reply.code(400).send(apiError(formatZodError(parsed.error)));
       }
 
-      return reply.send(apiSuccess({ refunded: true }));
+      const result = await removeLineItem(parsed.data.order_id, parsed.data.line_item_id, parsed.data.tenant_id);
+      return reply.send(apiSuccess(result));
+    }
+  );
+
+  // ─── Table bill endpoints ───────────────────────────────────────────────────
+
+  // GET /table-bill/:tenant_id/:branch_id/:table_id — consolidated bill for a table
+  fastify.get<{ Params: { tenant_id: string; branch_id: string; table_id: string } }>(
+    "/table-bill/:tenant_id/:branch_id/:table_id",
+    { preHandler: [authenticateStaff] },
+    async (request, reply) => {
+      const { tenant_id, branch_id, table_id } = request.params;
+      const bill = await getTableBill(tenant_id, branch_id, table_id);
+      return reply.send(apiSuccess(bill));
+    }
+  );
+
+  // POST /table-bill/:tenant_id/:branch_id/:table_id/pay — pay all orders on a table
+  fastify.post<{ Params: { tenant_id: string; branch_id: string; table_id: string }; Body: unknown }>(
+    "/table-bill/:tenant_id/:branch_id/:table_id/pay",
+    { preHandler: [authenticateStaff] },
+    async (request, reply) => {
+      const { tenant_id, branch_id, table_id } = request.params;
+      const body = request.body as { payment_method?: string };
+      const payment_method = body.payment_method ?? "cash";
+      const result = await recordTablePayment(tenant_id, branch_id, table_id, payment_method);
+      return reply.send(apiSuccess(result));
+    }
+  );
+
+  // GET /customer/table-bill/:table_id — customer view of their table bill (no auth for simplicity)
+  fastify.get<{ Params: { table_id: string }; Querystring: { tenant_id: string; branch_id: string } }>(
+    "/customer/table-bill/:table_id",
+    async (request, reply) => {
+      const { table_id } = request.params;
+      const { tenant_id, branch_id } = request.query;
+      if (!tenant_id || !branch_id) {
+        return reply.code(400).send(apiError("tenant_id and branch_id are required"));
+      }
+      const bill = await getTableBill(tenant_id, branch_id, table_id);
+      return reply.send(apiSuccess(bill));
     }
   );
 }

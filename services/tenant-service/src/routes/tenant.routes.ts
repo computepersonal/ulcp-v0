@@ -83,6 +83,7 @@ export async function tenantRoutes(fastify: FastifyInstance): Promise<void> {
         name: tenant.name,
         slug: tenant.slug,
         business_type: tenant.business_type,
+        dine_in_billing_mode: tenant.dine_in_billing_mode,
         logo_url: tenant.logo_url,
         cover_url: tenant.cover_url,
         address: tenant.address,

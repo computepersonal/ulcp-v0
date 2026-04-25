@@ -26,6 +26,7 @@ interface Props {
   slug: string;
   onClose: () => void;
   onLeaveRoom: () => void;
+  onChangePreferences: () => void;
 }
 
 // Unified message item for merged list
@@ -37,7 +38,7 @@ type UnifiedItem =
 
 const BROADCAST_EMOJIS = ['🎉', '🔥', '❤️', '😂', '😮', '🥳', '🙌', '💃', '🍹', '🎊', '👏', '✨'];
 
-export default function SocialRoom({ tenantId, branchId, placeName, slug, onClose, onLeaveRoom }: Props) {
+export default function SocialRoom({ tenantId, branchId, placeName, slug, onClose, onLeaveRoom, onChangePreferences }: Props) {
   const {
     state,
     sendMessage,
@@ -58,19 +59,27 @@ export default function SocialRoom({ tenantId, branchId, placeName, slug, onClos
   const navigate = useNavigate();
 
   // ─── Room background gradients ──────────────────────────────────────────
+  // Rotates every 10 min with a 3s CSS fade — one repaint per tick, negligible cost.
+  // Each gradient stays dark enough for white text to remain readable.
   const ROOM_GRADIENTS = [
-    'linear-gradient(135deg, #0A0A0F 0%, #1a1a2e 40%, #16213e 100%)',
-    'linear-gradient(135deg, #0f0c29 0%, #302b63 50%, #24243e 100%)',
-    'linear-gradient(135deg, #0A0A0F 0%, #1b2838 40%, #0d1f2d 100%)',
-    'linear-gradient(135deg, #1a0a2e 0%, #2d1b4e 40%, #0f0a1a 100%)',
-    'linear-gradient(135deg, #0A0A0F 0%, #2a1a3a 40%, #1a0f28 100%)',
+    'linear-gradient(135deg, #0A0A0F 0%, #1a1a2e 40%, #16213e 100%)',   // midnight navy
+    'linear-gradient(135deg, #0f0c29 0%, #302b63 50%, #24243e 100%)',   // cosmic purple
+    'linear-gradient(135deg, #0b3d3d 0%, #0c4747 40%, #0A0A0F 100%)',   // deep teal
+    'linear-gradient(135deg, #1a0a2e 0%, #2d1b4e 40%, #0f0a1a 100%)',   // violet dusk
+    'linear-gradient(135deg, #2d0a2e 0%, #4a1a47 40%, #0f0a1a 100%)',   // magenta night
+    'linear-gradient(135deg, #0a1f2e 0%, #1b3a5c 40%, #0a1020 100%)',   // ocean blue
+    'linear-gradient(135deg, #2e1a0a 0%, #4a2f1a 40%, #1a0f08 100%)',   // warm ember
+    'linear-gradient(135deg, #0a2e1f 0%, #14503a 40%, #0a1a14 100%)',   // emerald forest
+    'linear-gradient(135deg, #2e0a1f 0%, #5c1b3a 40%, #1a0a14 100%)',   // rose noir
+    'linear-gradient(135deg, #0a0f2e 0%, #1e2b6b 40%, #0a0a1a 100%)',   // electric indigo
   ];
-  const [gradientIdx, setGradientIdx] = useState(() => Math.floor(Math.random() * 5));
+  const [gradientIdx, setGradientIdx] = useState(() => Math.floor(Math.random() * ROOM_GRADIENTS.length));
   useEffect(() => {
     const interval = setInterval(() => {
       setGradientIdx(prev => (prev + 1) % ROOM_GRADIENTS.length);
     }, 600000); // 10 minutes
     return () => clearInterval(interval);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // ─── Ads ─────────────────────────────────────────────────────────────────
@@ -788,10 +797,18 @@ export default function SocialRoom({ tenantId, branchId, placeName, slug, onClos
               </div>
             </div>
 
+            {/* Change preferences — edit vibe + visibility, keeps alias */}
+            <button
+              onClick={() => { setShowMyProfile(false); onChangePreferences(); }}
+              className="w-full mt-10 py-3 rounded-xl border border-white/15 text-white text-sm font-medium hover:bg-white/5 transition-colors"
+            >
+              ✨ Change Vibe & Visibility
+            </button>
+
             {/* Leave room button */}
             <button
               onClick={() => { setShowMyProfile(false); onLeaveRoom(); }}
-              className="w-full mt-10 py-3 rounded-xl border border-red-500/30 text-red-400 text-sm font-medium hover:bg-red-500/10 transition-colors"
+              className="w-full mt-3 py-3 rounded-xl border border-red-500/30 text-red-400 text-sm font-medium hover:bg-red-500/10 transition-colors"
             >
               Leave Room
             </button>

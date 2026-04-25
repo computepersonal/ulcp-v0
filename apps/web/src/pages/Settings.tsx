@@ -676,10 +676,24 @@ interface JukeboxSong {
 
 const JUKEBOX_URL = import.meta.env.VITE_JUKEBOX_SERVICE_URL ?? 'http://localhost:3014';
 
+interface JukeboxConfigData {
+  is_enabled: boolean;
+  price_per_song: number; // paise
+  max_queue_length: number;
+  max_songs_per_user: number;
+  allow_dedications: boolean;
+  content_filter: string;
+}
+
 function JukeboxTab({ tenantId, token }: { tenantId: string; token: string }) {
   const [songs, setSongs] = useState<JukeboxSong[]>([]);
   const [loading, setLoading] = useState(true);
   const [songCount, setSongCount] = useState(0);
+
+  // Config
+  const [config, setConfig] = useState<JukeboxConfigData | null>(null);
+  const [configSaving, setConfigSaving] = useState(false);
+  const [configSaved, setConfigSaved] = useState(false);
 
   // Add song form
   const [urlInput, setUrlInput] = useState('');
@@ -695,6 +709,32 @@ function JukeboxTab({ tenantId, token }: { tenantId: string; token: string }) {
   const [search, setSearch] = useState('');
 
   const headers = { Authorization: `Bearer ${token}` };
+
+  const loadConfig = async () => {
+    try {
+      const res = await apiFetch(`${JUKEBOX_URL}/api/v1/jukebox/${tenantId}/config`, { headers });
+      const d = await res.json() as { success: boolean; data?: JukeboxConfigData };
+      if (d.success && d.data) setConfig(d.data);
+    } catch { /* ignore */ }
+  };
+
+  const saveConfig = async (updates: Partial<JukeboxConfigData>) => {
+    setConfigSaving(true);
+    try {
+      const res = await apiFetch(`${JUKEBOX_URL}/api/v1/jukebox/${tenantId}/config`, {
+        method: 'PATCH',
+        headers: { ...headers, 'Content-Type': 'application/json' },
+        body: JSON.stringify(updates),
+      });
+      const d = await res.json() as { success: boolean; data?: JukeboxConfigData };
+      if (d.success && d.data) {
+        setConfig(d.data);
+        setConfigSaved(true);
+        setTimeout(() => setConfigSaved(false), 2000);
+      }
+    } catch { /* ignore */ }
+    setConfigSaving(false);
+  };
 
   const loadSongs = async (q?: string) => {
     setLoading(true);
@@ -716,7 +756,7 @@ function JukeboxTab({ tenantId, token }: { tenantId: string; token: string }) {
     } catch { /* ignore */ }
   };
 
-  useEffect(() => { void loadSongs(); void loadCount(); }, [tenantId]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { void loadConfig(); void loadSongs(); void loadCount(); }, [tenantId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleAddSong = async () => {
     if (!urlInput.trim()) return;
@@ -809,7 +849,93 @@ function JukeboxTab({ tenantId, token }: { tenantId: string; token: string }) {
 
   return (
     <div className="max-w-3xl space-y-5">
-      {/* Header */}
+      {/* Jukebox Config */}
+      {config && (
+        <div className="bg-white border border-gray-200 rounded-2xl p-5 space-y-4">
+          <div className="flex items-center justify-between">
+            <h3 className="font-semibold text-gray-900">Jukebox Settings</h3>
+            {configSaved && <span className="text-xs text-green-600 font-medium">Saved!</span>}
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            {/* Price per song */}
+            <div>
+              <label className="text-sm font-medium text-gray-700 block mb-1">Price per Song (₹)</label>
+              <input
+                type="number" min={0} step={5}
+                value={config.price_per_song / 100}
+                onChange={(e) => {
+                  const paise = Math.round(Number(e.target.value) * 100);
+                  setConfig({ ...config, price_per_song: paise });
+                }}
+                onBlur={() => void saveConfig({ price_per_song: config.price_per_song })}
+                className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm outline-none focus:border-brand-500"
+              />
+              <p className="text-xs text-gray-400 mt-1">Set to 0 for free songs</p>
+            </div>
+
+            {/* Max queue length */}
+            <div>
+              <label className="text-sm font-medium text-gray-700 block mb-1">Max Queue Length</label>
+              <input
+                type="number" min={1} max={100}
+                value={config.max_queue_length}
+                onChange={(e) => setConfig({ ...config, max_queue_length: Number(e.target.value) })}
+                onBlur={() => void saveConfig({ max_queue_length: config.max_queue_length })}
+                className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm outline-none focus:border-brand-500"
+              />
+            </div>
+
+            {/* Max songs per user */}
+            <div>
+              <label className="text-sm font-medium text-gray-700 block mb-1">Max Songs per Customer</label>
+              <input
+                type="number" min={1} max={10}
+                value={config.max_songs_per_user}
+                onChange={(e) => setConfig({ ...config, max_songs_per_user: Number(e.target.value) })}
+                onBlur={() => void saveConfig({ max_songs_per_user: config.max_songs_per_user })}
+                className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm outline-none focus:border-brand-500"
+              />
+            </div>
+
+            {/* Content filter */}
+            <div>
+              <label className="text-sm font-medium text-gray-700 block mb-1">Content Filter</label>
+              <select
+                value={config.content_filter}
+                onChange={(e) => { setConfig({ ...config, content_filter: e.target.value }); void saveConfig({ content_filter: e.target.value }); }}
+                className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm outline-none focus:border-brand-500 bg-white"
+              >
+                <option value="family">Family Friendly</option>
+                <option value="adult">Adult</option>
+                <option value="off">No Filter</option>
+              </select>
+            </div>
+          </div>
+
+          {/* Toggles */}
+          <div className="flex gap-6 pt-1">
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input
+                type="checkbox" checked={config.allow_dedications}
+                onChange={(e) => { setConfig({ ...config, allow_dedications: e.target.checked }); void saveConfig({ allow_dedications: e.target.checked }); }}
+                className="rounded border-gray-300 text-brand-500 focus:ring-brand-500"
+              />
+              <span className="text-sm text-gray-700">Allow Dedications</span>
+            </label>
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input
+                type="checkbox" checked={config.is_enabled}
+                onChange={(e) => { setConfig({ ...config, is_enabled: e.target.checked }); void saveConfig({ is_enabled: e.target.checked }); }}
+                className="rounded border-gray-300 text-brand-500 focus:ring-brand-500"
+              />
+              <span className="text-sm text-gray-700">Jukebox Enabled</span>
+            </label>
+          </div>
+        </div>
+      )}
+
+      {/* Song Catalog Header */}
       <div className="flex items-center justify-between">
         <div>
           <h3 className="font-semibold text-gray-900">Song Catalog</h3>
@@ -981,6 +1107,87 @@ function JukeboxTab({ tenantId, token }: { tenantId: string; token: string }) {
   );
 }
 
+// ─── Billing Mode Card ──────────────────────────────────────────────────────
+
+function BillingModeCard({ tenantId, token }: { tenantId: string; token: string }) {
+  const [mode, setMode] = useState<'pay_later' | 'pay_now'>('pay_later');
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const tenantUrl = import.meta.env.VITE_TENANT_SERVICE_URL ?? 'http://localhost:3002';
+
+  useEffect(() => {
+    if (!tenantId || !token) return;
+    apiFetch(`${tenantUrl}/api/v1/tenants/${tenantId}`, { headers: { Authorization: `Bearer ${token}` } })
+      .then(res => res.json())
+      .then((data: { success: boolean; data?: { dine_in_billing_mode?: string } }) => {
+        if (data.success && data.data?.dine_in_billing_mode) {
+          setMode(data.data.dine_in_billing_mode as 'pay_later' | 'pay_now');
+        }
+      })
+      .catch(() => undefined)
+      .finally(() => setLoading(false));
+  }, [tenantId, token, tenantUrl]);
+
+  const save = async (newMode: 'pay_later' | 'pay_now') => {
+    setMode(newMode);
+    setSaving(true);
+    try {
+      await apiFetch(`${tenantUrl}/api/v1/tenants/${tenantId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ dine_in_billing_mode: newMode }),
+      });
+    } catch { /* ignore */ }
+    setSaving(false);
+  };
+
+  if (loading) return null;
+
+  return (
+    <div className="max-w-md bg-white border border-gray-100 rounded-2xl p-5 shadow-sm">
+      <h3 className="font-semibold text-gray-900 mb-1">Dine-in Billing Mode</h3>
+      <p className="text-xs text-gray-400 mb-4">How customers pay for dine-in orders</p>
+      <div className="space-y-3">
+        <button
+          onClick={() => { void save('pay_later'); }}
+          disabled={saving}
+          className={`w-full text-left p-4 rounded-xl border-2 transition-colors ${
+            mode === 'pay_later' ? 'border-brand-500 bg-brand-50' : 'border-gray-100 hover:border-gray-200'
+          }`}
+        >
+          <div className="flex items-center gap-3">
+            <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${mode === 'pay_later' ? 'border-brand-500' : 'border-gray-300'}`}>
+              {mode === 'pay_later' && <div className="w-2.5 h-2.5 rounded-full bg-brand-500" />}
+            </div>
+            <div>
+              <div className="font-medium text-sm text-gray-900">Pay Later (Tab)</div>
+              <div className="text-xs text-gray-500 mt-0.5">Orders added to table tab. Restaurant collects payment at the end.</div>
+            </div>
+          </div>
+        </button>
+        <button
+          onClick={() => { void save('pay_now'); }}
+          disabled={saving}
+          className={`w-full text-left p-4 rounded-xl border-2 transition-colors ${
+            mode === 'pay_now' ? 'border-brand-500 bg-brand-50' : 'border-gray-100 hover:border-gray-200'
+          }`}
+        >
+          <div className="flex items-center gap-3">
+            <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${mode === 'pay_now' ? 'border-brand-500' : 'border-gray-300'}`}>
+              {mode === 'pay_now' && <div className="w-2.5 h-2.5 rounded-full bg-brand-500" />}
+            </div>
+            <div>
+              <div className="font-medium text-sm text-gray-900">Pay Now (Per Order)</div>
+              <div className="text-xs text-gray-500 mt-0.5">Customer pays immediately when placing each order.</div>
+            </div>
+          </div>
+        </button>
+      </div>
+      {saving && <div className="text-xs text-brand-500 mt-2">Saving...</div>}
+    </div>
+  );
+}
+
 export default function Settings() {
   const auth = useAppSelector((s) => s.auth);
   const [tab, setTab] = useState<SettingsTab>('business');
@@ -1020,24 +1227,27 @@ export default function Settings() {
       </div>
 
       {tab === 'business' && (
-        <div className="max-w-md bg-white border border-gray-100 rounded-2xl p-5 shadow-sm space-y-4">
-          <h3 className="font-semibold text-gray-900">Business Profile</h3>
-          <div>
-            <label className="text-xs text-gray-400 uppercase font-medium">Name</label>
-            <div className="text-gray-900 font-medium mt-1">{auth.user?.name ?? '—'}</div>
+        <div className="space-y-4">
+          <div className="max-w-md bg-white border border-gray-100 rounded-2xl p-5 shadow-sm space-y-4">
+            <h3 className="font-semibold text-gray-900">Business Profile</h3>
+            <div>
+              <label className="text-xs text-gray-400 uppercase font-medium">Name</label>
+              <div className="text-gray-900 font-medium mt-1">{auth.user?.name ?? '—'}</div>
+            </div>
+            <div>
+              <label className="text-xs text-gray-400 uppercase font-medium">Email</label>
+              <div className="text-gray-900 mt-1">{auth.user?.email ?? '—'}</div>
+            </div>
+            <div>
+              <label className="text-xs text-gray-400 uppercase font-medium">Business ID</label>
+              <div className="text-gray-900 font-mono text-sm mt-1">{auth.user?.tenant_id ?? '—'}</div>
+            </div>
+            <div>
+              <label className="text-xs text-gray-400 uppercase font-medium">Role</label>
+              <div className="text-gray-900 capitalize mt-1">{auth.user?.role?.replace(/_/g, ' ') ?? '—'}</div>
+            </div>
           </div>
-          <div>
-            <label className="text-xs text-gray-400 uppercase font-medium">Email</label>
-            <div className="text-gray-900 mt-1">{auth.user?.email ?? '—'}</div>
-          </div>
-          <div>
-            <label className="text-xs text-gray-400 uppercase font-medium">Business ID</label>
-            <div className="text-gray-900 font-mono text-sm mt-1">{auth.user?.tenant_id ?? '—'}</div>
-          </div>
-          <div>
-            <label className="text-xs text-gray-400 uppercase font-medium">Role</label>
-            <div className="text-gray-900 capitalize mt-1">{auth.user?.role?.replace(/_/g, ' ') ?? '—'}</div>
-          </div>
+          <BillingModeCard tenantId={auth.user?.tenant_id ?? ''} token={auth_token} />
         </div>
       )}
 

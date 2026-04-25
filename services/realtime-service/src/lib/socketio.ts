@@ -63,7 +63,7 @@ function autoJoinRooms(socket: Socket & { data: { user: TokenPayload } }): void 
 }
 
 function isRoomAllowed(room: string): boolean {
-  const validPrefixes = ["tenant:", "kitchen:", "session:", "customer:", "token:"];
+  const validPrefixes = ["tenant:", "kitchen:", "session:", "customer:", "token:", "order:"];
   return validPrefixes.some((p) => room.startsWith(p));
 }
 

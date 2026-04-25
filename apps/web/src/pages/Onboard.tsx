@@ -205,10 +205,10 @@ export default function Onboard() {
               setBusinessType(obData.data.business_type ?? '');
               setSlug(obData.data.slug ?? '');
 
-              // Server tracks 1-based onboarding_step (next step to do)
-              // Steps 1-2 map to "create tenant" flow which already happened
-              // So if onboarding_step >= 3, we show step 3 (profile) onwards
-              const serverStep = obData.data.onboarding_step;
+              // Tenant already exists — steps 1-2 (type + create business) are done.
+              // Floor to 3 so legacy/stale onboarding_step=1 records don't send
+              // the user back to a "create business" screen that would collide on slug.
+              const serverStep = Math.max(obData.data.onboarding_step, 3);
               setStep(Math.min(serverStep, TOTAL_STEPS));
               setReady(true);
               return;
@@ -550,7 +550,9 @@ export default function Onboard() {
             gstin={gstin} setGstin={setGstin}
             loading={loading}
             onNext={() => void saveProfile()}
-            onBack={() => goToStep(2)}
+            // Tenant already exists — Back to step 2 would re-trigger createTenant
+            // and fail on slug uniqueness. No back button at this step.
+            onBack={tenantId ? null : () => goToStep(2)}
           />
         )}
 
@@ -722,7 +724,7 @@ function Step3Profile({
   slug: string; setSlug: (v: string) => void;
   gstRegistered: boolean; setGstRegistered: (v: boolean) => void;
   gstin: string; setGstin: (v: string) => void;
-  loading: boolean; onNext: () => void; onBack: () => void;
+  loading: boolean; onNext: () => void; onBack: (() => void) | null;
 }) {
   return (
     <div>
@@ -772,9 +774,13 @@ function Step3Profile({
       </div>
 
       <div className="flex justify-between mt-8">
-        <button onClick={onBack} className="px-6 py-3 border border-gray-200 text-gray-600 font-medium rounded-xl hover:border-gray-300 transition-colors">
-          Back
-        </button>
+        {onBack ? (
+          <button onClick={onBack} className="px-6 py-3 border border-gray-200 text-gray-600 font-medium rounded-xl hover:border-gray-300 transition-colors">
+            Back
+          </button>
+        ) : (
+          <span />
+        )}
         <button
           onClick={onNext} disabled={loading}
           className="px-8 py-3 bg-brand-500 hover:bg-brand-600 disabled:opacity-40 text-white font-semibold rounded-xl transition-colors"

@@ -6,6 +6,9 @@ import {
   updateOrderStatus,
   updatePaymentStatus,
   createStatusHistory,
+  findActiveOrdersForTable,
+  appendItemsToOrder,
+  removeItemFromOrder,
   ListOrdersFilter,
 } from "../repositories/order.repository";
 import {
@@ -340,7 +343,7 @@ export async function cancelOrder(
 
   await redisPublish(
     "ORDER_STATUS_CHANGED",
-    JSON.stringify({ order_id, tenant_id, status: "cancelled" })
+    JSON.stringify({ order_id, tenant_id, branch_id: order.branch_id, status: "cancelled" })
   ).catch((err: unknown) =>
     logger.warn({ err }, "Failed to publish ORDER_STATUS_CHANGED")
   );
@@ -372,12 +375,69 @@ export async function changeOrderStatus(
 
   await redisPublish(
     "ORDER_STATUS_CHANGED",
-    JSON.stringify({ order_id, tenant_id, status: new_status })
+    JSON.stringify({ order_id, tenant_id, branch_id: order.branch_id, status: new_status })
   ).catch((err: unknown) =>
     logger.warn({ err }, "Failed to publish ORDER_STATUS_CHANGED")
   );
 
+  // Prepaid + served → auto-complete
+  if (new_status === "served") {
+    await maybeCompleteIfPrepaid(order_id, tenant_id);
+  }
+
   return updated;
+}
+
+/**
+ * Customer prepaid flow — marks payment paid WITHOUT completing the order.
+ * The order still goes through the kitchen lifecycle; once it's served, the
+ * `maybeCompleteIfPrepaid()` hook flips it to "completed" and triggers commission.
+ */
+export async function recordPrepayment(
+  order_id: string,
+  tenant_id: string,
+  payment_method: string
+) {
+  const order = await findOrderById(order_id, tenant_id);
+  if (!order) throw new AppError("Order not found", 404);
+
+  await updatePaymentStatus(order_id, "paid", payment_method);
+
+  await redisPublish(
+    "PAYMENT_COMPLETED",
+    JSON.stringify({ order_id, tenant_id, branch_id: order.branch_id, payment_method, total: order.total })
+  ).catch((err: unknown) =>
+    logger.warn({ err }, "Failed to publish PAYMENT_COMPLETED for prepayment")
+  );
+
+  return await findOrderById(order_id, tenant_id);
+}
+
+/**
+ * After a prepaid order is served, auto-transition to completed.
+ * No-op if not paid, not served, or already completed.
+ */
+export async function maybeCompleteIfPrepaid(order_id: string, tenant_id: string) {
+  const order = await findOrderById(order_id, tenant_id);
+  if (!order) return;
+  if (order.payment_status !== "paid") return;
+  if (order.status !== "served") return;
+
+  await updateOrderStatus(order_id, "completed");
+  await createStatusHistory(order_id, "completed", "system", "Auto-completed: prepaid + served");
+  await handleOrderCompleted(order_id, tenant_id, order.total);
+
+  if (order.table_id && order.branch_id) {
+    updateTableStatus(tenant_id, order.branch_id, order.table_id, "billed")
+      .catch((err: unknown) => logger.warn({ err, table_id: order.table_id }, "Failed to mark table billed on prepaid completion"));
+  }
+
+  await redisPublish(
+    "ORDER_STATUS_CHANGED",
+    JSON.stringify({ order_id, tenant_id, branch_id: order.branch_id, status: "completed" })
+  ).catch((err: unknown) =>
+    logger.warn({ err }, "Failed to publish ORDER_STATUS_CHANGED after prepaid completion")
+  );
 }
 
 export async function recordPayment(
@@ -470,7 +530,215 @@ export async function acknowledgeKot(kot_id: string, tenant_id: string) {
   return updated;
 }
 
+// ─── Line item operations (jukebox, add-ons to running tab) ──────────────────
+
+export interface AddLineItemInput {
+  tenant_id: string;
+  branch_id: string;
+  table_id?: string;
+  customer_id?: string;
+  item: {
+    name: string;
+    price: number; // paise
+    type: string; // "jukebox_song" | "addon" etc.
+    reference_id?: string;
+  };
+}
+
+/**
+ * Add a line item to an active table order.
+ * If no active order exists for the table, creates a new one.
+ */
+export async function addLineItem(input: AddLineItemInput) {
+  const { tenant_id, branch_id, table_id, customer_id, item } = input;
+
+  const lineItem = {
+    id: `li-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    name: item.name,
+    price: item.price,
+    quantity: 1,
+    type: item.type,
+    reference_id: item.reference_id,
+  };
+
+  // If table_id provided, find active order for the table
+  if (table_id) {
+    const activeOrders = await findActiveOrdersForTable(tenant_id, branch_id, table_id);
+
+    if (activeOrders.length > 0) {
+      // Append to the most recent active order
+      const order = activeOrders[activeOrders.length - 1]!;
+      const existingItems = order.items as unknown[];
+      const allItems = [...existingItems, lineItem] as OrderItem[];
+      const bill = calculateBill(allItems);
+
+      const updated = await appendItemsToOrder(
+        order.id,
+        existingItems,
+        [lineItem],
+        { subtotal: bill.subtotal, tax_amount: bill.tax_amount, total: bill.total }
+      );
+
+      logger.info({ order_id: order.id, item: lineItem.name }, "Line item appended to existing order");
+
+      await redisPublish(
+        "ORDER_ITEM_ADDED",
+        JSON.stringify({ order_id: order.id, tenant_id, branch_id, table_id, item: lineItem })
+      ).catch((err: unknown) => logger.warn({ err }, "Failed to publish ORDER_ITEM_ADDED"));
+
+      return { order_id: order.id, line_item_id: lineItem.id };
+    }
+  }
+
+  // No active order found — create a new one
+  const order_number = await nextOrderNumber(branch_id);
+  const bill = calculateBill([lineItem as OrderItem]);
+
+  const order = await createOrder({
+    tenant_id,
+    branch_id,
+    table_id: table_id ?? null,
+    customer_id: customer_id ?? null,
+    order_number,
+    type: "dine_in",
+    status: "confirmed", // auto-confirmed for line items (no KOT needed for jukebox)
+    items: [lineItem] as unknown as Prisma.InputJsonValue,
+    subtotal: bill.subtotal,
+    tax_amount: bill.tax_amount,
+    discount_amount: 0,
+    tip_amount: 0,
+    total: bill.total,
+    gst_breakdown: bill.gst_breakdown as unknown as Prisma.InputJsonValue,
+    payment_status: "pending",
+    notes: `Auto-created for ${item.type}`,
+  });
+
+  await createStatusHistory(order.id, "confirmed", "system", `Created for ${item.type}: ${item.name}`);
+
+  logger.info({ order_id: order.id, item: lineItem.name }, "New order created for line item");
+
+  await redisPublish(
+    "ORDER_ITEM_ADDED",
+    JSON.stringify({ order_id: order.id, tenant_id, branch_id, table_id, item: lineItem })
+  ).catch((err: unknown) => logger.warn({ err }, "Failed to publish ORDER_ITEM_ADDED"));
+
+  return { order_id: order.id, line_item_id: lineItem.id };
+}
+
+/**
+ * Remove a line item from an order (e.g. jukebox song cancellation refund).
+ */
+export async function removeLineItem(
+  order_id: string,
+  line_item_id: string,
+  tenant_id: string
+) {
+  const order = await findOrderById(order_id, tenant_id);
+  if (!order) throw new AppError("Order not found", 404);
+
+  const items = order.items as Array<{ id?: string; price?: number; quantity?: number }>;
+  const itemToRemove = items.find(i => i.id === line_item_id);
+  if (!itemToRemove) throw new AppError("Line item not found in order", 404);
+
+  const updatedItems = items.filter(i => i.id !== line_item_id);
+  const bill = calculateBill(updatedItems as OrderItem[]);
+
+  await removeItemFromOrder(order_id, updatedItems, {
+    subtotal: bill.subtotal,
+    tax_amount: bill.tax_amount,
+    total: bill.total,
+  });
+
+  logger.info({ order_id, line_item_id }, "Line item removed from order");
+
+  await redisPublish(
+    "ORDER_ITEM_REMOVED",
+    JSON.stringify({ order_id, tenant_id, line_item_id, refunded: itemToRemove.price ?? 0 })
+  ).catch((err: unknown) => logger.warn({ err }, "Failed to publish ORDER_ITEM_REMOVED"));
+
+  return { refunded: itemToRemove.price ?? 0 };
+}
+
+// ─── Table bill consolidation ────────────────────────────────────────────────
+
+/**
+ * Get consolidated bill for a table — all unpaid orders combined.
+ */
+export async function getTableBill(tenant_id: string, branch_id: string, table_id: string) {
+  const orders = await findActiveOrdersForTable(tenant_id, branch_id, table_id);
+
+  if (orders.length === 0) {
+    return { orders: [], subtotal: 0, tax_amount: 0, discount_amount: 0, tip_amount: 0, total: 0, items: [] };
+  }
+
+  let subtotal = 0;
+  let tax_amount = 0;
+  let discount_amount = 0;
+  let tip_amount = 0;
+  let total = 0;
+  const allItems: unknown[] = [];
+  const orderSummaries: Array<{ order_id: string; order_number: string; total: number; items_count: number }> = [];
+
+  for (const order of orders) {
+    subtotal += order.subtotal;
+    tax_amount += order.tax_amount;
+    discount_amount += order.discount_amount;
+    tip_amount += order.tip_amount;
+    total += order.total;
+
+    const items = order.items as Array<{ quantity?: number }>;
+    allItems.push(...items);
+
+    orderSummaries.push({
+      order_id: order.id,
+      order_number: order.order_number,
+      total: order.total,
+      items_count: items.reduce((sum, i) => sum + (i.quantity ?? 1), 0),
+    });
+  }
+
+  return { orders: orderSummaries, subtotal, tax_amount, discount_amount, tip_amount, total, items: allItems };
+}
+
+/**
+ * Record payment for all orders on a table (tab close).
+ */
+export async function recordTablePayment(
+  tenant_id: string,
+  branch_id: string,
+  table_id: string,
+  payment_method: string
+) {
+  const orders = await findActiveOrdersForTable(tenant_id, branch_id, table_id);
+  if (orders.length === 0) throw new AppError("No active orders for this table", 404);
+
+  const results = [];
+  let totalAmount = 0;
+
+  for (const order of orders) {
+    await updatePaymentStatus(order.id, "paid", payment_method);
+    await updateOrderStatus(order.id, "completed");
+    await createStatusHistory(order.id, "completed", "staff", `Table payment via ${payment_method}`);
+    await handleOrderCompleted(order.id, tenant_id, order.total);
+    totalAmount += order.total;
+    results.push({ order_id: order.id, order_number: order.order_number, total: order.total });
+  }
+
+  // Free the table
+  if (table_id) {
+    updateTableStatus(tenant_id, branch_id, table_id, "available")
+      .catch((err: unknown) => logger.warn({ err, table_id }, "Failed to free table after payment"));
+  }
+
+  await redisPublish(
+    "TABLE_PAYMENT_COMPLETED",
+    JSON.stringify({ tenant_id, branch_id, table_id, payment_method, total: totalAmount, orders: results })
+  ).catch((err: unknown) => logger.warn({ err }, "Failed to publish TABLE_PAYMENT_COMPLETED"));
+
+  return { orders: results, total: totalAmount };
+}
+
 // Re-export repository functions for use in routes
-export { findOrders, findOrderById };
+export { findOrders, findOrderById, findActiveOrdersForTable };
 export { findKOTs, findKOTById, updateKOTStatus };
 export type { ListOrdersFilter };

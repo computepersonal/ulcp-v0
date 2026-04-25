@@ -4,6 +4,7 @@ import { useAppDispatch, useAppSelector } from '../hooks/redux';
 import { addItem, updateQuantity } from '../store/cartSlice';
 import { setAuth } from '../store/authSlice';
 import FloatingCart from '../components/FloatingCart';
+import FloatingOrderTracker from '../components/FloatingOrderTracker';
 import BottomNav from '../components/BottomNav';
 import ProfileDrawer from '../components/ProfileDrawer';
 import AliasSelect from '../components/social/AliasSelect';
@@ -40,6 +41,7 @@ interface TenantInfo {
   logo_url?: string;
   cover_url?: string;
   business_type?: string;
+  dine_in_billing_mode?: 'pay_later' | 'pay_now';
 }
 
 // ─── OTP Login Sheet ─────────────────────────────────────────────────────────
@@ -48,13 +50,14 @@ interface LoginResult { token: string; customerId: string; name: string; phone: 
 
 function LoginSheet({ onSuccess, onClose }: { onSuccess: (auth: LoginResult) => void; onClose: () => void }) {
   const dispatch = useAppDispatch();
-  const [step, setStep] = useState<'details' | 'otp'>('details');
+  const [step, setStep] = useState<'phone' | 'otp' | 'name'>('phone');
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
   const [digits, setDigits] = useState(['', '', '', '', '', '']);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [countdown, setCountdown] = useState(0);
+  const [verifiedData, setVerifiedData] = useState<{ token: string; customerId: string } | null>(null);
   const identityUrl = import.meta.env.VITE_IDENTITY_SERVICE_URL ?? 'http://localhost:3001';
 
   useEffect(() => {
@@ -86,7 +89,7 @@ function LoginSheet({ onSuccess, onClose }: { onSuccess: (auth: LoginResult) => 
       const res = await fetch(`${identityUrl}/api/v1/auth/customer/otp/verify`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ phone: `+91${phone}`, otp, name: name.trim() })
+        body: JSON.stringify({ phone: `+91${phone}`, otp })
       });
       const data = (await res.json()) as {
         success: boolean;
@@ -94,15 +97,28 @@ function LoginSheet({ onSuccess, onClose }: { onSuccess: (auth: LoginResult) => 
         error?: string;
       };
       if (res.ok && data.success && data.data) {
-        const resolvedName = data.data.name || name.trim();
-        const authResult = { token: data.data.token, customerId: data.data.customerId, name: resolvedName, phone };
-        dispatch(setAuth(authResult));
-        onSuccess(authResult);
+        if (data.data.name) {
+          // Existing user — sign in directly
+          const authResult = { token: data.data.token, customerId: data.data.customerId, name: data.data.name, phone };
+          dispatch(setAuth(authResult));
+          onSuccess(authResult);
+        } else {
+          // New user — collect name
+          setVerifiedData({ token: data.data.token, customerId: data.data.customerId });
+          setStep('name');
+        }
       } else {
         setError(data.error ?? 'Invalid OTP. Try again.');
       }
     } catch { setError('Verification failed. Try again.'); }
     finally { setLoading(false); }
+  };
+
+  const completeName = () => {
+    if (!verifiedData || name.trim().length < 2) return;
+    const authResult = { token: verifiedData.token, customerId: verifiedData.customerId, name: name.trim(), phone };
+    dispatch(setAuth(authResult));
+    onSuccess(authResult);
   };
 
   const handleDigitChange = (index: number, value: string) => {
@@ -115,34 +131,29 @@ function LoginSheet({ onSuccess, onClose }: { onSuccess: (auth: LoginResult) => 
       (document.getElementById(`otp-${index - 1}`) as HTMLInputElement)?.focus();
   };
 
+  const stepTitle = step === 'phone' ? 'Login to place order'
+    : step === 'otp' ? 'Enter OTP'
+    : 'Welcome!';
+  const stepDesc = step === 'phone' ? 'Enter your mobile number'
+    : step === 'otp' ? `Code sent to +91 ${phone}`
+    : "You're new here. What should we call you?";
+
   return (
     <div className="fixed inset-0 bg-black/50 z-50 flex items-end" onClick={onClose}>
       <div className="bg-white rounded-t-2xl p-6 w-full" onClick={e => e.stopPropagation()}>
         <div className="w-10 h-1 bg-gray-300 rounded-full mx-auto mb-4" />
         <div className="flex items-center justify-between mb-1">
-          <h2 className="text-lg font-semibold text-gray-900">
-            {step === 'details' ? 'Login to place order' : 'Enter OTP'}
-          </h2>
+          <h2 className="text-lg font-semibold text-gray-900">{stepTitle}</h2>
           <button onClick={onClose} className="text-gray-400 text-xl">✕</button>
         </div>
-        <p className="text-gray-500 text-sm mb-5">
-          {step === 'details'
-            ? 'Enter your name and phone number'
-            : `Code sent to +91 ${phone}`}
-        </p>
+        <p className="text-gray-500 text-sm mb-5">{stepDesc}</p>
 
-        {step === 'details' ? (
+        {step === 'phone' ? (
           <>
-            <input
-              type="text" value={name} autoFocus
-              onChange={e => setName(e.target.value)}
-              placeholder="Your name"
-              className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm outline-none focus:border-brand-500 mb-3"
-            />
             <div className="flex gap-2 mb-4">
               <div className="bg-gray-100 rounded-xl px-3 py-3 text-gray-600 font-medium text-sm">+91</div>
               <input
-                type="tel" value={phone}
+                type="tel" value={phone} autoFocus
                 onChange={e => setPhone(e.target.value.replace(/\D/g, '').slice(0, 10))}
                 placeholder="10-digit mobile number"
                 className="flex-1 border border-gray-200 rounded-xl px-4 py-3 text-sm outline-none focus:border-brand-500"
@@ -151,13 +162,13 @@ function LoginSheet({ onSuccess, onClose }: { onSuccess: (auth: LoginResult) => 
             {error && <p className="text-red-500 text-sm mb-3">{error}</p>}
             <button
               onClick={() => { void sendOtp(); }}
-              disabled={phone.length !== 10 || name.trim().length < 2 || loading}
+              disabled={phone.length !== 10 || loading}
               className="w-full py-3 bg-brand-500 hover:bg-brand-600 disabled:opacity-50 text-white font-semibold rounded-xl"
             >
               {loading ? 'Sending...' : 'Send OTP'}
             </button>
           </>
-        ) : (
+        ) : step === 'otp' ? (
           <>
             <div className="flex gap-2 mb-4 justify-center">
               {digits.map((d, i) => (
@@ -184,6 +195,22 @@ function LoginSheet({ onSuccess, onClose }: { onSuccess: (auth: LoginResult) => 
               )}
             </div>
           </>
+        ) : (
+          <>
+            <input
+              type="text" value={name} autoFocus
+              onChange={e => setName(e.target.value)}
+              placeholder="Your name"
+              className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm outline-none focus:border-brand-500 mb-4"
+            />
+            <button
+              onClick={completeName}
+              disabled={name.trim().length < 2}
+              className="w-full py-3 bg-brand-500 hover:bg-brand-600 disabled:opacity-50 text-white font-semibold rounded-xl"
+            >
+              Continue
+            </button>
+          </>
         )}
       </div>
     </div>
@@ -196,6 +223,7 @@ export default function Catalogue() {
   const { slug } = useParams<{ slug: string }>();
   const [searchParams] = useSearchParams();
   const tableId = searchParams.get('table'); // ?table=TABLE_ID from QR code
+  const tabParam = searchParams.get('tab'); // ?tab=social → auto-open social room
   const navigate = useNavigate();
   const dispatch = useAppDispatch();
   const cart = useAppSelector(s => s.cart);
@@ -324,7 +352,13 @@ export default function Catalogue() {
   const filteredItems = items.filter(item => {
     if (!item.is_available) return false;
     if (vegOnly && item.veg_type !== 'veg' && item.veg_type !== 'vegan') return false;
-    if (search && !item.name.toLowerCase().includes(search.toLowerCase())) return false;
+    if (search) {
+      const q = search.toLowerCase();
+      const section = sections.find(s => s.id === item.section_id);
+      const matchesItem = item.name.toLowerCase().includes(q);
+      const matchesSection = section?.name.toLowerCase().includes(q);
+      if (!matchesItem && !matchesSection) return false;
+    }
     return true;
   });
 
@@ -337,7 +371,7 @@ export default function Catalogue() {
     if (existing) {
       dispatch(updateQuantity({ id: existing.id, quantity: existing.quantity + 1 }));
     } else {
-      dispatch(addItem({ id: item.id, item_id: item.id, name: item.name, price: item.price, quantity: 1, tenant_id: tenantInfo.tenant_id, branch_id: tenantInfo.branch_id, business_type: tenantInfo.business_type ?? 'seated_food_only', slug, place_name: tenantInfo.name, ...(tableId ? { table_id: tableId } : {}), ...(tableName ? { table_name: tableName } : {}) }));
+      dispatch(addItem({ id: item.id, item_id: item.id, name: item.name, price: item.price, quantity: 1, tenant_id: tenantInfo.tenant_id, branch_id: tenantInfo.branch_id, business_type: tenantInfo.business_type ?? 'seated_food_only', billing_mode: tenantInfo.dine_in_billing_mode, slug, place_name: tenantInfo.name, ...(tableId ? { table_id: tableId } : {}), ...(tableName ? { table_name: tableName } : {}) }));
     }
   };
 
@@ -409,13 +443,22 @@ export default function Catalogue() {
     const savedMode = localStorage.getItem(`social:mode:${tenantInfo.tenant_id}`) as 'public' | 'private' | null;
     const savedIntentRaw = localStorage.getItem(`social:intent:${tenantInfo.tenant_id}`);
     const savedIntent = (savedIntentRaw === 'socialize' || savedIntentRaw === 'date') ? savedIntentRaw : null;
-    if (savedAlias) {
-      joinRoom(tenantInfo.tenant_id, tenantInfo.branch_id, savedAlias, savedMode ?? 'public', savedIntent);
+    // Join directly only if the user has BOTH an alias and a vibe choice on file.
+    // After a permanent leave we wipe mode+intent (not alias) so users get to re-pick their vibe.
+    if (savedAlias && savedMode) {
+      joinRoom(tenantInfo.tenant_id, tenantInfo.branch_id, savedAlias, savedMode, savedIntent);
       setShowSocialRoom(true);
     } else {
       setShowAliasSelect(true);
     }
   };
+
+  // Auto-open social room when arriving with ?tab=social (from order tracking / checkout)
+  useEffect(() => {
+    if (tabParam !== 'social' || !tenantInfo || showSocialRoom || showAliasSelect) return;
+    handleOpenSocial();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tabParam, tenantInfo]);
 
   const handleAliasEnter = (alias: string, mode: 'public' | 'private', intent: 'socialize' | 'date' | null) => {
     if (!tenantInfo) return;
@@ -501,12 +544,22 @@ export default function Catalogue() {
 
       {/* Search & filters */}
       <div className="bg-white px-4 py-2 border-b border-gray-100">
-        <input
-          type="text" value={search}
-          onChange={e => setSearch(e.target.value)}
-          placeholder="Search menu..."
-          className="w-full bg-gray-100 rounded-xl px-4 py-2.5 text-sm outline-none mb-2"
-        />
+        <div className="relative mb-2">
+          <input
+            type="text" value={search}
+            onChange={e => setSearch(e.target.value)}
+            placeholder="Search menu..."
+            className="w-full bg-gray-100 rounded-xl px-4 py-2.5 text-sm outline-none pr-8"
+          />
+          {search && (
+            <button
+              onClick={() => setSearch('')}
+              className="absolute right-2 top-1/2 -translate-y-1/2 w-5 h-5 flex items-center justify-center rounded-full bg-gray-300 text-white text-xs"
+            >
+              ✕
+            </button>
+          )}
+        </div>
         <div className="flex gap-2 overflow-x-auto" style={{ scrollbarWidth: 'none' }}>
           <button className="flex-shrink-0 text-xs px-3 py-1.5 rounded-full bg-brand-500 text-white font-medium">All</button>
           <button
@@ -608,8 +661,9 @@ export default function Catalogue() {
         )}
       </div>
 
-      {isLoggedIn && <FloatingCart count={cartCount} total={cartTotal} slug={slug ?? ''} />}
-      <BottomNav homeLink="/" menuLink={`/place/${slug}`} showMenu={true} />
+      {isLoggedIn && cartCount > 0 && <FloatingCart count={cartCount} total={cartTotal} slug={slug ?? ''} />}
+      {isLoggedIn && cartCount === 0 && <FloatingOrderTracker />}
+      <BottomNav homeLink="/" showMenu={false} />
 
       {/* Login bottom sheet */}
       {showLogin && (
@@ -627,16 +681,27 @@ export default function Catalogue() {
       />
 
       {/* Alias Select */}
-      {showAliasSelect && tenantInfo && (
-        <AliasSelect
-          placeName={tenantInfo.name}
-          savedAlias={localStorage.getItem(`social:alias:${tenantInfo.tenant_id}`) ?? undefined}
-          savedMode={(localStorage.getItem(`social:mode:${tenantInfo.tenant_id}`) as 'public' | 'private') ?? undefined}
-          savedIntent={(() => { const v = localStorage.getItem(`social:intent:${tenantInfo.tenant_id}`); return (v === 'socialize' || v === 'date') ? v : null; })()}
-          onEnter={handleAliasEnter}
-          onClose={() => setShowAliasSelect(false)}
-        />
-      )}
+      {showAliasSelect && tenantInfo && (() => {
+        // Prefer the live social-context alias (set once the user is in the room).
+        // Fallback to localStorage (covers cold-start entries before any join).
+        const currentAlias = socialState.alias || localStorage.getItem(`social:alias:${tenantInfo.tenant_id}`) || '';
+        const currentMode = (socialState.mode as 'public' | 'private' | undefined)
+          ?? (localStorage.getItem(`social:mode:${tenantInfo.tenant_id}`) as 'public' | 'private' | null)
+          ?? undefined;
+        const storedIntent = localStorage.getItem(`social:intent:${tenantInfo.tenant_id}`);
+        const currentIntent = (storedIntent === 'socialize' || storedIntent === 'date') ? storedIntent : null;
+        return (
+          <AliasSelect
+            placeName={tenantInfo.name}
+            savedAlias={currentAlias || undefined}
+            savedMode={currentMode}
+            savedIntent={currentIntent}
+            startAtVibe={!!currentAlias}
+            onEnter={handleAliasEnter}
+            onClose={() => setShowAliasSelect(false)}
+          />
+        );
+      })()}
 
       {/* Social Room */}
       {showSocialRoom && tenantInfo && (
@@ -648,9 +713,17 @@ export default function Catalogue() {
           onClose={() => setShowSocialRoom(false)}
           onLeaveRoom={() => {
             leaveRoom(tenantInfo.tenant_id, tenantInfo.branch_id);
-            // Keep alias, mode, and intent in localStorage so re-entering
-            // skips the alias/vibe select and joins directly with same identity
+            // Keep alias (same identity) but wipe vibe + visibility so the user
+            // gets to re-pick them the next time they enter the room.
+            localStorage.removeItem(`social:mode:${tenantInfo.tenant_id}`);
+            localStorage.removeItem(`social:intent:${tenantInfo.tenant_id}`);
             setShowSocialRoom(false);
+          }}
+          onChangePreferences={() => {
+            // Edit vibe/visibility without leaving — reopen AliasSelect at vibe step,
+            // re-join on submit with new mode/intent (alias stays the same).
+            setShowSocialRoom(false);
+            setShowAliasSelect(true);
           }}
         />
       )}

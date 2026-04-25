@@ -15,13 +15,14 @@ interface CartState {
   tenant_id: string | null;
   branch_id: string | null;
   business_type: string | null;
+  billing_mode: 'pay_later' | 'pay_now' | null;
   slug: string | null;
   place_name: string | null;
   table_id: string | null;
   table_name: string | null;
 }
 
-const initialState: CartState = { items: [], tenant_id: null, branch_id: null, business_type: null, slug: null, place_name: null, table_id: null, table_name: null };
+const initialState: CartState = { items: [], tenant_id: null, branch_id: null, business_type: null, billing_mode: null, slug: null, place_name: null, table_id: null, table_name: null };
 
 export const cartSlice = createSlice({
   name: 'cart',
@@ -29,15 +30,16 @@ export const cartSlice = createSlice({
   reducers: {
     addItem(
       state,
-      action: PayloadAction<CartItem & { tenant_id: string; branch_id: string; business_type: string; slug: string; place_name?: string; table_id?: string; table_name?: string }>
+      action: PayloadAction<CartItem & { tenant_id: string; branch_id: string; business_type: string; billing_mode?: 'pay_later' | 'pay_now'; slug: string; place_name?: string; table_id?: string; table_name?: string }>
     ) {
-      const { tenant_id, branch_id, business_type, slug, place_name, table_id, table_name, ...item } = action.payload;
+      const { tenant_id, branch_id, business_type, billing_mode, slug, place_name, table_id, table_name, ...item } = action.payload;
       if (state.tenant_id && state.tenant_id !== tenant_id) {
         state.items = [];
       }
       state.tenant_id = tenant_id;
       state.branch_id = branch_id;
       state.business_type = business_type;
+      if (billing_mode) state.billing_mode = billing_mode;
       state.slug = slug;
       if (place_name) state.place_name = place_name;
       if (table_id) state.table_id = table_id;
@@ -64,6 +66,7 @@ export const cartSlice = createSlice({
       state.tenant_id = null;
       state.branch_id = null;
       state.business_type = null;
+      state.billing_mode = null;
       state.slug = null;
       state.place_name = null;
       state.table_id = null;

@@ -26,11 +26,6 @@ export default function ProfileDrawer({ isOpen, onClose, onLoginRequest }: Profi
     catch { return [] as SavedPlace[]; }
   })();
 
-  const maskPhone = (phone: string) => {
-    if (phone.length < 5) return phone;
-    return phone.slice(0, -5) + 'XXXXX';
-  };
-
   return (
     <>
       <MyProfilePanel isOpen={showMyProfile} onClose={() => setShowMyProfile(false)} />
@@ -53,8 +48,10 @@ export default function ProfileDrawer({ isOpen, onClose, onLoginRequest }: Profi
                 {auth.name ? auth.name[0].toUpperCase() : auth.phone?.[0] ?? '?'}
               </div>
               <div className="text-white font-semibold text-lg">{auth.name || 'You'}</div>
-              <div className="text-white/70 text-sm">+91 {maskPhone(auth.phone ?? '')}</div>
-              <button className="mt-3 text-xs bg-white/20 text-white px-3 py-1.5 rounded-full border border-white/30">
+              <button
+                onClick={() => { onClose(); setShowMyProfile(true); }}
+                className="mt-3 text-xs bg-white/20 text-white px-3 py-1.5 rounded-full border border-white/30"
+              >
                 Edit Profile
               </button>
             </>

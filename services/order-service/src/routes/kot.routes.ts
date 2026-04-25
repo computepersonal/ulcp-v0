@@ -6,11 +6,13 @@ import { formatZodError } from "../lib/zodError";
 import {
   findKOTs,
   findKOTById,
+  findKOTsByOrderId,
   updateKOTStatus,
   updateKOTItems,
   allKotsRejected,
 } from "../repositories/kot.repository";
-import { acknowledgeKot } from "../services/order.service";
+import { findOrderById, updateOrderStatus, createStatusHistory } from "../repositories/order.repository";
+import { acknowledgeKot, maybeCompleteIfPrepaid } from "../services/order.service";
 import { redisPublish } from "../lib/redis";
 import { logger } from "../lib/logger";
 import type { Prisma } from "../generated/prisma";
@@ -149,6 +151,33 @@ export async function kotRoutes(fastify: FastifyInstance): Promise<void> {
           ).catch((err: unknown) =>
             logger.warn({ err }, "Failed to publish KOT_STATUS_CHANGED")
           );
+
+          // Auto-bump: when ALL KOTs for the order reach "served", bump order → "served"
+          // (only if order is still in "ready" — don't overwrite completed/cancelled/served)
+          if (parsed.data.status === "served") {
+            const siblings = await findKOTsByOrderId(kot.order_id, tenant_id);
+            const allServed = siblings.length > 0 && siblings.every((k) => k.status === "served");
+            if (allServed) {
+              const parent = await findOrderById(kot.order_id, tenant_id);
+              if (parent && parent.status === "ready") {
+                await updateOrderStatus(kot.order_id, "served");
+                await createStatusHistory(kot.order_id, "served", "kitchen", "All KOTs served");
+                await redisPublish(
+                  "ORDER_STATUS_CHANGED",
+                  JSON.stringify({
+                    order_id: kot.order_id,
+                    tenant_id,
+                    branch_id: kot.branch_id,
+                    status: "served",
+                  })
+                ).catch((err: unknown) =>
+                  logger.warn({ err }, "Failed to publish ORDER_STATUS_CHANGED after KOTs served")
+                );
+                // Prepaid + served → auto-complete
+                await maybeCompleteIfPrepaid(kot.order_id, tenant_id);
+              }
+            }
+          }
         }
 
         return reply.send(apiSuccess({ kot: updated }));

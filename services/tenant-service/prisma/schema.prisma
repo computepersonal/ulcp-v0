@@ -52,6 +52,11 @@ model Tenant {
   kot_ack_mode       String @default("auto") // auto | kds | printer
   kot_ack_delay_secs Int    @default(60)     // seconds before auto-ack (mode=auto only)
 
+  // Dine-in billing mode — how customers pay for orders
+  // "pay_later"  → orders added to table tab, restaurant collects payment at the end (default)
+  // "pay_now"    → customer pays immediately when placing each order
+  dine_in_billing_mode String @default("pay_later") // pay_later | pay_now
+
   onboarding_step      Int      @default(1)
   onboarding_completed Boolean  @default(false)
   setup_tasks          Json?    // { catalogue: bool, tables: bool, staff: bool, qr: bool } — post-onboarding checklist (server-persisted)

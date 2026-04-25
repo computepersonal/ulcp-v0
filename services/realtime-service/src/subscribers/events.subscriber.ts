@@ -62,6 +62,10 @@ function handleEvent(io: SocketServer, channel: string, payload: EventPayload): 
       if (session_id) {
         broadcast(io, `session:${session_id}`, "order:status:changed", payload);
       }
+      const order_id = payload["order_id"] as string | undefined;
+      if (order_id) {
+        broadcast(io, `order:${order_id}`, "order:status:changed", payload);
+      }
       break;
     }
 
@@ -170,6 +174,10 @@ function handleEvent(io: SocketServer, channel: string, payload: EventPayload): 
       }
       if (session_id) {
         broadcast(io, `session:${session_id}`, "payment:completed", payload);
+      }
+      const order_id = payload["order_id"] as string | undefined;
+      if (order_id) {
+        broadcast(io, `order:${order_id}`, "payment:completed", payload);
       }
       break;
     }

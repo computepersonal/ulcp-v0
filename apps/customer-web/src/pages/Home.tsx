@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useAppSelector } from '../hooks/redux';
 import BottomNav from '../components/BottomNav';
+import FloatingOrderTracker from '../components/FloatingOrderTracker';
 import ProfileDrawer from '../components/ProfileDrawer';
 import ExploreDrawer from '../components/ExploreDrawer';
 
@@ -119,6 +120,7 @@ export default function Home() {
         </section>
       </div>
 
+      <FloatingOrderTracker />
       <BottomNav homeLink="/" showMenu={false} />
 
       {/* Left drawer — Explore, places, events, party packages */}

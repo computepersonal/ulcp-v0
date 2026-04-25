@@ -9,6 +9,8 @@ interface Props {
   savedAlias?: string;
   savedMode?: 'public' | 'private';
   savedIntent?: SocialIntent;
+  /** Skip alias step when user already has an identity but is re-selecting vibe/visibility */
+  startAtVibe?: boolean;
   onEnter: (alias: string, mode: 'public' | 'private', intent: SocialIntent) => void;
   onClose: () => void;
 }
@@ -43,8 +45,8 @@ const VIBES = [
   },
 ] as const;
 
-export default function AliasSelect({ placeName, savedAlias, savedMode, savedIntent, onEnter, onClose }: Props) {
-  const [step, setStep] = useState<1 | 2>(1);
+export default function AliasSelect({ placeName, savedAlias, savedMode, savedIntent, startAtVibe, onEnter, onClose }: Props) {
+  const [step, setStep] = useState<1 | 2>(startAtVibe && savedAlias ? 2 : 1);
   const [alias, setAlias] = useState(savedAlias ?? '');
   const [mode, setMode] = useState<'public' | 'private'>(savedMode ?? 'public');
   const [intent, setIntent] = useState<SocialIntent>(savedIntent ?? null);   // always ask fresh on re-entry
@@ -180,17 +182,19 @@ export default function AliasSelect({ placeName, savedAlias, savedMode, savedInt
             )}
 
             <div className="flex gap-3">
-              <button
-                onClick={() => setStep(1)}
-                className="px-5 py-3 rounded-xl border border-gray-200 text-gray-600 text-sm font-medium"
-              >
-                ← Back
-              </button>
+              {!startAtVibe && (
+                <button
+                  onClick={() => setStep(1)}
+                  className="px-5 py-3 rounded-xl border border-gray-200 text-gray-600 text-sm font-medium"
+                >
+                  ← Back
+                </button>
+              )}
               <button
                 onClick={handleEnter}
                 className="flex-1 py-3 bg-brand-500 hover:bg-brand-600 text-white font-semibold rounded-xl text-sm"
               >
-                Enter Room →
+                {startAtVibe ? 'Save' : 'Enter Room →'}
               </button>
             </div>
           </div>

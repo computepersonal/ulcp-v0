@@ -4,7 +4,7 @@ import { useAppSelector } from '../hooks/redux';
 import { apiFetch } from '../lib/apiFetch';
 import { useSocket } from '../hooks/useSocket';
 
-type OrderStatus = 'pending' | 'confirmed' | 'preparing' | 'ready';
+type OrderStatus = 'pending' | 'confirmed' | 'preparing' | 'ready' | 'served';
 type PaymentMethod = 'cash' | 'upi' | 'card';
 
 interface KotItem {
@@ -35,6 +35,8 @@ interface OrderDetail {
   gst_amount: number;
   discount_amount: number;
   total: number;
+  payment_status?: string; // pending | paid | failed | refunded
+  payment_method?: string; // cash | upi | card | online
   created_at: string;
   kots: Kot[];
   status_history?: Array<{ status: string; created_at: string }>;
@@ -53,36 +55,41 @@ interface OrderData {
   kots?: Kot[];
 }
 
-const STATUS_ORDER: OrderStatus[] = ['pending', 'confirmed', 'preparing', 'ready'];
+const STATUS_ORDER: OrderStatus[] = ['pending', 'confirmed', 'preparing', 'ready', 'served'];
 const STATUS_LABELS: Record<OrderStatus, string> = {
   pending: 'Pending',
   confirmed: 'Confirmed',
   preparing: 'Preparing',
-  ready: 'Ready'
+  ready: 'Ready',
+  served: 'Served'
 };
 const STATUS_NEXT: Record<OrderStatus, OrderStatus | null> = {
   pending: 'confirmed',
   confirmed: 'preparing',
   preparing: 'ready',
-  ready: null
+  ready: 'served',
+  served: null
 };
 const STATUS_NEXT_LABEL: Record<OrderStatus, string> = {
   pending: 'Accept',
   confirmed: 'Start Preparing',
   preparing: 'Mark Ready',
-  ready: ''
+  ready: 'Mark Served',
+  served: ''
 };
 const STATUS_COLORS: Record<OrderStatus, string> = {
   pending: 'border-l-yellow-500',
   confirmed: 'border-l-blue-500',
   preparing: 'border-l-orange-500',
-  ready: 'border-l-green-500'
+  ready: 'border-l-green-500',
+  served: 'border-l-emerald-600'
 };
 const STATUS_BADGE: Record<OrderStatus, string> = {
   pending: 'bg-yellow-50 text-yellow-700 border-yellow-200',
   confirmed: 'bg-blue-50 text-blue-700 border-blue-200',
   preparing: 'bg-orange-50 text-orange-700 border-orange-200',
-  ready: 'bg-green-50 text-green-700 border-green-200'
+  ready: 'bg-green-50 text-green-700 border-green-200',
+  served: 'bg-emerald-50 text-emerald-700 border-emerald-200'
 };
 
 const PAYMENT_METHODS: { value: PaymentMethod; label: string; icon: string }[] = [
@@ -157,7 +164,7 @@ export default function Orders() {
     const load = async () => {
       try {
         const res = await apiFetch(
-          `${orderServiceUrl}/api/v1/orders/${auth.user!.tenant_id}?status=pending,confirmed,preparing,ready`,
+          `${orderServiceUrl}/api/v1/orders/${auth.user!.tenant_id}?status=pending,confirmed,preparing,ready,served`,
           { headers: { Authorization: `Bearer ${auth.token}` } }
         );
         if (!res.ok) {
@@ -249,7 +256,33 @@ export default function Orders() {
       id: order.id, order_number: order.order_number, type: order.type ?? 'dine_in',
       status: order.status, subtotal: order.total, tax_amount: 0, gst_amount: 0,
       discount_amount: 0, total: order.total, created_at: order.created_at, kots: [],
+      payment_status: (order as OrderDetail).payment_status,
+      payment_method: (order as OrderDetail).payment_method,
     });
+  };
+
+  // Already-paid served orders: staff explicitly closes out the order. This
+  // triggers commission recording + table-free and removes the card from the kanban.
+  const completePaidOrder = async () => {
+    if (!checkoutOrder || !auth.user?.tenant_id) return;
+    setCheckoutLoading(true);
+    try {
+      await apiFetch(
+        `${orderServiceUrl}/api/v1/orders/${auth.user.tenant_id}/${checkoutOrder.id}/status`,
+        {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${auth.token}` },
+          body: JSON.stringify({ status: 'completed' })
+        }
+      );
+      setOrders(prev => prev.filter(o => o.id !== checkoutOrder.id));
+      setSelectedOrder(prev => prev?.id === checkoutOrder.id ? null : prev);
+      setCheckoutOrder(null);
+    } catch {
+      /* leave modal open so staff can retry */
+    } finally {
+      setCheckoutLoading(false);
+    }
   };
 
   const confirmPayment = async () => {
@@ -317,7 +350,7 @@ export default function Orders() {
             {fetchError}
           </div>
         )}
-        <div className="grid grid-cols-4 gap-4">
+        <div className="grid grid-cols-5 gap-4">
           {STATUS_ORDER.map((status) => {
             const columnOrders = orders.filter(o => o.status === status);
             return (
@@ -349,7 +382,7 @@ export default function Orders() {
                       <div className="text-xs text-gray-400 mt-1">{getElapsed(order.created_at)}</div>
 
                       {/* Action buttons */}
-                      {order.status === 'ready' ? (
+                      {order.status === 'served' ? (
                         <button
                           onClick={(e) => { e.stopPropagation(); void openCheckout(order); }}
                           className="mt-3 w-full py-1.5 bg-green-600 hover:bg-green-700 text-white text-xs font-semibold rounded-lg transition-colors"
@@ -495,6 +528,55 @@ export default function Orders() {
                 <div className="text-lg font-bold text-gray-900">Payment Received</div>
                 <div className="text-sm text-gray-500 mt-1">{checkoutOrder.order_number} — completed</div>
               </div>
+            ) : checkoutOrder.payment_status === 'paid' ? (
+              /* Already paid — show receipt summary */
+              <>
+                <div className="bg-green-50 border-b border-green-100 px-6 py-4 flex items-center justify-between">
+                  <div>
+                    <div className="font-bold text-gray-900">{checkoutOrder.order_number}</div>
+                    <div className="text-xs text-green-600 font-medium">Already Paid</div>
+                  </div>
+                  <button onClick={() => setCheckoutOrder(null)} className="text-gray-400 hover:text-gray-600 text-lg">✕</button>
+                </div>
+                <div className="px-6 py-5 space-y-5">
+                  {/* Items */}
+                  <div className="space-y-1">
+                    {checkoutOrder.kots.flatMap(k => k.items ?? []).map((item, i) => (
+                      <div key={i} className="flex justify-between text-sm text-gray-700">
+                        <span>{item.quantity}× {item.name}</span>
+                        <span className="font-mono">{fmt(item.price * item.quantity)}</span>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="border-t border-gray-100 pt-3">
+                    <div className="flex justify-between font-bold text-gray-900 text-base">
+                      <span>Total</span>
+                      <span className="font-mono">{fmt(checkoutOrder.total)}</span>
+                    </div>
+                  </div>
+                  <div className="bg-green-50 border border-green-200 rounded-xl p-4 text-center">
+                    <div className="text-2xl mb-1">✅</div>
+                    <div className="font-semibold text-green-800">Payment Complete</div>
+                    <div className="text-sm text-green-600 mt-0.5">
+                      Paid via {checkoutOrder.payment_method ? checkoutOrder.payment_method.toUpperCase() : 'N/A'}
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => { void completePaidOrder(); }}
+                    disabled={checkoutLoading}
+                    className="w-full py-3 bg-green-600 hover:bg-green-700 disabled:opacity-60 text-white font-semibold rounded-xl text-sm transition-colors"
+                  >
+                    {checkoutLoading ? 'Closing...' : 'Mark Complete & Close Order'}
+                  </button>
+                  <button
+                    onClick={() => setCheckoutOrder(null)}
+                    disabled={checkoutLoading}
+                    className="w-full py-2.5 text-gray-500 hover:text-gray-700 font-medium rounded-xl text-sm transition-colors"
+                  >
+                    Not yet
+                  </button>
+                </div>
+              </>
             ) : (
               <>
                 {/* Header */}

@@ -106,3 +106,66 @@ export async function createStatusHistory(
     data: { order_id, status, changed_by, notes },
   });
 }
+
+/**
+ * Find all unpaid orders for a table (active tab).
+ * Returns orders with status NOT in (completed, cancelled) and payment_status = pending.
+ */
+export async function findActiveOrdersForTable(
+  tenant_id: string,
+  branch_id: string,
+  table_id: string
+) {
+  return prisma.order.findMany({
+    where: {
+      tenant_id,
+      branch_id,
+      table_id,
+      type: "dine_in",
+      payment_status: "pending",
+      status: { notIn: ["completed", "cancelled"] },
+    },
+    include: { kots: true },
+    orderBy: { created_at: "asc" },
+  });
+}
+
+/**
+ * Append items to an existing order and recalculate totals.
+ */
+export async function appendItemsToOrder(
+  order_id: string,
+  existingItems: unknown[],
+  newItems: unknown[],
+  totals: { subtotal: number; tax_amount: number; total: number }
+) {
+  return prisma.order.update({
+    where: { id: order_id },
+    data: {
+      items: [...existingItems, ...newItems] as Prisma.InputJsonValue,
+      subtotal: totals.subtotal,
+      tax_amount: totals.tax_amount,
+      total: totals.total,
+    },
+    include: { kots: true },
+  });
+}
+
+/**
+ * Remove a specific item from an order by reference_id and recalculate totals.
+ */
+export async function removeItemFromOrder(
+  order_id: string,
+  updatedItems: unknown[],
+  totals: { subtotal: number; tax_amount: number; total: number }
+) {
+  return prisma.order.update({
+    where: { id: order_id },
+    data: {
+      items: updatedItems as Prisma.InputJsonValue,
+      subtotal: totals.subtotal,
+      tax_amount: totals.tax_amount,
+      total: totals.total,
+    },
+  });
+}

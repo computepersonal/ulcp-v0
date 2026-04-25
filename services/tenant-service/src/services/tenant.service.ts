@@ -84,6 +84,7 @@ export async function createTenantWithDefaults(
     cover_url: input.cover_url,
     owner_user_id,
     plan: "free",
+    onboarding_step: 3,
   });
 
   await createBranch({
