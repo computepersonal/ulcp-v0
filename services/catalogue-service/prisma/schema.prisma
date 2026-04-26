@@ -71,6 +71,7 @@ model CatalogueItem {
 
   // Food classification
   veg_type  String? // "veg" | "vegan" | "non_veg" | "egg"
+  allergens String[]
   meal_type String? // "breakfast" | "lunch" | "dinner" | "snacks" | "all_day"
   item_type String? // "food" | "beverage" | "dessert" | "merchandise" | "service"
   course    String? // "starter" | "main" | "dessert" | "sides" | "beverages"

@@ -81,6 +81,7 @@ const createItemSchema = z.object({
   prep_time_mins:  z.number().int().min(0).optional(),
   calories:        z.number().int().min(0).optional(),
   video_url:       z.string().url().optional(),
+  allergens:       z.array(z.enum(["gluten", "dairy", "eggs", "nuts", "peanuts", "soy", "fish", "shellfish", "sesame", "mustard"])).optional(),
 });
 
 const updateItemSchema = z.object({
@@ -114,6 +115,7 @@ const updateItemSchema = z.object({
   prep_time_mins:    z.number().int().min(0).optional(),
   calories:          z.number().int().min(0).optional(),
   video_url:         z.string().url().optional(),
+  allergens:         z.array(z.enum(["gluten", "dairy", "eggs", "nuts", "peanuts", "soy", "fish", "shellfish", "sesame", "mustard"])).optional(),
 });
 
 const reorderSchema = z.object({

@@ -53,6 +53,8 @@ export type CreateItemInput = {
   prep_time_mins?: number;
   calories?: number;
   video_url?: string;
+  // Allergens
+  allergens?: string[];
 };
 
 export type UpdateItemInput = Omit<
@@ -127,6 +129,7 @@ export async function createCatalogueItem(
     prep_time_mins: input.prep_time_mins,
     calories: input.calories,
     video_url: input.video_url,
+    allergens: input.allergens ?? [],
     ...(input.branch_id ? { branch_id: input.branch_id } : {}),
     ...(input.section_id
       ? { section: { connect: { id: input.section_id } } }

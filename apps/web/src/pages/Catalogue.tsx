@@ -21,6 +21,7 @@ interface CatalogueItem {
   is_available: boolean;
   is_food?: boolean;
   veg_type?: 'veg' | 'vegan' | 'non_veg' | 'egg';
+  allergens?: string[];
   images?: Array<{ url: string; isPrimary?: boolean }>;
 }
 
@@ -119,6 +120,7 @@ function AddItemModal({
     section_id?: string;
     is_food?: boolean;
     veg_type?: string;
+    allergens?: string[];
   }) => Promise<void>;
 }) {
   const [name, setName] = useState('');
@@ -127,8 +129,15 @@ function AddItemModal({
   const [sectionId, setSectionId] = useState(defaultSectionId ?? '');
   const [isFood, setIsFood] = useState(true);
   const [vegType, setVegType] = useState<'veg' | 'non_veg' | 'egg' | 'vegan'>('veg');
+  const [allergens, setAllergens] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+
+  const toggleAllergen = (allergen: string) => {
+    setAllergens((prev) =>
+      prev.includes(allergen) ? prev.filter((a) => a !== allergen) : [...prev, allergen]
+    );
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -147,6 +156,7 @@ function AddItemModal({
         section_id: sectionId || undefined,
         is_food: isFood,
         veg_type: isFood ? vegType : undefined,
+        allergens: allergens.length > 0 ? allergens : undefined,
       });
       onClose();
     } catch (err) {
@@ -243,6 +253,25 @@ function AddItemModal({
               </div>
             </div>
           )}
+          <div>
+            <label className="block text-xs font-medium text-gray-500 mb-2">Allergens <span className="font-normal text-gray-400">(optional)</span></label>
+            <div className="flex flex-wrap gap-1.5">
+              {(['gluten', 'dairy', 'eggs', 'nuts', 'peanuts', 'soy', 'fish', 'shellfish', 'sesame', 'mustard'] as const).map((a) => (
+                <button
+                  key={a}
+                  type="button"
+                  onClick={() => toggleAllergen(a)}
+                  className={`px-2.5 py-1 text-xs rounded-full border font-medium transition-colors ${
+                    allergens.includes(a)
+                      ? 'bg-brand-50 border-brand-400 text-brand-700'
+                      : 'border-gray-200 text-gray-500 hover:border-gray-300'
+                  }`}
+                >
+                  {a.charAt(0).toUpperCase() + a.slice(1)}
+                </button>
+              ))}
+            </div>
+          </div>
           {error && <p className="text-red-500 text-xs">{error}</p>}
           <div className="flex gap-3 pt-1">
             <button type="button" onClick={onClose} className="flex-1 py-2.5 border border-gray-200 rounded-xl text-sm text-gray-600 hover:border-gray-300">
@@ -271,7 +300,7 @@ function EditItemModal({
 }: {
   item: CatalogueItem;
   onClose: () => void;
-  onSave: (data: { name: string; price: number; mrp?: number; description?: string; is_food?: boolean; veg_type?: string }) => Promise<void>;
+  onSave: (data: { name: string; price: number; mrp?: number; description?: string; is_food?: boolean; veg_type?: string; allergens?: string[] }) => Promise<void>;
 }) {
   const [name, setName] = useState(item.name);
   const [priceStr, setPriceStr] = useState(String(item.price / 100));
@@ -281,8 +310,15 @@ function EditItemModal({
   const [vegType, setVegType] = useState<'veg' | 'non_veg' | 'egg' | 'vegan'>(
     (item.veg_type as 'veg' | 'non_veg' | 'egg' | 'vegan') ?? 'veg'
   );
+  const [allergens, setAllergens] = useState<string[]>(item.allergens ?? []);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+
+  const toggleAllergen = (allergen: string) => {
+    setAllergens((prev) =>
+      prev.includes(allergen) ? prev.filter((a) => a !== allergen) : [...prev, allergen]
+    );
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -302,6 +338,7 @@ function EditItemModal({
         description: desc.trim() || undefined,
         is_food: isFood,
         veg_type: isFood ? vegType : undefined,
+        allergens,
       });
       onClose();
     } catch (err) {
@@ -390,6 +427,25 @@ function EditItemModal({
               </div>
             </div>
           )}
+          <div>
+            <label className="block text-xs font-medium text-gray-500 mb-2">Allergens <span className="font-normal text-gray-400">(optional)</span></label>
+            <div className="flex flex-wrap gap-1.5">
+              {(['gluten', 'dairy', 'eggs', 'nuts', 'peanuts', 'soy', 'fish', 'shellfish', 'sesame', 'mustard'] as const).map((a) => (
+                <button
+                  key={a}
+                  type="button"
+                  onClick={() => toggleAllergen(a)}
+                  className={`px-2.5 py-1 text-xs rounded-full border font-medium transition-colors ${
+                    allergens.includes(a)
+                      ? 'bg-brand-50 border-brand-400 text-brand-700'
+                      : 'border-gray-200 text-gray-500 hover:border-gray-300'
+                  }`}
+                >
+                  {a.charAt(0).toUpperCase() + a.slice(1)}
+                </button>
+              ))}
+            </div>
+          </div>
           {error && <p className="text-red-500 text-xs">{error}</p>}
           <div className="flex gap-3 pt-1">
             <button type="button" onClick={onClose} className="flex-1 py-2.5 border border-gray-200 rounded-xl text-sm text-gray-600 hover:border-gray-300">
@@ -538,7 +594,7 @@ export default function Catalogue() {
 
   const handleAddItem = async (d: {
     name: string; price: number; description?: string;
-    section_id?: string; is_food?: boolean; veg_type?: string;
+    section_id?: string; is_food?: boolean; veg_type?: string; allergens?: string[];
   }) => {
     const res = await apiFetch(`${catalogueServiceUrl}/api/v1/catalogue/${tenantId}/items`, {
       method: 'POST',
@@ -586,7 +642,7 @@ export default function Catalogue() {
 
   const handleEditItem = async (
     itemId: string,
-    data: { name: string; price: number; mrp?: number; description?: string; is_food?: boolean; veg_type?: string }
+    data: { name: string; price: number; mrp?: number; description?: string; is_food?: boolean; veg_type?: string; allergens?: string[] }
   ) => {
     const res = await apiFetch(`${catalogueServiceUrl}/api/v1/catalogue/${tenantId}/items/${itemId}`, {
       method: 'PATCH',
