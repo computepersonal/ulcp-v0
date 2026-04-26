@@ -5,6 +5,12 @@ export async function createSection(data: Prisma.SectionCreateInput) {
   return prisma.section.create({ data });
 }
 
+export async function findSectionByName(tenant_id: string, branch_id: string, name: string) {
+  return prisma.section.findFirst({
+    where: { tenant_id, branch_id, name: { equals: name, mode: "insensitive" } },
+  });
+}
+
 export async function findSectionsByBranch(tenant_id: string, branch_id: string) {
   return prisma.section.findMany({
     where: { tenant_id, branch_id },

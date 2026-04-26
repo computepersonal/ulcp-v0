@@ -1,8 +1,9 @@
-import { NotFoundError } from "@ulcp/shared";
+import { NotFoundError, ConflictError } from "@ulcp/shared";
 import {
   createSection,
   findSectionsByBranch,
   findSectionById,
+  findSectionByName,
   updateSection,
   deleteSection,
 } from "../repositories/section.repository";
@@ -26,6 +27,9 @@ export async function createSectionForBranch(
 ) {
   const branch = await findBranchById(branch_id, tenant_id);
   if (!branch) throw new NotFoundError("Branch not found");
+
+  const existing = await findSectionByName(tenant_id, branch_id, input.name);
+  if (existing) throw new ConflictError("A zone with this name already exists");
 
   return createSection({
     name: input.name,
@@ -75,6 +79,9 @@ export async function renameSectionWithTables(
 ): Promise<{ section: Awaited<ReturnType<typeof updateSection>>; tablesRenamed: number }> {
   const section = await findSectionById(id, tenant_id);
   if (!section || section.branch_id !== branch_id) throw new NotFoundError("Section not found");
+
+  const duplicate = await findSectionByName(tenant_id, branch_id, newName);
+  if (duplicate && duplicate.id !== id) throw new ConflictError("A zone with this name already exists");
 
   const oldName = section.name;
 
