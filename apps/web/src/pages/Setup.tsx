@@ -108,7 +108,7 @@ export default function Setup() {
 
   // Fetch tenant details + setup tasks from server
   useEffect(() => {
-    if (!tenantId || !token) return;
+    if (!tenantId || !token) { setLoading(false); return; }
     void (async () => {
       try {
         const [tenantRes, tasksRes] = await Promise.all([
@@ -218,9 +218,9 @@ export default function Setup() {
             </div>
             <button
               onClick={() => navigate('/floor-map')}
-              className="text-xs text-gray-400 hover:text-brand-500 transition-colors whitespace-nowrap ml-4"
+              className="text-sm text-brand-500 hover:text-brand-600 font-medium transition-colors whitespace-nowrap ml-4 border border-brand-200 rounded-lg px-3 py-1.5"
             >
-              Skip to dashboard
+              Go to dashboard →
             </button>
           </div>
 

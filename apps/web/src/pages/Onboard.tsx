@@ -958,14 +958,10 @@ function Step6GoLive({
 
       <button
         onClick={onComplete}
-        disabled={!goLive || loading}
-        className={`w-full py-4 font-semibold rounded-xl text-base transition-colors ${
-          goLive
-            ? 'bg-green-500 hover:bg-green-600 text-white'
-            : 'bg-gray-200 text-gray-400 cursor-not-allowed'
-        }`}
+        disabled={loading}
+        className="w-full py-4 bg-brand-500 hover:bg-brand-600 disabled:opacity-50 text-white font-semibold rounded-xl text-base transition-colors"
       >
-        {loading ? 'Launching your dashboard...' : goLive ? 'Launch Dashboard' : 'Flip the switch above to go live'}
+        {loading ? 'Setting up your dashboard...' : 'Go to Dashboard'}
       </button>
     </div>
   );
