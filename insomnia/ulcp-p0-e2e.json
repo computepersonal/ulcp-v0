@@ -1,0 +1,293 @@
+{
+  "_type": "export",
+  "__export_format": 4,
+  "__export_date": "2026-04-24T00:00:00.000Z",
+  "__export_source": "insomnia.desktop.app",
+  "resources": [
+    {
+      "_id": "wrk_ulcp_p0",
+      "_type": "workspace",
+      "parentId": null,
+      "name": "ULCP — P0 E2E Flow",
+      "description": "Owner registration → Tenant → Catalogue → Staff → Order → KOT",
+      "scope": "collection"
+    },
+    {
+      "_id": "env_ulcp_base",
+      "_type": "environment",
+      "parentId": "wrk_ulcp_p0",
+      "name": "Local Dev",
+      "data": {
+        "identity_url": "http://localhost:3001",
+        "tenant_url": "http://localhost:3002",
+        "catalogue_url": "http://localhost:3003",
+        "order_url": "http://localhost:3004",
+        "internal_secret": "dev_internal_secret_ulcp_services",
+        "token": "PASTE_ACCESS_TOKEN_HERE",
+        "tenant_id": "PASTE_TENANT_ID_HERE",
+        "branch_id": "PASTE_BRANCH_ID_HERE",
+        "section_id": "PASTE_SECTION_ID_HERE",
+        "item1_id": "PASTE_ITEM1_ID_HERE",
+        "item2_id": "PASTE_ITEM2_ID_HERE",
+        "order_id": "PASTE_ORDER_ID_HERE"
+      },
+      "isPrivate": false
+    },
+
+    {
+      "_id": "fld_auth",
+      "_type": "request_group",
+      "parentId": "wrk_ulcp_p0",
+      "name": "Phase 1 — Auth",
+      "description": "",
+      "metaSortKey": -1000
+    },
+    {
+      "_id": "fld_tenant",
+      "_type": "request_group",
+      "parentId": "wrk_ulcp_p0",
+      "name": "Phase 2 — Tenant Setup",
+      "description": "",
+      "metaSortKey": -900
+    },
+    {
+      "_id": "fld_catalogue",
+      "_type": "request_group",
+      "parentId": "wrk_ulcp_p0",
+      "name": "Phase 3 — Catalogue",
+      "description": "",
+      "metaSortKey": -800
+    },
+    {
+      "_id": "fld_staff",
+      "_type": "request_group",
+      "parentId": "wrk_ulcp_p0",
+      "name": "Phase 4 — Staff",
+      "description": "",
+      "metaSortKey": -700
+    },
+    {
+      "_id": "fld_orders",
+      "_type": "request_group",
+      "parentId": "wrk_ulcp_p0",
+      "name": "Phase 5 — Order & KOT",
+      "description": "",
+      "metaSortKey": -600
+    },
+
+    {
+      "_id": "req_01_register",
+      "_type": "request",
+      "parentId": "fld_auth",
+      "name": "Step 1 — Register Owner",
+      "description": "Creates a new staff user with role=pending_onboarding and tenant_id=null.\n\nAfter running:\n→ Copy data.access_token  into env: token\n→ Copy data.user.id        into env: (not needed, auto-handled by tenant creation)",
+      "method": "POST",
+      "url": "{{ identity_url }}/api/v1/auth/register",
+      "headers": [
+        { "name": "Content-Type", "value": "application/json" }
+      ],
+      "body": {
+        "mimeType": "application/json",
+        "text": "{\n  \"email\": \"owner@testrestaurant.com\",\n  \"password\": \"Test1234!\",\n  \"name\": \"Raj Kumar\"\n}"
+      },
+      "authentication": {},
+      "metaSortKey": -1000
+    },
+    {
+      "_id": "req_02_create_tenant",
+      "_type": "request",
+      "parentId": "fld_tenant",
+      "name": "Step 2 — Create Tenant (Restaurant)",
+      "description": "Creates the tenant and auto-creates a primary branch.\nAlso internally calls identity-service to set tenant_id + promote role to tenant_owner.\n\nAfter running:\n→ Copy data.id into env: tenant_id\n→ Your token is now stale — re-login in Step 3",
+      "method": "POST",
+      "url": "{{ tenant_url }}/api/v1/tenants",
+      "headers": [
+        { "name": "Content-Type", "value": "application/json" },
+        { "name": "Authorization", "value": "Bearer {{ token }}" }
+      ],
+      "body": {
+        "mimeType": "application/json",
+        "text": "{\n  \"name\": \"Spice Garden\",\n  \"business_type\": \"seated_full_service\",\n  \"country\": \"IN\",\n  \"currency\": \"INR\",\n  \"timezone\": \"Asia/Kolkata\",\n  \"city\": \"Hyderabad\",\n  \"phone\": \"9000000001\"\n}"
+      },
+      "authentication": {},
+      "metaSortKey": -900
+    },
+    {
+      "_id": "req_03_relogin",
+      "_type": "request",
+      "parentId": "fld_auth",
+      "name": "Step 3 — Re-login (get tenant_owner JWT)",
+      "description": "Login again now that tenant_id is set. The new token will carry role=tenant_owner and the tenant_id.\n\nAfter running:\n→ Copy data.access_token into env: token  (REPLACE the old one)",
+      "method": "POST",
+      "url": "{{ identity_url }}/api/v1/auth/login",
+      "headers": [
+        { "name": "Content-Type", "value": "application/json" }
+      ],
+      "body": {
+        "mimeType": "application/json",
+        "text": "{\n  \"email\": \"owner@testrestaurant.com\",\n  \"password\": \"Test1234!\",\n  \"tenant_id\": \"{{ tenant_id }}\"\n}"
+      },
+      "authentication": {},
+      "metaSortKey": -950
+    },
+    {
+      "_id": "req_04_get_branches",
+      "_type": "request",
+      "parentId": "fld_tenant",
+      "name": "Step 4 — Get Branches (find primary branch)",
+      "description": "Tenant creation auto-creates one primary branch.\n\nAfter running:\n→ Find the branch where is_primary=true\n→ Copy that branch's id into env: branch_id",
+      "method": "GET",
+      "url": "{{ tenant_url }}/api/v1/tenants/{{ tenant_id }}/branches",
+      "headers": [
+        { "name": "Authorization", "value": "Bearer {{ token }}" }
+      ],
+      "body": { "mimeType": "application/json" },
+      "authentication": {},
+      "metaSortKey": -800
+    },
+    {
+      "_id": "req_05_create_section",
+      "_type": "request",
+      "parentId": "fld_catalogue",
+      "name": "Step 5 — Create Menu Section",
+      "description": "Creates a catalogue section (e.g. 'Main Course') for the branch.\n\nAfter running:\n→ Copy data.id into env: section_id",
+      "method": "POST",
+      "url": "{{ catalogue_url }}/api/v1/catalogue/{{ tenant_id }}/sections",
+      "headers": [
+        { "name": "Content-Type", "value": "application/json" },
+        { "name": "Authorization", "value": "Bearer {{ token }}" }
+      ],
+      "body": {
+        "mimeType": "application/json",
+        "text": "{\n  \"name\": \"Main Course\",\n  \"branch_id\": \"{{ branch_id }}\"\n}"
+      },
+      "authentication": {},
+      "metaSortKey": -700
+    },
+    {
+      "_id": "req_06a_add_item1",
+      "_type": "request",
+      "parentId": "fld_catalogue",
+      "name": "Step 6a — Add Item: Butter Chicken",
+      "description": "Prices are in paise (smallest unit). ₹320 = 32000.\n\nAfter running:\n→ Copy data.id into env: item1_id",
+      "method": "POST",
+      "url": "{{ catalogue_url }}/api/v1/catalogue/{{ tenant_id }}/items",
+      "headers": [
+        { "name": "Content-Type", "value": "application/json" },
+        { "name": "Authorization", "value": "Bearer {{ token }}" }
+      ],
+      "body": {
+        "mimeType": "application/json",
+        "text": "{\n  \"section_id\": \"{{ section_id }}\",\n  \"branch_id\": \"{{ branch_id }}\",\n  \"name\": \"Butter Chicken\",\n  \"price\": 32000,\n  \"mrp\": 32000,\n  \"is_food\": true,\n  \"veg_type\": \"non_veg\",\n  \"item_type\": \"food\",\n  \"course\": \"main\"\n}"
+      },
+      "authentication": {},
+      "metaSortKey": -600
+    },
+    {
+      "_id": "req_06b_add_item2",
+      "_type": "request",
+      "parentId": "fld_catalogue",
+      "name": "Step 6b — Add Item: Garlic Naan",
+      "description": "₹60 = 6000 paise.\n\nAfter running:\n→ Copy data.id into env: item2_id",
+      "method": "POST",
+      "url": "{{ catalogue_url }}/api/v1/catalogue/{{ tenant_id }}/items",
+      "headers": [
+        { "name": "Content-Type", "value": "application/json" },
+        { "name": "Authorization", "value": "Bearer {{ token }}" }
+      ],
+      "body": {
+        "mimeType": "application/json",
+        "text": "{\n  \"section_id\": \"{{ section_id }}\",\n  \"branch_id\": \"{{ branch_id }}\",\n  \"name\": \"Garlic Naan\",\n  \"price\": 6000,\n  \"mrp\": 6000,\n  \"is_food\": true,\n  \"veg_type\": \"veg\",\n  \"item_type\": \"food\",\n  \"course\": \"sides\"\n}"
+      },
+      "authentication": {},
+      "metaSortKey": -500
+    },
+    {
+      "_id": "req_07_create_waiter",
+      "_type": "request",
+      "parentId": "fld_staff",
+      "name": "Step 7 — Create Waiter (internal endpoint)",
+      "description": "Uses the internal register-staff endpoint secured by X-Internal-Secret header.\nNo token needed — uses the shared internal secret instead.\n\nNo ID to save from this step.",
+      "method": "POST",
+      "url": "{{ identity_url }}/api/v1/auth/internal/register-staff",
+      "headers": [
+        { "name": "Content-Type", "value": "application/json" },
+        { "name": "X-Internal-Secret", "value": "{{ internal_secret }}" }
+      ],
+      "body": {
+        "mimeType": "application/json",
+        "text": "{\n  \"email\": \"waiter@testrestaurant.com\",\n  \"password\": \"Test1234!\",\n  \"name\": \"Arjun\",\n  \"tenant_id\": \"{{ tenant_id }}\",\n  \"role\": \"waiter\",\n  \"permissions\": [\"orders:create\", \"tables:view\"]\n}"
+      },
+      "authentication": {},
+      "metaSortKey": -400
+    },
+    {
+      "_id": "req_08_place_order",
+      "_type": "request",
+      "parentId": "fld_orders",
+      "name": "Step 8 — Place Order (dine-in, Table 1)",
+      "description": "Places a dine-in order. KOTs are generated immediately on order creation.\n\nAfter running:\n→ Copy data.id into env: order_id\n→ Check data.kots[] — should already contain KOT entries\n→ Expect status: 'pending'",
+      "method": "POST",
+      "url": "{{ order_url }}/api/v1/orders",
+      "headers": [
+        { "name": "Content-Type", "value": "application/json" },
+        { "name": "Authorization", "value": "Bearer {{ token }}" }
+      ],
+      "body": {
+        "mimeType": "application/json",
+        "text": "{\n  \"branch_id\": \"{{ branch_id }}\",\n  \"table_name\": \"T1\",\n  \"type\": \"dine_in\",\n  \"business_type\": \"restaurant\",\n  \"items\": [\n    {\n      \"id\": \"{{ item1_id }}\",\n      \"name\": \"Butter Chicken\",\n      \"price\": 32000,\n      \"quantity\": 1,\n      \"veg_type\": \"non_veg\",\n      \"station\": \"kitchen\"\n    },\n    {\n      \"id\": \"{{ item2_id }}\",\n      \"name\": \"Garlic Naan\",\n      \"price\": 6000,\n      \"quantity\": 2,\n      \"veg_type\": \"veg\",\n      \"station\": \"kitchen\"\n    }\n  ]\n}"
+      },
+      "authentication": {},
+      "metaSortKey": -300
+    },
+    {
+      "_id": "req_09_confirm_order",
+      "_type": "request",
+      "parentId": "fld_orders",
+      "name": "Step 9 — Confirm Order",
+      "description": "Moves order from 'pending' → 'confirmed'.\nThis routes KOTs to the appropriate stations (kitchen/bar).\n\nExpect: status: 'confirmed' in response",
+      "method": "PATCH",
+      "url": "{{ order_url }}/api/v1/orders/{{ tenant_id }}/{{ order_id }}/status",
+      "headers": [
+        { "name": "Content-Type", "value": "application/json" },
+        { "name": "Authorization", "value": "Bearer {{ token }}" }
+      ],
+      "body": {
+        "mimeType": "application/json",
+        "text": "{\n  \"status\": \"confirmed\"\n}"
+      },
+      "authentication": {},
+      "metaSortKey": -200
+    },
+    {
+      "_id": "req_10_get_kots",
+      "_type": "request",
+      "parentId": "fld_orders",
+      "name": "Step 10 — Get KOTs",
+      "description": "Returns all KOTs for the branch.\n\nExpect:\n→ One KOT with number 'KOT-001'\n→ Items list: Butter Chicken x1, Garlic Naan x2\n→ Status: 'pending' or 'acknowledged' (if kot_ack_mode=auto, it may already be 'acknowledged')",
+      "method": "GET",
+      "url": "{{ order_url }}/api/v1/kots/{{ tenant_id }}/{{ branch_id }}",
+      "headers": [
+        { "name": "Authorization", "value": "Bearer {{ token }}" }
+      ],
+      "body": { "mimeType": "application/json" },
+      "authentication": {},
+      "metaSortKey": -100
+    },
+    {
+      "_id": "req_11_get_bill",
+      "_type": "request",
+      "parentId": "fld_orders",
+      "name": "Bonus — Get Bill",
+      "description": "Fetches the bill breakdown for the order.\n\nExpect: subtotal, GST, total (all in paise)\nButter Chicken ₹320 + Garlic Naan x2 ₹120 = ₹440 subtotal",
+      "method": "GET",
+      "url": "{{ order_url }}/api/v1/orders/{{ tenant_id }}/{{ order_id }}/bill",
+      "headers": [
+        { "name": "Authorization", "value": "Bearer {{ token }}" }
+      ],
+      "body": { "mimeType": "application/json" },
+      "authentication": {},
+      "metaSortKey": -50
+    }
+  ]
+}
