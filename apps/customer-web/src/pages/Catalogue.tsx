@@ -34,6 +34,30 @@ interface Section {
   position: number;
 }
 
+interface ComboItemRow {
+  id: string;
+  item_id: string;
+  quantity: number;
+  variant_name?: string | null;
+  item: {
+    id: string;
+    name: string;
+    price: number;
+    veg_type?: 'veg' | 'vegan' | 'non_veg' | 'egg';
+  };
+}
+
+interface Combo {
+  id: string;
+  name: string;
+  description?: string;
+  image_url?: string;
+  price: number;
+  mrp?: number;
+  is_available: boolean;
+  items: ComboItemRow[];
+}
+
 interface TenantInfo {
   tenant_id: string;
   branch_id: string;
@@ -235,6 +259,7 @@ export default function Catalogue() {
   const [tenantInfo, setTenantInfo] = useState<TenantInfo | null>(null);
   const [sections, setSections] = useState<Section[]>([]);
   const [items, setItems] = useState<CatalogueItem[]>([]);
+  const [combos, setCombos] = useState<Combo[]>([]);
   const [loading, setLoading] = useState(true);
   const [notOpen, setNotOpen] = useState(false);
   const [search, setSearch] = useState('');
@@ -295,10 +320,11 @@ export default function Catalogue() {
         if (catRes.status === 403) {
           setNotOpen(true);
         } else if (catRes.ok) {
-          const catData = (await catRes.json()) as { success: boolean; data?: { sections: Section[]; items: CatalogueItem[] } };
+          const catData = (await catRes.json()) as { success: boolean; data?: { sections: Section[]; items: CatalogueItem[]; combos?: Combo[] } };
           if (catData.success && catData.data) {
             setSections(catData.data.sections);
             setItems(catData.data.items);
+            setCombos(catData.data.combos ?? []);
           }
         }
 
@@ -386,6 +412,31 @@ export default function Catalogue() {
 
   const handleRemoveItem = (item: CatalogueItem) => {
     const existing = cart.items.find(i => i.item_id === item.id);
+    if (!existing) return;
+    dispatch(updateQuantity({ id: existing.id, quantity: existing.quantity - 1 }));
+  };
+
+  const doAddCombo = (combo: Combo) => {
+    if (!tenantInfo || !slug) return;
+    const existing = cart.items.find(i => i.item_id === combo.id);
+    if (existing) {
+      dispatch(updateQuantity({ id: existing.id, quantity: existing.quantity + 1 }));
+    } else {
+      dispatch(addItem({ id: combo.id, item_id: combo.id, name: `🎁 ${combo.name}`, price: combo.price, quantity: 1, tenant_id: tenantInfo.tenant_id, branch_id: tenantInfo.branch_id, business_type: tenantInfo.business_type ?? 'seated_food_only', billing_mode: tenantInfo.dine_in_billing_mode, slug, place_name: tenantInfo.name, ...(tableId ? { table_id: tableId } : {}), ...(tableName ? { table_name: tableName } : {}) }));
+    }
+  };
+
+  const handleAddCombo = (combo: Combo) => {
+    if (!isLoggedIn) {
+      // Same gating as items: prompt login first; combos require login to add
+      setShowLogin(true);
+      return;
+    }
+    doAddCombo(combo);
+  };
+
+  const handleRemoveCombo = (combo: Combo) => {
+    const existing = cart.items.find(i => i.item_id === combo.id);
     if (!existing) return;
     dispatch(updateQuantity({ id: existing.id, quantity: existing.quantity - 1 }));
   };
@@ -612,6 +663,28 @@ export default function Catalogue() {
         </div>
       )}
 
+      {/* Combos & Deals */}
+      {combos.filter(c => c.is_available).length > 0 && (
+        <div className="px-4 pt-4 pb-1">
+          <div className="flex items-center gap-2 mb-2">
+            <span className="text-base">🎁</span>
+            <h3 className="font-semibold text-gray-900">Combos & Deals</h3>
+            <span className="text-xs text-gray-400">({combos.filter(c => c.is_available).length})</span>
+          </div>
+          <div className="flex gap-3 overflow-x-auto pb-2 -mx-4 px-4" style={{ scrollbarWidth: 'none' }}>
+            {combos.filter(c => c.is_available).map(combo => (
+              <ComboCard
+                key={combo.id}
+                combo={combo}
+                cartQty={isLoggedIn ? (cart.items.find(i => i.item_id === combo.id)?.quantity ?? 0) : 0}
+                onAdd={() => handleAddCombo(combo)}
+                onRemove={() => handleRemoveCombo(combo)}
+              />
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Sections + Items */}
       <div className="px-4 py-4">
         {sections.length === 0 && filteredItems.length === 0 ? (
@@ -727,6 +800,66 @@ export default function Catalogue() {
           }}
         />
       )}
+    </div>
+  );
+}
+
+// ─── Combo Card ───────────────────────────────────────────────────────────────
+
+function ComboCard({ combo, cartQty, onAdd, onRemove }: {
+  combo: Combo;
+  cartQty: number;
+  onAdd: () => void;
+  onRemove: () => void;
+}) {
+  const itemsTotal = combo.items.reduce((sum, ci) => sum + ci.item.price * ci.quantity, 0);
+  const savings = itemsTotal > combo.price ? itemsTotal - combo.price : 0;
+  const savingsPct = itemsTotal > 0 ? Math.round((savings / itemsTotal) * 100) : 0;
+
+  return (
+    <div className="flex-shrink-0 w-64 bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+      <div className="relative h-32 bg-gradient-to-br from-amber-100 to-rose-100">
+        {combo.image_url
+          ? <img src={combo.image_url} alt={combo.name} className="w-full h-full object-cover" loading="lazy" />
+          : <div className="w-full h-full flex items-center justify-center text-4xl">🎁</div>
+        }
+        {savings > 0 && (
+          <div className="absolute top-2 left-2 bg-emerald-500 text-white text-[10px] font-bold px-2 py-0.5 rounded-full shadow">
+            SAVE ₹{(savings / 100).toFixed(0)} ({savingsPct}%)
+          </div>
+        )}
+      </div>
+      <div className="p-3">
+        <div className="font-semibold text-gray-900 text-sm leading-tight line-clamp-1">{combo.name}</div>
+        {combo.description && <div className="text-xs text-gray-400 mt-0.5 line-clamp-1">{combo.description}</div>}
+        <div className="text-[11px] text-gray-500 mt-1.5 line-clamp-2 leading-snug">
+          {combo.items.length === 0
+            ? 'No items'
+            : combo.items.map(ci => `${ci.quantity}× ${ci.item.name}`).join(' + ')}
+        </div>
+        <div className="flex items-center justify-between mt-2.5">
+          <div className="flex items-baseline gap-1.5">
+            <span className="text-brand-600 font-bold text-base font-mono">₹{(combo.price / 100).toFixed(0)}</span>
+            {savings > 0 && (
+              <span className="text-gray-400 line-through text-xs font-mono">₹{(itemsTotal / 100).toFixed(0)}</span>
+            )}
+          </div>
+          {cartQty === 0 ? (
+            <button
+              onClick={e => { e.stopPropagation(); onAdd(); }}
+              className="bg-brand-500 hover:bg-brand-600 text-white text-xs font-bold px-4 py-1.5 rounded-full shadow"
+            >
+              ADD
+            </button>
+          ) : (
+            <div className="flex items-center bg-brand-500 rounded-full shadow">
+              <button onClick={onRemove} className="text-white font-bold text-sm px-2.5 py-1 hover:bg-brand-600 rounded-l-full">−</button>
+              <span className="text-white text-xs font-bold px-1 min-w-4 text-center">{cartQty}</span>
+              <button onClick={onAdd} className="text-white font-bold text-sm px-2.5 py-1 hover:bg-brand-600 rounded-r-full">+</button>
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   );
 }

@@ -283,7 +283,10 @@ export async function placeOrder(input: CreateOrderInput) {
         total: order.total,
         item_count,
         created_at: order.created_at,
+        branch_id: input.branch_id,
         table_id: order.table_id ?? null,
+        table_name: input.table_name ?? null,
+        payment_status: order.payment_status,
         kots: kots.map((k) => ({ id: k.id, kot_number: k.kot_number, status: k.status, station: k.station, items: k.items })),
       },
       kots: kots.map((k) => ({
@@ -422,6 +425,9 @@ export async function maybeCompleteIfPrepaid(order_id: string, tenant_id: string
   if (!order) return;
   if (order.payment_status !== "paid") return;
   if (order.status !== "served") return;
+  // Standalone prepaid orders (no table) require staff verification before close —
+  // they sit in the served queue until staff hands them over and clicks complete.
+  if (!order.table_id) return;
 
   await updateOrderStatus(order_id, "completed");
   await createStatusHistory(order_id, "completed", "system", "Auto-completed: prepaid + served");

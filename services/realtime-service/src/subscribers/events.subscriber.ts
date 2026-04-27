@@ -52,12 +52,20 @@ function handleEvent(io: SocketServer, channel: string, payload: EventPayload): 
       if (tenant_id && branch_id) {
         broadcast(io, `tenant:${tenant_id}:branch:${branch_id}`, "order:new", payload);
       }
+      // Owners typically have branch_id=null in their JWT (they manage the whole
+      // tenant), so they don't join the branch room. Push to the owner room too.
+      if (tenant_id) {
+        broadcast(io, `tenant:${tenant_id}:owner`, "order:new", payload);
+      }
       break;
     }
 
     case "ORDER_STATUS_CHANGED": {
       if (tenant_id && branch_id) {
         broadcast(io, `tenant:${tenant_id}:branch:${branch_id}`, "order:status:changed", payload);
+      }
+      if (tenant_id) {
+        broadcast(io, `tenant:${tenant_id}:owner`, "order:status:changed", payload);
       }
       if (session_id) {
         broadcast(io, `session:${session_id}`, "order:status:changed", payload);

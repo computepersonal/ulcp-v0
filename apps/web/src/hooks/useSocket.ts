@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useState } from 'react';
 import { io, Socket } from 'socket.io-client';
 import { useAppSelector, useAppDispatch } from './redux';
 import { addNotification } from '../store/uiSlice';
@@ -11,19 +11,25 @@ export type SocketEventMap = {
 export function useSocket() {
   const token = useAppSelector((s) => s.auth.token);
   const dispatch = useAppDispatch();
-  const socketRef = useRef<Socket | null>(null);
+  // useState (not useRef) so consumer effects re-run when the socket connects.
+  const [socket, setSocket] = useState<Socket | null>(null);
 
   useEffect(() => {
     if (!token) return;
 
-    const socket = io(
-      import.meta.env.VITE_REALTIME_SERVICE_URL ?? 'http://localhost:3008',
-      {
-        auth: { token },
-        transports: ['websocket']
-      }
-    );
-    socketRef.current = socket;
+    const url = import.meta.env.VITE_REALTIME_SERVICE_URL ?? 'http://localhost:3008';
+    console.log('[useSocket] Connecting to', url);
+    const s = io(url, {
+      auth: { token },
+      transports: ['websocket']
+    });
+    setSocket(s);
+    const socket = s;
+
+    socket.on('connect', () => console.log('[useSocket] CONNECTED, socket id:', socket.id));
+    socket.on('connect_error', (err: Error) => console.error('[useSocket] CONNECT ERROR:', err.message));
+    socket.on('disconnect', (reason: string) => console.warn('[useSocket] DISCONNECTED:', reason));
+    socket.onAny((event: string, ...args: unknown[]) => console.log('[useSocket] event:', event, args));
 
     socket.on('order:new', (data: { order_number: string; table_name?: string }) => {
       dispatch(
@@ -72,8 +78,9 @@ export function useSocket() {
 
     return () => {
       socket.disconnect();
+      setSocket(null);
     };
   }, [token, dispatch]);
 
-  return socketRef;
+  return socket;
 }

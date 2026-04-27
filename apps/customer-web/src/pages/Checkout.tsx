@@ -15,7 +15,9 @@ export default function Checkout() {
   const cart = useAppSelector(s => s.cart);
   const auth = useAppSelector(s => s.auth);
 
-  const isPayLater = cart.billing_mode === 'pay_later';
+  // Pay-later (table tab) only works when we know which table — without a table_id
+  // the restaurant has no tab to hold against, so force pay-now regardless of config.
+  const isPayLater = cart.billing_mode === 'pay_later' && !!cart.table_id;
 
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>(isPayLater ? 'tab' : 'upi');
   const [loading, setLoading] = useState(false);
@@ -64,7 +66,9 @@ export default function Checkout() {
             quantity: i.quantity,
             ...(i.variant ? { variant_name: i.variant } : {})
           })),
-          payment_method: paymentMethod,
+          // In pay_later mode the actual method (cash/upi/card) is recorded
+          // when staff settles the tab — leave it unset on the order.
+          ...(isPayLater ? {} : { payment_method: paymentMethod }),
         })
       });
       const data = (await res.json()) as { success: boolean; data?: { id: string }; error?: string };

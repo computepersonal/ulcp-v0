@@ -25,6 +25,34 @@ interface CatalogueItem {
   images?: Array<{ url: string; isPrimary?: boolean }>;
 }
 
+interface ComboItemRecord {
+  id: string;
+  combo_id: string;
+  item_id: string;
+  quantity: number;
+  variant_name?: string | null;
+  item?: {
+    id: string;
+    name: string;
+    price: number;
+    mrp?: number;
+    images?: Array<{ url: string; isPrimary?: boolean }>;
+    is_available?: boolean;
+    veg_type?: string;
+  };
+}
+
+interface Combo {
+  id: string;
+  name: string;
+  description?: string | null;
+  image_url?: string | null;
+  price: number;       // paise
+  mrp?: number;        // paise
+  is_available: boolean;
+  items: ComboItemRecord[];
+}
+
 // ─── Add Section Modal ────────────────────────────────────────────────────────
 
 function AddSectionModal({
@@ -465,6 +493,236 @@ function EditItemModal({
   );
 }
 
+// ─── Combo modals ─────────────────────────────────────────────────────────────
+
+function ComboFormModal({
+  combo,
+  onClose,
+  onSave,
+}: {
+  combo?: Combo;
+  onClose: () => void;
+  onSave: (data: { name: string; price: number; mrp?: number; description?: string; image_url?: string }) => Promise<void>;
+}) {
+  const isEdit = !!combo;
+  const [name, setName] = useState(combo?.name ?? '');
+  const [priceStr, setPriceStr] = useState(combo ? String(combo.price / 100) : '');
+  const [mrpStr, setMrpStr] = useState(combo?.mrp ? String(combo.mrp / 100) : '');
+  const [desc, setDesc] = useState(combo?.description ?? '');
+  const [imageUrl, setImageUrl] = useState(combo?.image_url ?? '');
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const price = Math.round(parseFloat(priceStr) * 100);
+    const mrp = mrpStr ? Math.round(parseFloat(mrpStr) * 100) : undefined;
+    if (!name.trim() || isNaN(price) || price < 0) {
+      setError('Name and a valid price are required');
+      return;
+    }
+    setSaving(true);
+    setError('');
+    try {
+      await onSave({
+        name: name.trim(),
+        price,
+        mrp,
+        description: desc.trim() || undefined,
+        image_url: imageUrl.trim() || undefined,
+      });
+      onClose();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to save combo');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm p-6 max-h-[90vh] overflow-y-auto">
+        <div className="flex items-center justify-between mb-5">
+          <h3 className="text-lg font-bold text-gray-900">{isEdit ? 'Edit combo' : 'New combo'}</h3>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-xl leading-none">✕</button>
+        </div>
+        <form onSubmit={(e) => void handleSubmit(e)} className="space-y-4">
+          <div>
+            <label className="block text-xs font-medium text-gray-500 mb-1">Combo name *</label>
+            <input
+              autoFocus
+              type="text"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="e.g. Family Feast, Lunch Special"
+              className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm outline-none focus:border-brand-500 transition-colors"
+            />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-medium text-gray-500 mb-1">Price (₹) *</label>
+              <input
+                type="number" min="0" step="0.01"
+                value={priceStr}
+                onChange={(e) => setPriceStr(e.target.value)}
+                placeholder="599"
+                className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm outline-none focus:border-brand-500 transition-colors font-mono"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-500 mb-1">MRP (₹) <span className="font-normal text-gray-400">optional</span></label>
+              <input
+                type="number" min="0" step="0.01"
+                value={mrpStr}
+                onChange={(e) => setMrpStr(e.target.value)}
+                placeholder="for strikethrough"
+                className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm outline-none focus:border-brand-500 transition-colors font-mono"
+              />
+            </div>
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-500 mb-1">Description <span className="font-normal text-gray-400">optional</span></label>
+            <textarea
+              rows={2}
+              value={desc}
+              onChange={(e) => setDesc(e.target.value)}
+              placeholder="What's in this combo..."
+              className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm outline-none focus:border-brand-500 transition-colors resize-none"
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-500 mb-1">Image URL <span className="font-normal text-gray-400">optional</span></label>
+            <input
+              type="url"
+              value={imageUrl}
+              onChange={(e) => setImageUrl(e.target.value)}
+              placeholder="https://..."
+              className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm outline-none focus:border-brand-500 transition-colors"
+            />
+          </div>
+          {error && <p className="text-red-500 text-xs">{error}</p>}
+          <div className="flex gap-3 pt-1">
+            <button type="button" onClick={onClose} className="flex-1 py-2.5 border border-gray-200 rounded-xl text-sm text-gray-600 hover:border-gray-300">
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={saving || !name.trim() || !priceStr}
+              className="flex-1 py-2.5 bg-brand-500 hover:bg-brand-600 disabled:opacity-40 text-white text-sm font-semibold rounded-xl transition-colors"
+            >
+              {saving ? 'Saving...' : isEdit ? 'Save changes' : 'Create combo'}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+function AddComboItemModal({
+  items,
+  existingItemIds,
+  onClose,
+  onSave,
+}: {
+  items: CatalogueItem[];
+  existingItemIds: string[];
+  onClose: () => void;
+  onSave: (data: { item_id: string; quantity: number }) => Promise<void>;
+}) {
+  const [search, setSearch] = useState('');
+  const [pickedId, setPickedId] = useState<string | null>(null);
+  const [qty, setQty] = useState(1);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+
+  const eligible = items.filter((i) =>
+    !existingItemIds.includes(i.id) &&
+    i.name.toLowerCase().includes(search.toLowerCase())
+  );
+
+  const handleSubmit = async () => {
+    if (!pickedId) return;
+    setSaving(true);
+    setError('');
+    try {
+      await onSave({ item_id: pickedId, quantity: qty });
+      onClose();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to add item');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm p-6 max-h-[90vh] flex flex-col">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-lg font-bold text-gray-900">Add item to combo</h3>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-xl leading-none">✕</button>
+        </div>
+        <input
+          autoFocus
+          type="text"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Search items..."
+          className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm outline-none focus:border-brand-500 transition-colors mb-3"
+        />
+        <div className="flex-1 overflow-y-auto space-y-1.5 -mx-2 px-2">
+          {eligible.length === 0 ? (
+            <p className="text-xs text-gray-400 text-center py-6">
+              {items.length === 0 ? 'Add some items first' : 'No matching items'}
+            </p>
+          ) : eligible.map((item) => (
+            <button
+              key={item.id}
+              type="button"
+              onClick={() => setPickedId(item.id)}
+              className={`w-full flex items-center gap-2 p-2 rounded-lg border text-left transition-colors ${
+                pickedId === item.id
+                  ? 'border-brand-400 bg-brand-50'
+                  : 'border-gray-100 hover:border-gray-200'
+              }`}
+            >
+              {item.is_food && <VegDot type={item.veg_type} />}
+              <span className="text-sm text-gray-800 flex-1 truncate">{item.name}</span>
+              <span className="text-xs font-mono text-gray-500">₹{(item.price / 100).toFixed(0)}</span>
+            </button>
+          ))}
+        </div>
+        {pickedId && (
+          <div className="flex items-center gap-2 mt-4 pt-4 border-t border-gray-100">
+            <label className="text-xs font-medium text-gray-500">Quantity</label>
+            <input
+              type="number"
+              min="1"
+              value={qty}
+              onChange={(e) => setQty(Math.max(1, parseInt(e.target.value) || 1))}
+              className="w-16 border border-gray-200 rounded-lg px-2 py-1.5 text-sm outline-none focus:border-brand-500 font-mono"
+            />
+          </div>
+        )}
+        {error && <p className="text-red-500 text-xs mt-2">{error}</p>}
+        <div className="flex gap-3 pt-4">
+          <button type="button" onClick={onClose} className="flex-1 py-2.5 border border-gray-200 rounded-xl text-sm text-gray-600 hover:border-gray-300">
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={() => void handleSubmit()}
+            disabled={saving || !pickedId}
+            className="flex-1 py-2.5 bg-brand-500 hover:bg-brand-600 disabled:opacity-40 text-white text-sm font-semibold rounded-xl transition-colors"
+          >
+            {saving ? 'Adding...' : 'Add to combo'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Veg indicator dot ────────────────────────────────────────────────────────
 function VegDot({ type }: { type?: string }) {
   if (!type) return null;
@@ -486,15 +744,24 @@ export default function Catalogue() {
 
   const catalogueServiceUrl = import.meta.env.VITE_CATALOGUE_SERVICE_URL ?? 'http://localhost:3003';
 
+  const [view, setView] = useState<'items' | 'combos'>('items');
   const [editMode, setEditMode] = useState(false);
   const [sections, setSections] = useState<CatalogueSection[]>([]);
   const [items, setItems] = useState<CatalogueItem[]>([]);
+  const [combos, setCombos] = useState<Combo[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
   const [showAddSection, setShowAddSection] = useState(false);
   const [addItemForSection, setAddItemForSection] = useState<string | undefined>(undefined);
   const [showAddItemGlobal, setShowAddItemGlobal] = useState(false);
+
+  // Combo modals
+  const [showAddCombo, setShowAddCombo] = useState(false);
+  const [editingComboId, setEditingComboId] = useState<string | null>(null);
+  const editingCombo = editingComboId ? (combos.find((c) => c.id === editingComboId) ?? null) : null;
+  const [addItemToComboId, setAddItemToComboId] = useState<string | null>(null);
+  const [confirmDeleteCombo, setConfirmDeleteCombo] = useState<string | null>(null);
 
   // Delete confirmations
   const [confirmDeleteItem, setConfirmDeleteItem] = useState<string | null>(null);
@@ -522,17 +789,20 @@ export default function Catalogue() {
     const header = { Authorization: `Bearer ${token}` };
     void (async () => {
       try {
-        const [secRes, itemRes] = await Promise.all([
+        const [secRes, itemRes, comboRes] = await Promise.all([
           apiFetch(`${catalogueServiceUrl}/api/v1/catalogue/${tenantId}/sections`, { headers: header }),
           apiFetch(`${catalogueServiceUrl}/api/v1/catalogue/${tenantId}/items`, { headers: header }),
+          apiFetch(`${catalogueServiceUrl}/api/v1/catalogue/${tenantId}/combos`, { headers: header }),
         ]);
-        const [secData, itemData] = await Promise.all([
+        const [secData, itemData, comboData] = await Promise.all([
           secRes.ok ? secRes.json() as Promise<{ success: boolean; data?: { sections: CatalogueSection[] } }> : Promise.resolve({ success: false }),
           itemRes.ok ? itemRes.json() as Promise<{ success: boolean; data?: { items: CatalogueItem[] } }> : Promise.resolve({ success: false }),
+          comboRes.ok ? comboRes.json() as Promise<{ success: boolean; data?: { combos: Combo[] } }> : Promise.resolve({ success: false }),
         ]);
         if (cancelled) return;
         if (secData.success) setSections((secData as { success: boolean; data?: { sections: CatalogueSection[] } }).data?.sections ?? []);
         if (itemData.success) setItems((itemData as { success: boolean; data?: { items: CatalogueItem[] } }).data?.items ?? []);
+        if (comboData.success) setCombos((comboData as { success: boolean; data?: { combos: Combo[] } }).data?.combos ?? []);
       } catch {
         // Service unreachable — show empty state so user can still start adding items
       } finally {
@@ -660,6 +930,91 @@ export default function Catalogue() {
     ));
   };
 
+  // ─── Combo actions ────────────────────────────────────────────────────────
+
+  const handleAddCombo = async (data: { name: string; price: number; mrp?: number; description?: string; image_url?: string }) => {
+    const res = await apiFetch(`${catalogueServiceUrl}/api/v1/catalogue/${tenantId}/combos`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...authHeader },
+      body: JSON.stringify(data),
+    });
+    const json = (await res.json()) as { success: boolean; error?: string; data?: { combo: Combo } };
+    if (!res.ok || !json.success) throw new Error(json.error ?? 'Failed to create combo');
+    if (json.data?.combo) setCombos((prev) => [...prev, { ...json.data!.combo, items: json.data!.combo.items ?? [] }]);
+  };
+
+  const handleEditCombo = async (id: string, data: { name: string; price: number; mrp?: number; description?: string; image_url?: string }) => {
+    const res = await apiFetch(`${catalogueServiceUrl}/api/v1/catalogue/${tenantId}/combos/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', ...authHeader },
+      body: JSON.stringify(data),
+    });
+    const json = (await res.json()) as { success: boolean; error?: string; data?: { combo: Combo } };
+    if (!res.ok || !json.success) throw new Error(json.error ?? 'Failed to save');
+    const updated = json.data?.combo;
+    setCombos((prev) => prev.map((c) => (c.id === id ? (updated ? { ...c, ...updated } : { ...c, ...data }) : c)));
+  };
+
+  const handleToggleCombo = async (combo: Combo) => {
+    const newAvail = !combo.is_available;
+    const res = await apiFetch(`${catalogueServiceUrl}/api/v1/catalogue/${tenantId}/combos/${combo.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', ...authHeader },
+      body: JSON.stringify({ is_available: newAvail }),
+    });
+    if (!res.ok) return;
+    setCombos((prev) => prev.map((c) => (c.id === combo.id ? { ...c, is_available: newAvail } : c)));
+  };
+
+  const handleDeleteCombo = async (id: string) => {
+    const res = await apiFetch(`${catalogueServiceUrl}/api/v1/catalogue/${tenantId}/combos/${id}`, {
+      method: 'DELETE',
+      headers: authHeader,
+    });
+    if (!res.ok) return;
+    setCombos((prev) => prev.filter((c) => c.id !== id));
+    setConfirmDeleteCombo(null);
+  };
+
+  const handleAddComboItem = async (comboId: string, data: { item_id: string; quantity: number }) => {
+    const res = await apiFetch(`${catalogueServiceUrl}/api/v1/catalogue/${tenantId}/combos/${comboId}/items`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...authHeader },
+      body: JSON.stringify(data),
+    });
+    const json = (await res.json()) as { success: boolean; error?: string; data?: { combo_item: ComboItemRecord } };
+    if (!res.ok || !json.success) throw new Error(json.error ?? 'Failed to add item');
+    if (json.data?.combo_item) {
+      // Stitch the picked item's basic info onto the new combo item record so the
+      // UI doesn't need to refetch the whole combo for name/price/image.
+      const pickedItem = items.find((i) => i.id === data.item_id);
+      const enriched: ComboItemRecord = {
+        ...json.data.combo_item,
+        item: pickedItem ? {
+          id: pickedItem.id,
+          name: pickedItem.name,
+          price: pickedItem.price,
+          mrp: pickedItem.mrp,
+          images: pickedItem.images,
+          is_available: pickedItem.is_available,
+          veg_type: pickedItem.veg_type,
+        } : undefined,
+      };
+      setCombos((prev) => prev.map((c) => (c.id === comboId ? { ...c, items: [...c.items, enriched] } : c)));
+    }
+  };
+
+  const handleRemoveComboItem = async (comboId: string, comboItemId: string) => {
+    const res = await apiFetch(
+      `${catalogueServiceUrl}/api/v1/catalogue/${tenantId}/combos/${comboId}/items/${comboItemId}`,
+      { method: 'DELETE', headers: authHeader }
+    );
+    if (!res.ok) return;
+    setCombos((prev) => prev.map((c) =>
+      c.id === comboId ? { ...c, items: c.items.filter((ci) => ci.id !== comboItemId) } : c
+    ));
+  };
+
   // ─── Render ───────────────────────────────────────────────────────────────
 
   if (loading) {
@@ -701,20 +1056,45 @@ export default function Catalogue() {
           onSave={(data) => handleEditItem(editingItem.id, data)}
         />
       )}
+      {showAddCombo && (
+        <ComboFormModal
+          onClose={() => setShowAddCombo(false)}
+          onSave={handleAddCombo}
+        />
+      )}
+      {editingCombo && (
+        <ComboFormModal
+          combo={editingCombo}
+          onClose={() => setEditingComboId(null)}
+          onSave={(data) => handleEditCombo(editingCombo.id, data)}
+        />
+      )}
+      {addItemToComboId && (
+        <AddComboItemModal
+          items={items}
+          existingItemIds={
+            combos.find((c) => c.id === addItemToComboId)?.items.map((ci) => ci.item_id) ?? []
+          }
+          onClose={() => setAddItemToComboId(null)}
+          onSave={(d) => handleAddComboItem(addItemToComboId, d)}
+        />
+      )}
 
       <div className="p-6 max-w-5xl">
         {/* Header — only show title row; Edit toggle hidden when catalogue is empty */}
         <div className="flex items-center justify-between mb-6">
           <div>
             <h1 className="text-xl font-bold text-gray-900">Catalogue</h1>
-            {(sections.length > 0 || items.length > 0) && (
-              <p className="text-xs text-gray-400 mt-0.5">{items.length} items · {sections.length} sections</p>
+            {(sections.length > 0 || items.length > 0 || combos.length > 0) && (
+              <p className="text-xs text-gray-400 mt-0.5">
+                {items.length} items · {sections.length} sections · {combos.length} combos
+              </p>
             )}
           </div>
           {/* Edit controls — only when catalogue has content */}
-          {canEdit && (sections.length > 0 || items.length > 0) && (
+          {canEdit && (sections.length > 0 || items.length > 0 || combos.length > 0) && (
             <div className="flex items-center gap-2">
-              {editMode && (
+              {editMode && view === 'items' && (
                 <>
                   <button
                     onClick={() => setShowAddSection(true)}
@@ -730,6 +1110,14 @@ export default function Catalogue() {
                   </button>
                 </>
               )}
+              {editMode && view === 'combos' && (
+                <button
+                  onClick={() => setShowAddCombo(true)}
+                  className="px-3 py-2 bg-brand-500 hover:bg-brand-600 text-white text-sm font-semibold rounded-xl transition-colors"
+                >
+                  + Combo
+                </button>
+              )}
               <button
                 onClick={() => setEditMode(!editMode)}
                 className={`px-3 py-2 rounded-xl text-sm font-medium border transition-colors ${
@@ -744,12 +1132,38 @@ export default function Catalogue() {
           )}
         </div>
 
+        {/* Tab toggle: Items vs Combos */}
+        {(sections.length > 0 || items.length > 0 || combos.length > 0) && (
+          <div className="flex items-center gap-1 mb-6 border-b border-gray-200">
+            <button
+              onClick={() => setView('items')}
+              className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${
+                view === 'items'
+                  ? 'border-brand-500 text-brand-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700'
+              }`}
+            >
+              Items <span className="text-xs text-gray-400 ml-1">({items.length})</span>
+            </button>
+            <button
+              onClick={() => setView('combos')}
+              className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${
+                view === 'combos'
+                  ? 'border-brand-500 text-brand-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700'
+              }`}
+            >
+              Combos <span className="text-xs text-gray-400 ml-1">({combos.length})</span>
+            </button>
+          </div>
+        )}
+
         {error && (
           <div className="mb-4 bg-red-50 border border-red-200 rounded-xl p-3 text-red-600 text-sm">{error}</div>
         )}
 
         {/* Empty state */}
-        {sections.length === 0 && items.length === 0 && (
+        {sections.length === 0 && items.length === 0 && combos.length === 0 && (
           <div className="flex flex-col items-center justify-center min-h-[50vh] text-center">
             <div className="text-5xl mb-4">📋</div>
             <h2 className="text-xl font-bold text-gray-900 mb-2">No items yet</h2>
@@ -775,7 +1189,49 @@ export default function Catalogue() {
           </div>
         )}
 
-        {/* Sections */}
+        {/* Combos view */}
+        {view === 'combos' && (
+          <>
+            {combos.length === 0 ? (
+              <div className="flex flex-col items-center justify-center min-h-[40vh] text-center">
+                <div className="text-5xl mb-4">🍱</div>
+                <h2 className="text-xl font-bold text-gray-900 mb-2">No combos yet</h2>
+                <p className="text-gray-500 text-sm max-w-xs mb-6">
+                  Bundle items together at a special price. Great for family meals, lunch specials, or value packs.
+                </p>
+                {canEdit && (
+                  <button
+                    onClick={() => setShowAddCombo(true)}
+                    className="px-5 py-2.5 bg-brand-500 hover:bg-brand-600 text-white text-sm font-semibold rounded-xl transition-colors"
+                  >
+                    + Create combo
+                  </button>
+                )}
+              </div>
+            ) : (
+              <div className="grid gap-4" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))' }}>
+                {combos.map((combo) => (
+                  <ComboCard
+                    key={combo.id}
+                    combo={combo}
+                    editMode={editMode && canEdit}
+                    onToggle={() => void handleToggleCombo(combo)}
+                    onEdit={() => setEditingComboId(combo.id)}
+                    onAddItem={() => setAddItemToComboId(combo.id)}
+                    onRemoveItem={(ciId) => void handleRemoveComboItem(combo.id, ciId)}
+                    onDelete={() => setConfirmDeleteCombo(combo.id)}
+                    confirmingDelete={confirmDeleteCombo === combo.id}
+                    onConfirmDelete={() => void handleDeleteCombo(combo.id)}
+                    onCancelDelete={() => setConfirmDeleteCombo(null)}
+                  />
+                ))}
+              </div>
+            )}
+          </>
+        )}
+
+        {/* Sections (Items view) */}
+        {view === 'items' && (
         <div className="space-y-8">
           {sections.map((section) => {
             const sectionItems = items.filter((i) => i.section_id === section.id);
@@ -910,6 +1366,7 @@ export default function Catalogue() {
             </button>
           )}
         </div>
+        )}
       </div>
     </div>
   );
@@ -1009,6 +1466,135 @@ function ItemCard({
           </select>
         </div>
       )}
+    </div>
+  );
+}
+
+// ─── Combo Card ───────────────────────────────────────────────────────────────
+
+function ComboCard({
+  combo,
+  editMode,
+  onToggle,
+  onEdit,
+  onAddItem,
+  onRemoveItem,
+  onDelete,
+  confirmingDelete,
+  onConfirmDelete,
+  onCancelDelete,
+}: {
+  combo: Combo;
+  editMode: boolean;
+  onToggle: () => void;
+  onEdit: () => void;
+  onAddItem: () => void;
+  onRemoveItem: (comboItemId: string) => void;
+  onDelete: () => void;
+  confirmingDelete: boolean;
+  onConfirmDelete: () => void;
+  onCancelDelete: () => void;
+}) {
+  const itemsTotal = combo.items.reduce(
+    (sum, ci) => sum + (ci.item?.price ?? 0) * ci.quantity,
+    0
+  );
+  const savings = itemsTotal - combo.price;
+
+  return (
+    <div className={`bg-white border rounded-xl p-4 shadow-sm transition-all ${!combo.is_available ? 'opacity-55' : ''}`}>
+      {/* Header */}
+      <div className="flex items-start gap-3">
+        {combo.image_url ? (
+          <img src={combo.image_url} alt={combo.name} className="w-16 h-16 rounded-lg object-cover shrink-0" />
+        ) : (
+          <div className="w-16 h-16 bg-amber-50 rounded-lg flex items-center justify-center text-2xl shrink-0">
+            🍱
+          </div>
+        )}
+        <div className="flex-1 min-w-0">
+          <div className="font-semibold text-gray-900 text-sm truncate">{combo.name}</div>
+          {combo.description && (
+            <p className="text-xs text-gray-400 line-clamp-1 mt-0.5">{combo.description}</p>
+          )}
+          <div className="flex items-baseline gap-2 mt-1">
+            <span className="text-brand-600 font-semibold text-sm font-mono">
+              ₹{(combo.price / 100).toFixed(0)}
+            </span>
+            {combo.mrp && combo.mrp > combo.price && (
+              <span className="line-through text-gray-400 text-xs font-mono">₹{(combo.mrp / 100).toFixed(0)}</span>
+            )}
+            {savings > 0 && (
+              <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded">
+                Save ₹{(savings / 100).toFixed(0)}
+              </span>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Items list */}
+      <div className="mt-3 pt-3 border-t border-gray-100">
+        <div className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-2">
+          {combo.items.length === 0 ? 'No items yet' : `Includes ${combo.items.length} ${combo.items.length === 1 ? 'item' : 'items'}`}
+        </div>
+        <div className="space-y-1.5">
+          {combo.items.map((ci) => (
+            <div key={ci.id} className="flex items-center gap-2 text-xs">
+              {ci.item?.veg_type && <VegDot type={ci.item.veg_type} />}
+              <span className="text-gray-700 flex-1 truncate">
+                {ci.item?.name ?? 'Unknown item'}
+                {ci.variant_name && <span className="text-gray-400"> · {ci.variant_name}</span>}
+              </span>
+              <span className="text-gray-500 font-mono">×{ci.quantity}</span>
+              {editMode && (
+                <button
+                  onClick={() => onRemoveItem(ci.id)}
+                  className="text-red-400 hover:text-red-500 ml-1 leading-none"
+                  title="Remove from combo"
+                >
+                  ✕
+                </button>
+              )}
+            </div>
+          ))}
+          {editMode && (
+            <button
+              onClick={onAddItem}
+              className="text-xs text-brand-500 hover:text-brand-600 font-medium mt-1"
+            >
+              + Add item
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* Footer actions */}
+      <div className="mt-3 pt-3 border-t border-gray-100 flex items-center gap-2">
+        {!editMode ? (
+          <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${combo.is_available ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-600'}`}>
+            {combo.is_available ? 'Available' : 'Unavailable'}
+          </span>
+        ) : confirmingDelete ? (
+          <div className="flex items-center gap-2 w-full">
+            <span className="text-xs text-red-600 font-medium flex-1">Delete combo?</span>
+            <button onClick={onConfirmDelete} className="text-xs text-red-500 hover:text-red-600 font-semibold">Yes</button>
+            <button onClick={onCancelDelete} className="text-xs text-gray-400 hover:text-gray-600">No</button>
+          </div>
+        ) : (
+          <>
+            <button
+              onClick={onToggle}
+              className={`relative w-10 h-5 rounded-full transition-colors shrink-0 ${combo.is_available ? 'bg-green-500' : 'bg-gray-300'}`}
+            >
+              <div className={`absolute top-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${combo.is_available ? 'translate-x-5' : 'translate-x-0.5'}`} />
+            </button>
+            <span className="text-xs text-gray-500 flex-1">{combo.is_available ? 'On' : 'Off'}</span>
+            <button onClick={onEdit} className="text-xs text-brand-500 hover:text-brand-600 font-medium">Edit</button>
+            <button onClick={onDelete} className="text-xs text-red-400 hover:text-red-500 font-medium">Delete</button>
+          </>
+        )}
+      </div>
     </div>
   );
 }
