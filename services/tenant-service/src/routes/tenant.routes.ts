@@ -61,6 +61,28 @@ const qrQuerySchema = z.object({
 });
 
 export async function tenantRoutes(fastify: FastifyInstance): Promise<void> {
+  // GET /tenants/internal/names — internal only, no staff JWT required
+  // Used by identity-service to enrich tenant picker with business names
+  fastify.get<{ Querystring: { ids: string } }>(
+    "/internal/names",
+    { schema: { summary: "Get tenant names by IDs (internal)", tags: ["Internal"], security: [] } },
+    async (req, reply) => {
+      const secret = req.headers["x-internal-secret"];
+      if (!INTERNAL_SECRET || secret !== INTERNAL_SECRET) {
+        return reply.code(401).send(apiError("Unauthorized"));
+      }
+      const ids = (req.query.ids ?? "").split(",").filter(Boolean);
+      if (ids.length === 0) return reply.send(apiSuccess({ tenants: [] }));
+      const tenants = await Promise.all(ids.map((id) => getTenant(id).catch(() => null)));
+      const result = tenants.map((t, i) => ({
+        tenant_id: ids[i],
+        name: t?.name ?? ids[i],
+        business_type: t?.business_type ?? "",
+      }));
+      return reply.send(apiSuccess({ tenants: result }));
+    }
+  );
+
   // GET /tenants/by-slug/:slug — public, no auth — used by customer PWA
   fastify.get<{ Params: { slug: string } }>(
     "/by-slug/:slug",

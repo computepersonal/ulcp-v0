@@ -202,20 +202,22 @@ export async function authRoutes(fastify: FastifyInstance): Promise<void> {
           const tenants = (err as Error & { tenants: Array<{ tenant_id: string; role: string }> }).tenants;
           // Enrich with business names from tenant-service (best-effort, no failure if unavailable)
           const TENANT_URL = process.env["TENANT_SERVICE_URL"] ?? "http://localhost:3002";
-          const enriched = await Promise.all(
-            tenants.map(async (t) => {
-              try {
-                const res = await fetch(`${TENANT_URL}/api/v1/tenants/${t.tenant_id}`, {
-                  headers: { "x-internal-secret": INTERNAL_SECRET },
-                });
-                const json = await res.json() as { success: boolean; data?: { tenant?: { name?: string; business_type?: string } } };
-                const tenant = json?.data?.tenant;
-                return { ...t, business_name: tenant?.name ?? t.tenant_id, business_type: tenant?.business_type ?? "" };
-              } catch {
-                return { ...t, business_name: t.tenant_id, business_type: "" };
-              }
-            })
-          );
+          let nameMap: Record<string, { name: string; business_type: string }> = {};
+          try {
+            const ids = tenants.map((t) => t.tenant_id).join(",");
+            const res = await fetch(`${TENANT_URL}/api/v1/tenants/internal/names?ids=${ids}`, {
+              headers: { "x-internal-secret": INTERNAL_SECRET },
+            });
+            const json = await res.json() as { success: boolean; data?: { tenants?: Array<{ tenant_id: string; name: string; business_type: string }> } };
+            for (const t of json?.data?.tenants ?? []) {
+              nameMap[t.tenant_id] = { name: t.name, business_type: t.business_type };
+            }
+          } catch { /* non-fatal — fall back to tenant_id */ }
+          const enriched = tenants.map((t) => ({
+            ...t,
+            business_name: nameMap[t.tenant_id]?.name ?? t.tenant_id,
+            business_type: nameMap[t.tenant_id]?.business_type ?? "",
+          }));
           return reply.code(300).send({ success: false, error: "TENANT_SELECTION_REQUIRED", data: { tenants: enriched } });
         }
         if (err instanceof AppError) {
