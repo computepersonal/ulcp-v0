@@ -2,7 +2,7 @@
 
 # Complete Architecture Reference for Claude Code Sessions
 
-# Last Updated: April 24, 2026
+# Last Updated: April 27, 2026
 
 ---
 
@@ -374,467 +374,70 @@ CLOUDFLARE_R2_SECRET_KEY, CLOUDFLARE_R2_BUCKET, CLOUDFLARE_API_TOKEN
 
 ## CHANGE LOG
 
+> Full history: [docs/CHANGELOG.md](docs/CHANGELOG.md)
+
 ```
-2026-02-19: Initial architecture — 10 types, universal catalogue
-2026-02-19: KOT + KDS system, RBAC + partner system
-2026-02-20: Inventory + recipe system
-2026-02-20: GST, offers, refunds, reviews, loyalty, WhatsApp
-2026-02-20: Superadmin, shifts, search, customer features
-2026-02-24: Pivoted to microservices (12 services)
-2026-02-24: CDN architecture (Cloudflare + R2)
-2026-02-24: State management strategy (Redux + RTK Query)
-2026-02-24: Business onboarding wizard (6 steps)
-2026-02-24: Franchise/chain management
-2026-02-24: Notification system (all channels)
-2026-02-24: Customer features (wishlist, reorder, recommendations)
-2026-02-25: Menu view/edit mode system (3 contexts)
-2026-02-25: Two-step delete flow, waiter PIN unlock
-2026-02-25: Free plan: 50→200 items, Starter: 200→500 items
-2026-03-03: Saved places (QR history + frequency scoring algorithm)
-2026-03-03: Payment system (Razorpay India + Stripe US/Global abstraction)
-2026-03-03: Payment security (sig verify, idempotency, OTP, JWT hardening)
-2026-03-03: Table assignment (sections, self-claim, swap, tips, auto-release)
-2026-03-03: Complete UI/UX design system (tokens, components, dark mode)
-2026-03-03: Customer PWA navigation (2 contexts, floating cart, data scoping)
-2026-03-03: Customer PWA all 7 screens designed
-2026-03-03: Staff POS web all 6 screens designed
-2026-03-19: Registration flow redesign — tenant_id optional, pending_onboarding role
-2026-03-19: PATCH /auth/users/:id/tenant — internal endpoint, X-Internal-Secret auth
-2026-03-19: tenant-service calls identity-service to assign tenant_id after creation
-2026-03-19: Prisma per-service output dirs (src/generated/prisma) — no DLL collision
-2026-03-22: CatalogueItem extended: veg_type, meal_type, item_type, course, prep_time_mins, calories, video_url, rating, rating_count
-2026-03-22: New catalogue models: ItemOptionGroup+Choice, AddonGroup+Item, ItemAddonGroup, Combo+ComboItem, ItemIngredient
-2026-03-22: Public catalogue response now includes combos + item relations (options, addons, ingredients)
-2026-03-26: Tenant model extended: city, state, pincode fields added
-2026-03-26: tenant-service: Table + Section models added (floor map)
-2026-03-26: Table.qr_code @unique removed — base64 QR exceeds PostgreSQL btree 2704-byte limit
-2026-03-26: Identity login: helpful error "Please provide your tenant_id" instead of generic 401
-2026-03-26: catalogue-service: GET /items defaults branch_id to primary branch (is_primary=true)
-2026-03-28: order-service built (port 3004) — Order, KOT, OrderStatusHistory, CommissionRecord, DailyCounter models
-2026-03-28: order-service: KOT sequential numbering per branch per day (KOT-001...) via DailyCounter atomic upsert
-2026-03-28: order-service: GST calculation (inclusive + exclusive), commission on order completion
-2026-03-28: order-service: KOT auto-split for seated_full_service (food→kitchen, drink→bar)
-2026-03-28: tenant-service: kot_ack_mode (auto|kds|printer) + kot_ack_delay_secs added to Tenant model
-2026-03-28: order-service: Three KOT ack modes — auto (BullMQ), kds (manual), printer (POST printer-ack)
-2026-03-28: order-service: acknowledgeKot() is idempotent — cancels pending auto-ack job
-2026-03-28: Docker Redis moved to port 6380 (local Redis 3.0 on 6379 incompatible with BullMQ)
-2026-03-28: catalogue-service: ItemIngredient routes built
-2026-03-28: procurement-service built (port 3013) — vendors, bids, market view, magic links
-2026-03-28: apps/vendor-portal built (port 5176) — React 18 + Vite, token-based, 6 screens
-2026-04-08: KDS: ErrorBoundary prevents blank screen crash on null order_type field
-2026-04-08: KDS: ✕ reject button on KOT cards — POST /kots/:id/reject, auto-cancels order if all KOTs rejected
-2026-04-08: order-service: KOT reject flow — updates status to "rejected", publishes KOT_REJECTED, allKotsRejected() cancels parent order
-2026-04-08: order-service: requirePermission(permission) middleware — owner roles bypass, others checked against JWT permissions[]
-2026-04-08: order-service: GET /summary/daily — real daily report (revenue, orders, top items, payment breakdown, unbilled, active) gated behind reports:view
-2026-04-08: order-service: recordPayment() now completes full lifecycle — status→completed, commission, ORDER_STATUS_CHANGED event
-2026-04-08: order-service: startup + midnight stale order sweep — pending→silent cancel; confirmed/preparing/ready→ORDER_UNBILLED_ALERT
-2026-04-08: realtime-service: KOT_REJECTED → kot:rejected (branch room), ORDER_UNBILLED_ALERT → order:unbilled_alert (owner room)
-2026-04-08: apps/web: apiFetch() wrapper — auto-dispatches clearAuth() + redirects /login on any 401
-2026-04-08: apps/web: Orders page — live kanban via Socket.io (order:new, order:status:changed), real API data, billing/checkout modal
-2026-04-08: apps/web: Reports page — real daily summary API, today/yesterday/custom tabs, unbilled alert section, payment BarChart, top items table
-2026-04-15: Added .claude/agents/ — 14 service-specific agent markdown files for accelerated development
-2026-04-15: Added AGENT_CONTEXT.md to each service directory for agent bootstrap context
-2026-04-16: ads-service built (port 3015) — Advertiser, AdCampaign, AdCreative, AdImpression, AdClick, Mall, VenueAdRevenue models
-2026-04-16: ads-service: 7 valid placements — platform_home, order_tracking, post_checkout, social_room, explore_nearby, jukebox_queue, jukebox_player
-2026-04-16: tenant-service: AuditLog model — actor_id, actor_name, actor_role, action, entity_type, entity_id, metadata, branch_id
-2026-04-16: tenant-service: POST /sections/:id/rename — atomic rename + cascade to tables in a single Prisma $transaction
-2026-04-16: identity-service: JWT payload now includes actor name — buildPayload() includes name, StaffJwtPayload.name in shared types
-2026-04-16: apps/web: FloorMap — zone management (add/rename/delete/disable), table disable/enable for service
-2026-04-16: apps/web: ActivityLog page — paginated audit log, filter by entity type, date picker, role-gated nav item
-2026-04-16: apps/web: Catalogue — full rewrite with real API calls, availability toggle, section management, 2-step delete
-2026-04-23: tenant-service: Tenant.setup_tasks (JSONB) — server-persisted post-onboarding checklist, replaces localStorage
-2026-04-23: tenant-service: onboarding.service.ts rewritten — Zod validation per step, step ordering enforced, idempotent completion
-2026-04-23: apps/web: Login.tsx — fetches onboarding state after login, redirects to /onboard if not completed
-2026-04-23: apps/web: Onboard.tsx — full 6-step wizard resumes from server-side step on reload
-2026-04-23: apps/web: Setup.tsx — migrated from localStorage to server-side setup_tasks API
-2026-04-24: Domain knowledge split into per-service CLAUDE.md files to reduce root file size
+2026-04-16: ads-service built (port 3015) — campaigns, placements, impression/click tracking
+2026-04-16: tenant-service: AuditLog model added; POST /sections/:id/rename (atomic + cascade)
+2026-04-16: identity-service: JWT payload includes actor name
+2026-04-16: apps/web: FloorMap zone management, ActivityLog page, Catalogue full rewrite
+2026-04-23: tenant-service: Tenant.setup_tasks (JSONB), onboarding rewritten with Zod + step ordering
+2026-04-23: apps/web: Login/Onboard/Setup migrated to server-side onboarding state
+2026-04-24: Domain knowledge split into per-service CLAUDE.md files
+2026-04-27: catalogue-service: CatalogueItem.allergens String[] field (10 common allergens)
+2026-04-27: apps/web: allergens multi-select chips in Add/Edit item modals
+2026-04-27: tenant-service: Section name uniqueness enforced (case-insensitive, ConflictError 409)
+2026-04-27: tenant-service: GET /tenants/internal/names?ids= — batch fetch for login picker
+2026-04-27: apps/web: Role-based nav — waiters/kitchen staff see only Floor Map, Orders, Catalogue
+2026-04-27: apps/web: /onboard redirect gated to OWNER_ROLES; waiters always go to /floor-map
+2026-04-27: apps/web: FloorMap empty state — owners see add controls, others see manager message
+2026-04-27: root CLAUDE.md restructured — Bootstrap → docs/BOOTSTRAP.md, Build Order → docs/BUILD_ORDER.md
 ```
 
 ---
 
 ## BUILD ORDER
 
+> Full phase-by-phase list: [docs/BUILD_ORDER.md](docs/BUILD_ORDER.md)
+
 ```
-PHASE 1 — FOUNDATION
-1.  Docker + docker-compose (all 12 services + PostgreSQL + Redis)
-2.  Shared package (eventBus, authenticate middleware, constants)
-3.  identity-service: staff auth, customer OTP, JWT, RBAC, PIN unlock
-4.  tenant-service: tenant CRUD, branches, feature gates
-5.  Kong API gateway config
-
-PHASE 2 — CATALOGUE
-6.  catalogue-service: sections, items, variants, attributes
-7.  Recipe management on food items
-8.  Business presets
-9.  Search (PostgreSQL full-text search, tsvector)
-10. Menu view/edit context system + 3 contexts
-11. Midnight cron jobs
-
-PHASE 3 — STAFF & PARTNERS
-12. Staff management (CRUD, RBAC, granular permissions)
-13. Partner system (invite, accept, scope middleware)
-14. Kitchen duty system
-15. Staff shifts + attendance
-
-PHASE 4 — INVENTORY
-16. Ingredient CRUD + StockMovement + PurchaseOrder
-17. deductStockForOrder() + auto-disable on critical
-18. Alert system
-
-PHASE 5 — ORDERS & KOT
-19. Table management + Socket.io floor map
-20. TableSession system
-21. Table confirmation + PIN unlock (shared tablet)
-22. KOT generation + routing (kitchen/bar split)
-23. Thermal printer integration
-24. KDS device registration + setup codes
-25. Token system (Type 1)
-26. Order management, billing, payment + table close
-
-PHASE 6 — DELIVERY
-27. Near delivery (geolib, pricing)
-28. Community delivery (Tower+Block+Flat, monthly tab)
-29. Far delivery (Shiprocket)
-30. Click & collect + scheduled slots
-31. Catering advance booking + food truck locations
-
-PHASE 7 — CUSTOMER PLATFORM
-32. PlatformCustomer + OTP auth + address book
-33. Wishlist + back in stock notify
-34. Reorder (one tap)
-
-PHASE 8 — COMMERCE
-35. Offers engine (all types) + coupon codes
-36. Commission auto-calc + Razorpay Route
-37. Refund + cancellation
-38. GST calculation + invoice generation
-
-PHASE 9 — NOTIFICATIONS
-39. notification-service: Bull queue setup
-40. SMS, WhatsApp, Push, Email channels
-41. Channel router (business type rules)
-42. WhatsApp reply webhook
-
-PHASE 10 — ANALYTICS & LOYALTY
-43. Loyalty points engine + tiers + redemption
-44. Reviews + ratings
-45. analytics-service: pre-computed reports + Redis cache
-46. P&L statement + PDF + Excel export
-
-PHASE 11 — REAL-TIME
-47. realtime-service (Socket.io + Redis Pub/Sub)
-48. socketMiddleware (Redux integration)
-49. KDS full-screen app (apps/kds/)
-50. Dashboard live metrics broadcast
-
-PHASE 12 — MEDIA
-51. media-service: Sharp + WebP + Cloudflare R2
-52. Image upload from catalogue builder + edit mode
-
-PHASE 13 — SUPERADMIN
-53. superadmin-service: overview, tenant management
-54. Commission settlement + invoice generation
-55. Platform settings + feature flags + moderation
-
-PHASE 14 — BUSINESS ONBOARDING
-56. 6-step wizard endpoints
-57. Onboarding state persistence + resume
-58. Post-onboarding checklist
-
-PHASE 15 — CHAIN/FRANCHISE
-59. isChain + chainConfig on Tenant
-60. getCatalogueForBranch() with overrides
-61. Chain dashboard (consolidated reporting)
-
-PHASE 16 — FRONTEND APPS
-62. Redux store + RTK Query + socketMiddleware
-63. AsyncStorage/localStorage persistence configs
-64. Customer web PWA
-65. Staff POS web (floor map, orders, catalogue builder, edit mode)
-66. Superadmin dashboard
-67. Staff mobile app (Expo Bare)
-68. Customer mobile app (Expo Bare + QR scanner)
+Phase 1  — Foundation (identity, tenant, shared pkg, Docker)
+Phase 2  — Catalogue (sections, items, search, caching)
+Phase 3  — Staff & Partners (RBAC, shifts, invites)
+Phase 4  — Inventory (ingredients, stock, purchase orders)
+Phase 5  — Orders & KOT (floor map, KDS, billing, payments)
+Phase 6  — Delivery (near/far/community/scheduled)
+Phase 7  — Customer Platform (OTP auth, wishlist, reorder)
+Phase 8  — Commerce (offers, commission, GST, refunds)
+Phase 9  — Notifications (SMS/WhatsApp/push/email, BullMQ)
+Phase 10 — Analytics & Loyalty (P&L, reports, tiers)
+Phase 11 — Real-time (Socket.io, Redis pub/sub, KDS app)
+Phase 12 — Media (Sharp, WebP, Cloudflare R2)
+Phase 13 — Superadmin (platform panel, settlements)
+Phase 14 — Business Onboarding (6-step wizard, checklist)
+Phase 15 — Chain/Franchise (multi-branch, consolidated reports)
+Phase 16 — Frontend Apps (staff POS, customer PWA, mobile)
+Phase 17 — Ads & Jukebox
 ```
 
 ---
 
+## BOOTSTRAP GUIDE
 
-## 🤖 CLAUDE CODE — BOOTSTRAP GUIDE
-
-> Use this section to build the entire project from scratch using Claude Code + your API key.
-> No manual file creation needed. Claude Code reads this file and does everything.
-
----
-
-### Prerequisites (one-time, manual)
-
-Install these before using Claude Code:
+> Full setup instructions and phase prompts: [docs/BOOTSTRAP.md](docs/BOOTSTRAP.md)
 
 ```bash
-# 1. Node.js 22 (via nvm — recommended)
-curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.7/install.sh | bash
-nvm install 22 && nvm use 22
-
-# 2. pnpm
-npm install -g pnpm
-
-# 3. Claude Code
-npm install -g @anthropic/claude-code
-
-# 4. Docker Desktop
-# Download from: https://www.docker.com/products/docker-desktop/
-# Install and launch it. Verify with: docker --version
+# Quick start
+cd ~/Projects/ulcp && claude
+# Then: "Read CLAUDE.md and PROGRESS.md. Tell me what's built and what's next."
 ```
 
----
-
-### Set Your API Key
-
-```bash
-# macOS / Linux
-export ANTHROPIC_API_KEY=sk-ant-xxxxxxxxxxxxxxxx
-
-# Windows (PowerShell)
-$env:ANTHROPIC_API_KEY="sk-ant-xxxxxxxxxxxxxxxx"
-```
-
----
-
-### First Time — Project Bootstrap
-
-```bash
-mkdir -p ~/Projects/ulcp
-cd ~/Projects/ulcp
-claude
-```
-
-Once inside Claude Code, paste this prompt:
-
-```
-Read CLAUDE.md fully.
-
-Bootstrap Phase 1 of the Universal Local Commerce Platform:
-
-1. Create the full monorepo folder structure (services/, packages/, apps/, infra/)
-2. Create root config files: pnpm-workspace.yaml, turbo.json, package.json, .gitignore
-3. Build packages/shared with: types, errors, constants, utils, and appConfig (configurable via env)
-4. Build services/identity-service completely:
-   - package.json, tsconfig.json, .env
-   - Prisma schema (User + RefreshToken models)
-   - src/lib: logger (Pino), prisma client, redis (ioredis), jwt helpers
-   - src/middleware: authenticate.ts (JWT guard)
-   - src/routes: auth.routes.ts (register, login, refresh, logout, /me)
-   - src/index.ts: Fastify app with helmet, cors, rate-limit
-5. Create docker-compose.dev.yml with postgres:16-alpine and redis:7-alpine
-6. Run: pnpm install
-7. Start Docker databases: docker compose -f docker-compose.dev.yml up -d postgres redis
-8. Run Prisma migration (name it "init")
-9. Start the identity service and confirm it is running on port 3001
-10. Test /health endpoint and show the response
-
-Follow all conventions in CLAUDE.md. Use TypeScript strict mode. No any types.
-App name must come from appConfig (env: APP_NAME), not hardcoded.
-```
-
----
-
-### Starting Each New Session
-
-```bash
-cd ~/Projects/ulcp
-claude
-```
-
-Then paste:
-
-```
-Read CLAUDE.md and PROGRESS.md.
-Tell me what's already built and what's next.
-Then let's continue with [Phase X / feature name].
-```
-
----
-
-### Phase-by-Phase Prompts
-
-#### Phase 1 — Foundation (monorepo + identity-service)
-
-```
-Read CLAUDE.md fully. Build Phase 1:
-- Monorepo: pnpm workspaces + Turborepo
-- packages/shared: types, errors, constants, utils, appConfig (env-driven)
-- docker-compose.dev.yml: postgres:16 + redis:7
-- services/identity-service: Fastify + Prisma + JWT + bcrypt + Redis refresh tokens
-  Routes: POST /register /login /refresh /logout GET /me
-- Start Postgres + Redis via Docker
-- Run prisma migrate (name: init)
-- Start the service, test /health
-All TypeScript strict. Follow CLAUDE.md conventions.
-```
-
-#### Phase 2 — Core Commerce
-
-```
-Read CLAUDE.md, PROGRESS.md, and services/tenant-service/CLAUDE.md. Build Phase 2:
-
-1. services/tenant-service (port 3002):
-   - Tenant onboarding wizard (6 steps, save state at each)
-   - Business types (all 10 from tenant-service/CLAUDE.md)
-   - Branch management, staff invite (email + SMS)
-   - QR code generation per table/branch (qrcode npm)
-   - Plan enforcement middleware (check PLAN_ITEM_LIMITS etc)
-   - Subscription model (free/starter/pro)
-   - All multi-tenant: every query scoped to tenantId
-
-2. services/catalogue-service (port 3003):
-   - Sections + items CRUD
-   - Variants, modifiers, bundles, recipes
-   - Item toggle (available/unavailable), sold-out
-   - Drag-and-drop order (via position field)
-   - Redis cache (CATALOGUE_CACHE_TTL_SECS = 300)
-   - Cache invalidation on any update (Cloudflare + Redis)
-   - Full-text search (PostgreSQL tsvector + GIN index)
-   - Plan limit enforcement (PLAN_ITEM_LIMITS)
-
-3. services/order-service (port 3004):
-   - Order lifecycle state machine
-   - KOT generation + auto-split (food vs drink by business type)
-   - Billing: subtotal, GST, discount, loyalty redemption, tips
-   - Commission calculation on completion (COMMISSION_RATES)
-   - Razorpay Route integration for auto commission split
-   - Table session management
-   - Redis events for real-time updates
-
-Add each service to docker-compose.dev.yml.
-Follow all CLAUDE.md conventions. TypeScript strict.
-```
-
-#### Phase 3 — Payments & Notifications
-
-```
-Read CLAUDE.md, PROGRESS.md, and services/notification-service/CLAUDE.md. Build Phase 3:
-
-1. services/notification-service (port 3007):
-   - MSG91 for OTP SMS
-   - Interakt for WhatsApp (order confirmed, ready, delivered)
-   - Firebase FCM for push notifications
-   - SendGrid for email (welcome, order receipt)
-   - BullMQ queue (Redis): retry failed notifications 3x with backoff
-   - Fire-and-forget pattern: never block order flow
-   - OTP: SHA-256 hash stored, 5 min TTL, 5 attempts max, one-time use
-
-Follow CLAUDE.md security rules. TypeScript strict.
-```
-
-#### Phase 4 — Frontends
-
-```
-Read CLAUDE.md, PROGRESS.md, apps/CLAUDE.md, apps/web/CLAUDE.md, apps/customer-web/CLAUDE.md. Build Phase 4:
-
-1. apps/web — Staff POS (React 18 + Vite + Tailwind + Redux Toolkit + RTK Query)
-   (screen specs in apps/web/CLAUDE.md)
-
-2. apps/customer-web — Customer PWA (React 18 + Vite + Tailwind + Redux)
-   (screen specs in apps/customer-web/CLAUDE.md)
-
-3. apps/kds — Kitchen Display System (React + Vite, minimal, no Redux)
-   - Live order cards by KOT, item status toggle, Socket.io real-time, full-screen TV
-
-Design system: Indigo primary, Inter + JetBrains Mono, dark mode.
-Use shadcn/ui + Radix UI + Lucide React.
-```
-
-#### Phase 5 — Analytics, Delivery, Loyalty
-
-```
-Read CLAUDE.md, PROGRESS.md, and the relevant service CLAUDE.md files. Build Phase 5:
-
-1. services/analytics-service (port 3009) — see services/analytics-service/CLAUDE.md
-2. services/delivery-service (port 3006) — see services/delivery-service/CLAUDE.md
-3. services/loyalty-service (port 3011) — see services/loyalty-service/CLAUDE.md
-
-TypeScript strict. Follow CLAUDE.md conventions.
-```
-
-#### Phase 6 — Production Infrastructure
-
-```
-Read CLAUDE.md and PROGRESS.md. Build Phase 6:
-
-1. docker-compose.prod.yml (all services + Kong + PostgreSQL + Redis)
-2. Dockerfile for each service (FROM node:22-alpine, multi-stage build)
-3. Kong API Gateway: kong.yml declarative config, all routes, JWT + rate limiting plugins
-4. GitHub Actions CI/CD: ci.yml (lint+test on PR), deploy.yml (build+push+deploy on main)
-5. Hetzner setup scripts: server-init.sh, deploy.sh
-6. Health check endpoints on all services (/health)
-
-TypeScript strict. Follow CLAUDE.md conventions.
-```
-
-#### Add a New Feature (any time)
-
-```
-Read CLAUDE.md and PROGRESS.md.
-Also read the CLAUDE.md for each affected service.
-
-Add: [describe the feature clearly]
-
-Service(s) affected: [list them]
-New models needed: [describe]
-New routes needed: [list endpoints]
-Frontend changes: [describe UI changes]
-
-Follow all CLAUDE.md conventions.
-After building, update PROGRESS.md.
-```
-
----
-
-### PROGRESS.md — Keep This Updated
-
-After each phase, ask Claude Code:
-
-```
-Update PROGRESS.md with what we just built.
-Mark Phase X as complete.
-List what's left and what's next.
-```
-
----
-
-### Useful Claude Code Commands
-
-```bash
-claude                              # start a session
-claude --continue                   # continue last session
-claude --dangerously-skip-permissions  # fewer prompts
-```
-
-### Service Slash Commands
-
-Use these to jump directly into a service agent:
-
-```
-/identity    /tenant     /catalogue   /order
-/inventory   /delivery   /notification /realtime
-/analytics   /media      /loyalty     /superadmin
-/procurement /jukebox
-```
-
----
-
-### Tips for Best Results
-
-| Tip | Why |
-| --- | --- |
-| Always start with "Read CLAUDE.md and PROGRESS.md" | Grounds Claude in your full architecture |
-| For service work, also read the service CLAUDE.md | Full domain context without loading everything |
-| One phase at a time | Keeps context focused, avoids mistakes |
-| Update PROGRESS.md after each phase | Next session starts with accurate context |
-| Use /identity, /order etc. slash commands | Jumps directly into the right service agent |
+Service slash commands: `/identity` `/tenant` `/catalogue` `/order` `/inventory`
+`/delivery` `/notification` `/realtime` `/analytics` `/media` `/loyalty`
+`/superadmin` `/procurement` `/jukebox` `/ads`
 
 ---
 
 _Universal Local Commerce Platform — Complete Architecture_
-_13 microservices · Cloudflare CDN · Global from day 1_
-_Last updated: April 23, 2026_
+_15 microservices · Cloudflare CDN · Global from day 1_
+_Last updated: April 27, 2026_
