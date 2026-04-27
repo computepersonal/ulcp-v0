@@ -590,9 +590,23 @@ export default function Onboard() {
 
 // ─── Step 1: Business Type ───────────────────────────────────────────────────
 
+const DINE_IN_VALUES = new Set(['self_service_cafe', 'seated_food_only', 'seated_full_service', 'seated_self_order']);
+
 function Step1BusinessType({
   selected, onSelect, onNext,
 }: { selected: string; onSelect: (v: string) => void; onNext: () => void }) {
+  const [showToast, setShowToast] = useState(false);
+
+  const handleSelect = (value: string) => {
+    onSelect(value);
+    if (!DINE_IN_VALUES.has(value)) {
+      setShowToast(true);
+      setTimeout(() => setShowToast(false), 4000);
+    } else {
+      setShowToast(false);
+    }
+  };
+
   return (
     <div>
       <h2 className="text-2xl font-bold text-gray-900 mb-1">What kind of business?</h2>
@@ -605,7 +619,7 @@ function Step1BusinessType({
             {BUSINESS_TYPES.filter((t) => t.category === cat).map((type) => (
               <button
                 key={type.value}
-                onClick={() => onSelect(type.value)}
+                onClick={() => handleSelect(type.value)}
                 className={`p-4 rounded-xl border-2 text-left transition-all ${
                   selected === type.value
                     ? 'border-brand-500 bg-brand-50'
@@ -622,6 +636,14 @@ function Step1BusinessType({
           </div>
         </div>
       ))}
+
+      {/* Coming-soon toast */}
+      <div className={`fixed bottom-8 left-1/2 -translate-x-1/2 z-50 transition-all duration-300 ${showToast ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-2 pointer-events-none'}`}>
+        <div className="bg-gray-900 text-white text-sm px-5 py-3 rounded-xl shadow-lg flex items-center gap-2 whitespace-nowrap">
+          <span>🚧</span>
+          <span>Only dine-in is available right now — other types coming soon!</span>
+        </div>
+      </div>
 
       <div className="flex justify-end mt-4">
         <button
