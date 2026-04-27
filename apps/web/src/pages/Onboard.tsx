@@ -829,9 +829,16 @@ function Step4Catalogue({
       <div className="bg-brand-50 border border-brand-100 rounded-2xl p-6 mb-6">
         <div className="text-3xl mb-3">📋</div>
         <p className="text-sm text-brand-800 font-medium mb-1">You can set up your catalogue after onboarding</p>
-        <p className="text-xs text-brand-600">
+        <p className="text-xs text-brand-600 mb-4">
           This step is optional during onboarding. You'll be able to add items, sections, prices, and photos from the Catalogue page in your dashboard.
         </p>
+        <Link
+          to="/catalogue"
+          onClick={() => localStorage.setItem('onboarding_catalogue_return', 'true')}
+          className="inline-flex items-center gap-2 px-4 py-2 bg-brand-500 hover:bg-brand-600 text-white text-sm font-semibold rounded-xl transition-colors"
+        >
+          Add your catalogue →
+        </Link>
       </div>
 
       <div className="flex justify-between mt-8">
