@@ -27,7 +27,16 @@ interface NavItem {
 }
 
 const OWNER_ROLES = new Set(['tenant_owner', 'primary_owner', 'managing_partner', 'platform_superadmin']);
+const MANAGER_ROLES = new Set(['tenant_owner', 'primary_owner', 'managing_partner', 'platform_superadmin', 'branch_manager', 'operations_partner']);
 const AUDIT_ROLES = new Set(['tenant_owner', 'primary_owner', 'managing_partner', 'branch_manager', 'platform_superadmin']);
+
+function isOwner(user: { role: string } | null): boolean {
+  return !!user && OWNER_ROLES.has(user.role);
+}
+
+function isManagerOrAbove(user: { role: string } | null): boolean {
+  return !!user && MANAGER_ROLES.has(user.role);
+}
 
 function canViewReports(user: { role: string; permissions: string[] } | null): boolean {
   if (!user) return false;
@@ -40,17 +49,6 @@ function canViewAuditLog(user: { role: string } | null): boolean {
   return AUDIT_ROLES.has(user.role);
 }
 
-const BASE_NAV_ITEMS: NavItem[] = [
-  { to: '/floor-map', icon: <Map size={20} />, label: 'Floor Map' },
-  { to: '/orders', icon: <ClipboardList size={20} />, label: 'Orders' },
-  { to: '/catalogue', icon: <BookOpen size={20} />, label: 'Catalogue' },
-  { to: '/reservations', icon: <CalendarDays size={20} />, label: 'Reservations' },
-  { to: '/customers', icon: <Heart size={20} />, label: 'Customers' },
-  { to: '/staff', icon: <Users size={20} />, label: 'Staff' },
-  { to: '/inventory', icon: <Package size={20} />, label: 'Inventory' },
-  { to: '/procurement', icon: <ShoppingCart size={20} />, label: 'Procurement' },
-  { to: '/settings', icon: <Settings size={20} />, label: 'Settings' }
-];
 
 interface SetupTasks {
   catalogue: boolean;
@@ -112,9 +110,19 @@ export default function Layout() {
   }, [user?.tenant_id, token, tenantServiceUrl, dispatch]);
 
   const navItems: NavItem[] = [
-    ...BASE_NAV_ITEMS.slice(0, 3), // floor-map, orders, catalogue
+    // All roles: core ops
+    { to: '/floor-map', icon: <Map size={20} />, label: 'Floor Map' },
+    { to: '/orders', icon: <ClipboardList size={20} />, label: 'Orders' },
+    { to: '/catalogue', icon: <BookOpen size={20} />, label: 'Catalogue' },
+    // Manager+ only
     ...(canViewReports(user) ? [{ to: '/reports', icon: <BarChart3 size={20} />, label: 'Reports' }] : []),
-    ...BASE_NAV_ITEMS.slice(3), // reservations, staff, procurement, settings
+    ...(isManagerOrAbove(user) ? [{ to: '/reservations', icon: <CalendarDays size={20} />, label: 'Reservations' }] : []),
+    ...(isManagerOrAbove(user) ? [{ to: '/customers', icon: <Heart size={20} />, label: 'Customers' }] : []),
+    ...(isManagerOrAbove(user) ? [{ to: '/staff', icon: <Users size={20} />, label: 'Staff' }] : []),
+    // Owner only
+    ...(isOwner(user) ? [{ to: '/inventory', icon: <Package size={20} />, label: 'Inventory' }] : []),
+    ...(isOwner(user) ? [{ to: '/procurement', icon: <ShoppingCart size={20} />, label: 'Procurement' }] : []),
+    ...(isOwner(user) ? [{ to: '/settings', icon: <Settings size={20} />, label: 'Settings' }] : []),
     ...(canViewAuditLog(user) ? [{ to: '/activity', icon: <ScrollText size={20} />, label: 'Activity Log' }] : []),
   ];
 
@@ -202,8 +210,8 @@ export default function Layout() {
           </div>
         </header>
 
-        {/* Onboarding / setup banner */}
-        {onboardingCompleted && setupTasks && !allSetupDone(setupTasks) && (
+        {/* Onboarding / setup banner — owner only */}
+        {isOwner(user) && onboardingCompleted && setupTasks && !allSetupDone(setupTasks) && (
           <SetupBanner tasks={setupTasks} onGoToSetup={() => navigate('/setup')} />
         )}
 

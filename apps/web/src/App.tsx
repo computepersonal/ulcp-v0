@@ -33,8 +33,8 @@ function AppRoutes() {
       {/* Requires auth (any role) — onboarding wizard */}
       <Route path="/onboard" element={<Onboard />} />
 
-      {/* Setup checklist — after wizard, before full usage */}
-      <Route path="/setup" element={<ProtectedRoute><Setup /></ProtectedRoute>} />
+      {/* Setup checklist — owner only */}
+      <Route path="/setup" element={<ProtectedRoute ownerOnly><Setup /></ProtectedRoute>} />
 
       {/* Requires auth + active tenant */}
       <Route
