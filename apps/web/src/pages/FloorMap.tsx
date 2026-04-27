@@ -987,26 +987,34 @@ export default function FloorMap() {
         <div className="p-6 flex flex-col items-center justify-center min-h-[60vh] text-center">
           <div className="text-5xl mb-4">🪑</div>
           <h2 className="text-xl font-bold text-gray-900 mb-2">No tables yet</h2>
-          <p className="text-gray-500 text-sm max-w-xs mb-6">
-            Add your first table to start managing dine-in orders from the floor map.
-          </p>
-          <div className="flex flex-col gap-3 w-full max-w-xs">
-            <button
-              onClick={() => setShowAddSection(true)}
-              className="px-6 py-3 bg-brand-500 hover:bg-brand-600 text-white font-semibold rounded-xl transition-colors"
-            >
-              + Add a floor zone
-            </button>
-            <button
-              onClick={() => setShowAddTable(true)}
-              className="px-6 py-3 border border-gray-200 text-gray-600 font-medium rounded-xl hover:border-gray-300 transition-colors"
-            >
-              + Add a table
-            </button>
-          </div>
-          <p className="text-xs text-gray-400 mt-4">
-            Floor zones group tables by area (e.g. Main Hall, Outdoor, Bar)
-          </p>
+          {canEditTables ? (
+            <>
+              <p className="text-gray-500 text-sm max-w-xs mb-6">
+                Add your first table to start managing dine-in orders from the floor map.
+              </p>
+              <div className="flex flex-col gap-3 w-full max-w-xs">
+                <button
+                  onClick={() => setShowAddSection(true)}
+                  className="px-6 py-3 bg-brand-500 hover:bg-brand-600 text-white font-semibold rounded-xl transition-colors"
+                >
+                  + Add a floor zone
+                </button>
+                <button
+                  onClick={() => setShowAddTable(true)}
+                  className="px-6 py-3 border border-gray-200 text-gray-600 font-medium rounded-xl hover:border-gray-300 transition-colors"
+                >
+                  + Add a table
+                </button>
+              </div>
+              <p className="text-xs text-gray-400 mt-4">
+                Floor zones group tables by area (e.g. Main Hall, Outdoor, Bar)
+              </p>
+            </>
+          ) : (
+            <p className="text-gray-500 text-sm max-w-xs">
+              Your manager hasn't set up the floor map yet. Check back soon.
+            </p>
+          )}
         </div>
 
         {showAddTable && (

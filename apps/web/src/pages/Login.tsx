@@ -102,7 +102,8 @@ export default function Login() {
                 completed: obData.data.onboarding_completed,
                 step: obData.data.onboarding_step,
               }));
-              if (!obData.data.onboarding_completed) {
+              const ownerRoles = new Set(['tenant_owner', 'primary_owner', 'managing_partner', 'platform_superadmin']);
+              if (!obData.data.onboarding_completed && ownerRoles.has(loggedInUser.role)) {
                 navigate('/onboard');
                 return;
               }
