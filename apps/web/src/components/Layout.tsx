@@ -178,7 +178,7 @@ export default function Layout() {
               </div>
             )}
             {expanded && (
-              <button onClick={handleLogout} className="text-gray-400 hover:text-red-500 transition-colors shrink-0" title="Logout">
+              <button onClick={handleLogout} className="text-gray-400 hover:text-red-500 transition-colors shrink-0" title="Sign Out">
                 <LogOut size={16} />
               </button>
             )}
@@ -198,11 +198,11 @@ export default function Layout() {
           <div className="flex items-center gap-3">
             <button
               onClick={handleLogout}
-              title="Logout"
+              title="Sign Out"
               className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm text-gray-500 hover:bg-red-50 hover:text-red-600 transition-colors"
             >
               <LogOut size={16} />
-              <span className="hidden sm:inline">Logout</span>
+              <span className="hidden sm:inline">Sign Out</span>
             </button>
             <div className="w-8 h-8 bg-brand-100 rounded-full flex items-center justify-center text-brand-600 text-sm font-bold">
               {user?.name?.[0]?.toUpperCase() ?? 'S'}

@@ -476,7 +476,7 @@ export default function Onboard() {
             onClick={() => { dispatch(clearAuth()); navigate('/login'); }}
             className="text-xs text-gray-400 hover:text-gray-600 transition-colors"
           >
-            Sign out
+            Sign Out
           </button>
         </div>
         <div className="h-1 bg-gray-100">
