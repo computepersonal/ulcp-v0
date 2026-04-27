@@ -6,6 +6,33 @@
 
 ---
 
+## ROLE-BASED ACCESS
+
+### Nav visibility by role
+
+```
+Waiter / Cashier / Head Chef / Kitchen Staff:
+  Floor Map, Orders, Catalogue only
+
+Branch Manager / Operations Partner:
+  + Reports, Reservations, Customers, Staff
+
+Owner (tenant_owner, primary_owner, managing_partner):
+  + Inventory, Procurement, Settings, Activity Log
+
+Owner only (route-level guard):
+  /setup (post-onboarding checklist)
+  /onboard (wizard) — non-owners skip directly to /floor-map
+```
+
+### Key rules
+- Onboarding wizard (/onboard) only shown to owner roles — waiters/staff always go to /floor-map on login
+- Setup banner in layout hidden from non-owners
+- Floor map empty state: owners see "Add zone/table" buttons; waiters see "ask your manager" message
+- canEditTables = tenant_owner | primary_owner | managing_partner | branch_manager
+
+---
+
 ## STAFF POS WEB SCREENS
 
 ### Layout
