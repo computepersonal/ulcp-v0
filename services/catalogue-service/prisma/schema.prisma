@@ -241,9 +241,15 @@ model ItemIngredient {
   allergens   Json    @default("[]") // ["gluten", "dairy", "nuts", "soy", "eggs"]
   is_critical Boolean @default(false) // if stock = 0 → auto-disable item
 
+  // Recipe link to inventory-service (cross-service, no FK)
+  ingredient_id String? // references inventory-service Ingredient.id
+  quantity      Float?  // amount used per serving (in `unit`)
+  unit          String? // g, ml, pcs, tbsp, tsp, kg, l
+
   item CatalogueItem @relation(fields: [item_id], references: [id], onDelete: Cascade)
 
   @@index([tenant_id])
   @@index([item_id])
+  @@index([ingredient_id])
   @@map("item_ingredients")
 }

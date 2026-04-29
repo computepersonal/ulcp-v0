@@ -2,7 +2,7 @@
 
 ## Status
 
-Last updated: 2026-04-23
+Last updated: 2026-04-28
 
 ---
 
@@ -131,9 +131,15 @@ Last updated: 2026-04-23
 
 ---
 
-## ✅ procurement-service (port 3013) — Complete
+## ✅ procurement-service (port 3013) — Complete (ERP Phase 1)
 
-- **Prisma schema:** Vendor, VendorItem, VendorPreference, BidRequest, BidRequestVendor, Bid, VendorToken, DirectOrder
+- **Prisma schema (ERP v1 — `procurement-erp-v1`):**
+  - Original models: Vendor (extended), VendorItem, VendorPreference, BidRequest, BidRequestVendor, Bid, VendorToken, DirectOrder
+  - **New ERP models:** PurchaseOrder, POItem, GoodsReceivedNote, GRNItem, VendorBill, VendorPayment
+  - **New enums:** VendorStatus, POStatus, GRNStatus, BillStatus, PaymentMethod
+  - **Vendor model extended** with: pan, bank_account, bank_ifsc, bank_name, preferred_items[], credit_days, credit_limit, outstanding_balance, total_orders, total_spent, status (VendorStatus), documents (Json)
+  - Unique constraints: `@@unique([tenant_id, po_number])`, `@@unique([tenant_id, grn_number])`, `@@unique([tenant_id, internal_ref])`, `@@unique([tenant_id, vendor_id, bill_number])`, `@@unique([tenant_id, payment_number])`
+  - Numbered IDs per tenant: PO-YYYY-MM-XXXX, GRN-YYYY-MM-XXXX, BILL-YYYY-MM-XXXX, PAY-YYYY-MM-XXXX (4-digit zero-padded)
 - **Vendor routes:**
   - `POST/GET  /api/v1/procurement/:tenant_id/vendors` — create, list vendors
   - `GET/PATCH/DELETE /api/v1/procurement/:tenant_id/vendors/:id` — detail, update, delete
@@ -165,6 +171,36 @@ Last updated: 2026-04-23
 - **BullMQ:** bid auto-close queue (delayed job at bid_close_at), bid recurrence queue (repeating job)
 - **Redis events:** BID_REQUEST_OPENED, BID_AWARDED, DIRECT_ORDER_CREATED
 - **Internal service calls:** inventory-service for PurchaseOrder creation on bid award + direct order delivery
+- **Purchase Order routes** (ERP Phase 1):
+  - `POST /api/v1/procurement/:tenant_id/purchase-orders` — create PO (line totals, tax, delivery, discount → total_amount)
+  - `GET  /api/v1/procurement/:tenant_id/purchase-orders` — list with filters (status, vendor_id, branch_id, from/to)
+  - `GET  /api/v1/procurement/:tenant_id/purchase-orders/:po_id` — detail with items
+  - `PATCH /api/v1/procurement/:tenant_id/purchase-orders/:po_id/approve` — only draft/pending_approval
+  - `PATCH /api/v1/procurement/:tenant_id/purchase-orders/:po_id/send` — only approved
+  - `PATCH /api/v1/procurement/:tenant_id/purchase-orders/:po_id/cancel`
+- **Goods Received Note (GRN) routes:**
+  - `POST /api/v1/procurement/:tenant_id/grns` — create draft (validates PO not cancelled/received)
+  - `GET  /api/v1/procurement/:tenant_id/grns` + `GET /:grn_id` — list/detail
+  - `POST /api/v1/procurement/:tenant_id/grns/:grn_id/complete` — **GRN → Inventory sync**: pushes each line to inventory `PATCH /internal/ingredients/:id/receive`, increments po_item.received_quantity, recomputes PO status (allReceived→received, anyReceived→partial), increments vendor.total_orders + total_spent
+- **Vendor Bills routes:**
+  - `POST /api/v1/procurement/:tenant_id/bills` — create with **3-way match**: if PO+GRN provided, calls `performThreeWayMatch(po, grn, bill_items)` comparing qty triplets; mismatched + override_match=false returns 400; overridden sets three_way_match_status="overridden"; on success increments vendor.outstanding_balance
+  - `GET  /api/v1/procurement/:tenant_id/bills` — list with filters (status, vendor_id, due_within_days)
+  - `GET  /api/v1/procurement/:tenant_id/bills/due` (default 7 days)
+  - `GET  /api/v1/procurement/:tenant_id/bills/overdue` — lazy updates status to overdue
+  - `POST /api/v1/procurement/:tenant_id/bills/:bill_id/pay` — records VendorPayment in `prisma.$transaction`: creates payment, updates bill (amount_paid, amount_due, status: partially_paid/paid), decrements vendor.outstanding_balance
+- **Spend Report:**
+  - `GET /api/v1/procurement/:tenant_id/spend/summary?from=&to=` — total_billed, total_paid, outstanding, open_purchase_orders, top_vendors (top 10), spend_by_category (parsed bill items)
+- **Auto-reorder:**
+  - `POST /api/v1/procurement/:tenant_id/auto-reorder/trigger` (staff)
+  - `POST /api/v1/procurement/internal/auto-reorder` (X-Internal-Secret)
+  - Strategy: stock<min → preferred vendor + vendor_item exists → direct PO (source="auto_reorder") | otherwise → 4hr bid request + invites all vendors with vendor_items + WhatsApp notify via notification-service
+- **Vendor Portal routes** (token-based, `prefix: /api/v1/procurement/portal`):
+  - `GET/PATCH /:token/me` — my profile (resolveVendorFromToken via VendorToken table)
+  - `GET /:token/invoices` — bills + totals
+  - `GET/POST /:token/catalog` + `PATCH/DELETE /:token/catalog/:item_id` — vendor's catalog items (VendorItem CRUD)
+  - `GET /:token/orders` — direct orders + purchase orders
+- **Inventory cross-service sync:**
+  - **inventory-service:** new `PATCH /api/v1/inventory/internal/ingredients/:id/receive` (X-Internal-Secret) — calls `adjustStock(quantity, "purchase")`, computes rolling weighted average `newAvg = (oldAvg * oldStock + unit_cost * quantity) / newStock`, updates last_purchase_price + unit_cost + average_cost; returns `{ingredient_id, current_stock, average_cost, last_purchase_price}`
 
 ## ✅ apps/vendor-portal — Complete
 
@@ -177,6 +213,10 @@ Last updated: 2026-04-23
   - `BidResult` — awarded vs rejected result notification with next steps
   - `DirectOrderView` — view direct order items, accept with delivery date or decline with reason
   - `DirectOrderDone` — post-response confirmation screen
+  - **Portal screens (ERP Phase 1):**
+    - `MyProfile` (`/vendor/portal/:token`) — vendor stats card (rating, total_orders, total_earned, outstanding) + 3 sections (Contact, Address, Tax & Banking) with editable fields, Save button
+    - `MyInvoices` (`/vendor/portal/:token/invoices`) — totals (billed/paid/outstanding) + bills table with status pills; exports `PortalNav` shared by all 3 portal pages
+    - `MyCatalog` (`/vendor/portal/:token/catalog`) — items table + Add/Edit modals (ingredient_id, name, unit, unit_price, min_order_quantity, lead_time_days, is_available)
 - **Token-based auth** — no login required, magic links via URL token param
 - **All amounts:** API in paise, display in ₹
 - **TypeScript compiles clean** (strict mode, noUnusedLocals/Params)
@@ -204,6 +244,7 @@ Last updated: 2026-04-23
   - `POST /api/v1/inventory/internal/deduct` — called by order-service when order→preparing
   - `POST /api/v1/inventory/internal/purchase-orders` — called by procurement-service on bid award
   - `POST /api/v1/inventory/internal/purchase-orders/:id/receive` — called by procurement-service on direct order delivered
+  - `PATCH /api/v1/inventory/internal/ingredients/:id/receive` — called by procurement-service GRN complete; adjusts stock + rolling weighted average cost + last_purchase_price
 - **Stock service:** `deductStockForOrder()` deducts per item, checks thresholds, publishes STOCK_LOW / STOCK_CRITICAL / STOCK_CRITICAL_DISABLE / ITEM_BACK_IN_STOCK events
 - **receiveStock():** adds stock, updates average cost, publishes ITEM_BACK_IN_STOCK if restocked past critical threshold
 - **PO numbering:** PO-YYYY-XXXX sequential per tenant per year
@@ -353,7 +394,7 @@ Last updated: 2026-04-23
   - `Catalogue` — add section modal, add item modal (name, price, description, section assignment, food/veg classification), availability toggle per item (real PATCH to catalogue-service), section hide/show/rename/delete, delete item with confirm; empty state with action buttons
   - `Reports` — fetches real daily summary from order-service `/orders/:tenant_id/summary/daily`, date tabs, metric cards, Recharts LineChart (revenue trend), top items table, PDF/Excel export buttons
   - `Staff` — table with status badges, Invite Staff modal (email + role)
-  - `Procurement` — 4 tabs: Market View (ingredient list + vendor comparison), Vendors, Bid Requests, Direct Orders — all fetch from procurement-service with demo data fallback
+  - `Procurement` — 7 tabs (ERP Phase 1 rewrite): **Purchase Orders** (POTab — list, approve, send, cancel), **Receiving (GRN)** (GRNTab + ReceiveModal — create draft, complete to trigger inventory sync), **Bills** (BillsTab — filter all/due/overdue, approve, PayModal records VendorPayment with method + ref), **Vendors** (enhanced VendorsTab — GSTIN, orders, total_spent, outstanding, rating, status), **Spend Report** (SpendTab — top vendors, spend_by_category), **Bids** + **Market** (existing). All tabs hit `${procurementUrl}/api/v1/procurement/${tenant}/...`. StatusPill maps all enum values (POStatus / GRNStatus / BillStatus / VendorStatus) to colored badges
   - `Settings` — 5 tabs: Business (profile from Redux), Branches, QR Codes (placeholder grid), Subscription (plan usage meters + upgrade), **Promotions** (in-house ad campaigns — list, create, pause/activate)
 - **TypeScript:** strict, clean compile
 

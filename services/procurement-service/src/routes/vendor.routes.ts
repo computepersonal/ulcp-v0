@@ -14,6 +14,8 @@ import {
   updateVendorItem,
   deleteVendorItem,
   upsertVendorPreference,
+  updateVendorProfile,
+  getVendorLedger,
 } from "../repositories/vendor.repository";
 import { invalidateMarketCache } from "../services/market.service";
 
@@ -32,7 +34,39 @@ const vendorSchema = z.object({
   state: z.string().optional(),
   pincode: z.string().optional(),
   gstin: z.string().optional(),
+  pan: z.string().optional(),
+  bank_account: z.string().optional(),
+  bank_ifsc: z.string().optional(),
+  bank_name: z.string().optional(),
   categories: z.array(z.string()).default([]),
+  preferred_items: z.array(z.string()).optional(),
+  credit_days: z.number().int().min(0).optional(),
+  credit_limit: z.number().int().min(0).optional(),
+  status: z.enum(["active", "inactive", "blacklisted", "pending_verification"]).optional(),
+  notes: z.string().optional(),
+});
+
+const vendorProfileSchema = z.object({
+  name: z.string().min(1).optional(),
+  contact_name: z.string().optional(),
+  contact_email: z.string().email().optional(),
+  contact_phone: z.string().optional(),
+  contact_whatsapp: z.string().optional(),
+  address: z.string().optional(),
+  city: z.string().optional(),
+  state: z.string().optional(),
+  pincode: z.string().optional(),
+  gstin: z.string().optional(),
+  pan: z.string().optional(),
+  bank_account: z.string().optional(),
+  bank_ifsc: z.string().optional(),
+  bank_name: z.string().optional(),
+  categories: z.array(z.string()).optional(),
+  preferred_items: z.array(z.string()).optional(),
+  credit_days: z.number().int().min(0).optional(),
+  credit_limit: z.number().int().min(0).optional(),
+  status: z.enum(["active", "inactive", "blacklisted", "pending_verification"]).optional(),
+  documents: z.unknown().optional(),
   notes: z.string().optional(),
 });
 
@@ -175,6 +209,35 @@ export async function vendorRoutes(fastify: FastifyInstance): Promise<void> {
       await deleteVendorItem(id, vendor_id);
       await invalidateMarketCache(tenant_id);
       return reply.send(apiSuccess({ deleted: true }));
+    }
+  );
+
+  // PATCH /:tenant_id/vendors/:vendor_id/profile — extended profile
+  fastify.patch<{ Params: VendorParams; Body: unknown }>(
+    "/:tenant_id/vendors/:vendor_id/profile",
+    { schema: { summary: "Update vendor profile (KYC, bank, credit)", tags: ["Vendors"], response: { 200: ok, ...errR } }, preHandler: [authenticateStaff] },
+    async (req, reply) => {
+      const parsed = vendorProfileSchema.safeParse(req.body);
+      if (!parsed.success) return reply.code(400).send(apiError(formatZodError(parsed.error)));
+      const { tenant_id, vendor_id } = req.params;
+      const { documents, ...rest } = parsed.data;
+      const update: Record<string, unknown> = { ...rest };
+      if (documents !== undefined) update["documents"] = documents;
+      await updateVendorProfile(vendor_id, tenant_id, update);
+      const vendor = await findVendorById(vendor_id, tenant_id);
+      return reply.send(apiSuccess({ vendor }));
+    }
+  );
+
+  // GET /:tenant_id/vendors/:vendor_id/ledger
+  fastify.get<{ Params: VendorParams }>(
+    "/:tenant_id/vendors/:vendor_id/ledger",
+    { schema: { summary: "Vendor ledger (bills, payments, POs, summary)", tags: ["Vendors"], response: { 200: ok, ...errR } }, preHandler: [authenticateStaff] },
+    async (req, reply) => {
+      const { tenant_id, vendor_id } = req.params;
+      const ledger = await getVendorLedger(vendor_id, tenant_id);
+      if (!ledger) return reply.code(404).send(apiError("Vendor not found"));
+      return reply.send(apiSuccess(ledger));
     }
   );
 

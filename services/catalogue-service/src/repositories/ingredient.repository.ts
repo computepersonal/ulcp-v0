@@ -15,6 +15,9 @@ export async function createIngredient(data: {
   calories?: number;
   allergens?: string[];
   is_critical?: boolean;
+  ingredient_id?: string | null;
+  quantity?: number | null;
+  unit?: string | null;
 }) {
   return prisma.itemIngredient.create({
     data: { ...data, allergens: data.allergens ?? [] },
@@ -28,6 +31,9 @@ export async function updateIngredient(
     calories: number | null;
     allergens: string[];
     is_critical: boolean;
+    ingredient_id: string | null;
+    quantity: number | null;
+    unit: string | null;
   }>
 ) {
   return prisma.itemIngredient.update({ where: { id }, data });

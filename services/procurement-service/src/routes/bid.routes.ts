@@ -22,6 +22,10 @@ import {
   getRankedBids,
   awardBid,
 } from "../services/bid.service";
+import {
+  createBidRequestForIngredient,
+  fetchIngredient,
+} from "../services/autoReorder.service";
 
 const ok = { type: "object" as const, properties: { success: { type: "boolean" as const }, data: { type: "object" as const, additionalProperties: true } } };
 const err = { type: "object" as const, properties: { success: { type: "boolean" as const }, error: { type: "string" as const } } };
@@ -103,6 +107,52 @@ export async function bidRoutes(fastify: FastifyInstance): Promise<void> {
       const reqs = await findBidRequests(req.params.tenant_id, req.query.status);
       return reply.send(apiSuccess({ bid_requests: reqs }));
     }
+  );
+
+  // POST /:tenant_id/bid-requests/for-ingredient — one-click "get quotes" for a single
+  // inventory item: creates an open bid request and invites every vendor whose catalog
+  // includes this ingredient. WhatsApps each vendor's contact_whatsapp.
+  const forIngredientSchema = z.object({
+    branch_id: z.string().min(1),
+    ingredient_id: z.string().min(1),
+    quantity: z.number().positive(),
+    close_in_hours: z.number().int().min(1).max(168).default(4),
+    notes: z.string().max(500).optional(),
+  });
+
+  fastify.post<{ Params: TenantParams; Body: unknown }>(
+    "/:tenant_id/bid-requests/for-ingredient",
+    {
+      schema: {
+        summary: "Get quotes for a single ingredient — invite all vendors that supply it",
+        tags: ["Bid Requests"],
+        response: { 200: ok, ...errR },
+      },
+      preHandler: [authenticateStaff],
+    },
+    async (req, reply) => {
+      const parsed = forIngredientSchema.safeParse(req.body);
+      if (!parsed.success) return reply.code(400).send(apiError(formatZodError(parsed.error)));
+      const { tenant_id } = req.params;
+      const { branch_id, ingredient_id, quantity, close_in_hours, notes } = parsed.data;
+
+      const ingredient = await fetchIngredient(tenant_id, branch_id, ingredient_id);
+      if (!ingredient) return reply.code(404).send(apiError("Ingredient not found in inventory"));
+
+      const result = await createBidRequestForIngredient({
+        tenant_id,
+        branch_id,
+        ingredient_id,
+        ingredient_name: ingredient.name,
+        ingredient_unit: ingredient.unit,
+        quantity,
+        close_in_hours,
+        description: notes,
+        created_by: req.staff!.user_id,
+      });
+
+      return reply.send(apiSuccess(result));
+    },
   );
 
   fastify.get<{ Params: BidReqParams }>(

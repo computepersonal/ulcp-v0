@@ -42,6 +42,49 @@ enum DirectOrderStatus {
   cancelled
 }
 
+enum VendorStatus {
+  active
+  inactive
+  blacklisted
+  pending_verification
+}
+
+enum POStatus {
+  draft
+  pending_approval
+  approved
+  sent
+  partial
+  received
+  cancelled
+}
+
+enum GRNStatus {
+  draft
+  completed
+  rejected
+}
+
+enum BillStatus {
+  draft
+  awaiting_approval
+  approved
+  partially_paid
+  paid
+  overdue
+  disputed
+  cancelled
+}
+
+enum PaymentMethod {
+  bank_transfer
+  upi
+  cheque
+  cash
+  card
+  other
+}
+
 // ─── Vendor ───────────────────────────────────────────────────────────────────
 
 model Vendor {
@@ -57,11 +100,23 @@ model Vendor {
   state            String?
   pincode          String?
   gstin            String?
+  pan              String?
+  bank_account     String?
+  bank_ifsc        String?
+  bank_name        String?
   categories       String[]
+  preferred_items  String[]            @default([])
+  credit_days      Int                 @default(0)
+  credit_limit     Int                 @default(0)
+  outstanding_balance Int              @default(0)
   rating           Float              @default(5.0)
   rating_count     Int                @default(0)
+  total_orders     Int                @default(0)
+  total_spent      Int                @default(0)
+  status           VendorStatus       @default(active)
   is_active        Boolean            @default(true)
   is_verified      Boolean            @default(false)
+  documents        Json?
   notes            String?
 
   vendor_items     VendorItem[]
@@ -69,11 +124,16 @@ model Vendor {
   bid_invites      BidRequestVendor[]
   direct_orders    DirectOrder[]
   preferred_by     VendorPreference[]
+  purchase_orders  PurchaseOrder[]
+  grns             GoodsReceivedNote[]
+  bills            VendorBill[]
+  payments         VendorPayment[]
 
   created_at DateTime @default(now())
   updated_at DateTime @updatedAt
 
   @@index([tenant_id])
+  @@index([tenant_id, status])
   @@map("vendors")
 }
 
@@ -241,4 +301,216 @@ model DirectOrder {
   @@index([vendor_id])
   @@index([status])
   @@map("direct_orders")
+}
+
+// ─── PurchaseOrder ────────────────────────────────────────────────────────────
+
+model PurchaseOrder {
+  id                String     @id @default(cuid())
+  tenant_id         String
+  branch_id         String
+  po_number         String     // PO-YYYY-MM-XXXX
+  vendor_id         String
+  status            POStatus   @default(draft)
+
+  subtotal          Int        // paise
+  tax_amount        Int        @default(0)
+  delivery_charge   Int        @default(0)
+  discount          Int        @default(0)
+  total_amount      Int        // paise
+  payment_terms     String?
+  expected_delivery_date DateTime?
+  delivery_address  String?
+  notes             String?
+
+  created_by        String
+  approved_by       String?
+  approved_at       DateTime?
+  sent_at           DateTime?
+  cancelled_at      DateTime?
+  cancelled_reason  String?
+
+  bid_request_id    String?    // optional: PO created from a winning bid
+  source            String     @default("manual") // manual | bid | auto_reorder
+
+  vendor            Vendor      @relation(fields: [vendor_id], references: [id])
+  items             POItem[]
+  grns              GoodsReceivedNote[]
+  bills             VendorBill[]
+
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+
+  @@unique([tenant_id, po_number])
+  @@index([tenant_id, status])
+  @@index([tenant_id, vendor_id])
+  @@index([tenant_id, branch_id])
+  @@map("purchase_orders")
+}
+
+// ─── POItem ───────────────────────────────────────────────────────────────────
+
+model POItem {
+  id                String   @id @default(cuid())
+  po_id             String
+  ingredient_id     String   // cross-service reference to inventory-service Ingredient
+  ingredient_name   String
+  unit              String
+  quantity          Float    // ordered quantity
+  unit_price        Int      // paise per unit
+  tax_rate          Float    @default(0) // %
+  total_price       Int      // paise (qty * unit_price + tax)
+  received_quantity Float    @default(0)
+  notes             String?
+
+  purchase_order PurchaseOrder @relation(fields: [po_id], references: [id], onDelete: Cascade)
+
+  @@index([po_id])
+  @@index([ingredient_id])
+  @@map("po_items")
+}
+
+// ─── GoodsReceivedNote ────────────────────────────────────────────────────────
+
+model GoodsReceivedNote {
+  id              String     @id @default(cuid())
+  tenant_id       String
+  branch_id       String
+  grn_number      String     // GRN-YYYY-MM-XXXX
+  po_id           String
+  vendor_id       String
+  status          GRNStatus  @default(draft)
+
+  received_at     DateTime   @default(now())
+  received_by     String
+
+  vehicle_number  String?
+  driver_name     String?
+  delivery_note_number String?
+  notes           String?
+  rejection_reason String?
+
+  total_received_value Int @default(0) // paise
+
+  vendor          Vendor          @relation(fields: [vendor_id], references: [id])
+  purchase_order  PurchaseOrder   @relation(fields: [po_id], references: [id])
+  items           GRNItem[]
+
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+
+  @@unique([tenant_id, grn_number])
+  @@index([tenant_id, po_id])
+  @@index([tenant_id, vendor_id])
+  @@map("grns")
+}
+
+// ─── GRNItem ──────────────────────────────────────────────────────────────────
+
+model GRNItem {
+  id                  String   @id @default(cuid())
+  grn_id              String
+  po_item_id          String?
+  ingredient_id       String
+  ingredient_name     String
+  unit                String
+  ordered_quantity    Float
+  received_quantity   Float
+  rejected_quantity   Float    @default(0)
+  rejection_reason    String?
+  unit_price          Int      // paise
+  total_price         Int      // paise
+  batch_number        String?
+  expiry_date         DateTime?
+  quality_check_passed Boolean @default(true)
+  notes               String?
+
+  grn GoodsReceivedNote @relation(fields: [grn_id], references: [id], onDelete: Cascade)
+
+  @@index([grn_id])
+  @@index([ingredient_id])
+  @@map("grn_items")
+}
+
+// ─── VendorBill ───────────────────────────────────────────────────────────────
+
+model VendorBill {
+  id              String     @id @default(cuid())
+  tenant_id       String
+  branch_id       String
+  bill_number     String     // vendor's invoice number
+  internal_ref    String     // BILL-YYYY-MM-XXXX
+  vendor_id       String
+  po_id           String?
+  grn_id          String?
+
+  status          BillStatus @default(draft)
+
+  bill_date       DateTime
+  due_date        DateTime
+  received_date   DateTime   @default(now())
+
+  subtotal        Int        // paise
+  tax_amount      Int        @default(0)
+  delivery_charge Int        @default(0)
+  discount        Int        @default(0)
+  total_amount    Int
+  amount_paid     Int        @default(0)
+  amount_due      Int        // computed: total - paid
+  late_fee        Int        @default(0)
+
+  three_way_match_status String  @default("pending") // pending | matched | mismatched | overridden
+  match_warnings  Json?      // any qty/price mismatches
+
+  items           Json       // [{ ingredient_id, name, qty, unit_price, total }]
+  attachment_url  String?
+  notes           String?
+
+  approved_by     String?
+  approved_at     DateTime?
+  disputed_reason String?
+  cancelled_reason String?
+
+  created_by      String
+
+  vendor          Vendor          @relation(fields: [vendor_id], references: [id])
+  purchase_order  PurchaseOrder?  @relation(fields: [po_id], references: [id])
+  payments        VendorPayment[]
+
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+
+  @@unique([tenant_id, internal_ref])
+  @@unique([tenant_id, vendor_id, bill_number])
+  @@index([tenant_id, status])
+  @@index([tenant_id, due_date])
+  @@map("vendor_bills")
+}
+
+// ─── VendorPayment ────────────────────────────────────────────────────────────
+
+model VendorPayment {
+  id              String        @id @default(cuid())
+  tenant_id       String
+  vendor_id       String
+  bill_id         String?
+  payment_number  String        // PAY-YYYY-MM-XXXX
+
+  amount          Int           // paise
+  method          PaymentMethod
+  payment_date    DateTime      @default(now())
+  reference_number String?      // UTR / cheque no / txn id
+  notes           String?
+
+  created_by      String
+
+  vendor Vendor       @relation(fields: [vendor_id], references: [id])
+  bill   VendorBill?  @relation(fields: [bill_id], references: [id])
+
+  created_at DateTime @default(now())
+
+  @@unique([tenant_id, payment_number])
+  @@index([tenant_id, vendor_id])
+  @@index([tenant_id, bill_id])
+  @@map("vendor_payments")
 }

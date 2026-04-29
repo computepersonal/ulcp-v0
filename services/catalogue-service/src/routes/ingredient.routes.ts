@@ -29,18 +29,26 @@ const ALLERGEN_VALUES = [
   "soy", "fish", "shellfish", "sesame", "mustard",
 ] as const;
 
+const UNIT_VALUES = ["g", "kg", "ml", "l", "pcs", "tbsp", "tsp", "cup"] as const;
+
 const createIngredientSchema = z.object({
-  name:        z.string().min(1),
-  calories:    z.number().int().min(0).optional(),
-  allergens:   z.array(z.enum(ALLERGEN_VALUES)).optional(),
-  is_critical: z.boolean().optional(),
+  name:          z.string().min(1),
+  calories:      z.number().int().min(0).optional(),
+  allergens:     z.array(z.enum(ALLERGEN_VALUES)).optional(),
+  is_critical:   z.boolean().optional(),
+  ingredient_id: z.string().nullable().optional(),
+  quantity:      z.number().positive().nullable().optional(),
+  unit:          z.enum(UNIT_VALUES).nullable().optional(),
 });
 
 const updateIngredientSchema = z.object({
-  name:        z.string().min(1).optional(),
-  calories:    z.number().int().min(0).nullable().optional(),
-  allergens:   z.array(z.enum(ALLERGEN_VALUES)).optional(),
-  is_critical: z.boolean().optional(),
+  name:          z.string().min(1).optional(),
+  calories:      z.number().int().min(0).nullable().optional(),
+  allergens:     z.array(z.enum(ALLERGEN_VALUES)).optional(),
+  is_critical:   z.boolean().optional(),
+  ingredient_id: z.string().nullable().optional(),
+  quantity:      z.number().positive().nullable().optional(),
+  unit:          z.enum(UNIT_VALUES).nullable().optional(),
 });
 
 type ItemParams = { tenant_id: string; item_id: string };
@@ -80,10 +88,13 @@ export async function ingredientRoutes(fastify: FastifyInstance): Promise<void> 
           type: "object",
           required: ["name"],
           properties: {
-            name:        { type: "string" },
-            calories:    { type: "integer", minimum: 0 },
-            allergens:   { type: "array", items: { type: "string" } },
-            is_critical: { type: "boolean" },
+            name:          { type: "string" },
+            calories:      { type: "integer", minimum: 0 },
+            allergens:     { type: "array", items: { type: "string" } },
+            is_critical:   { type: "boolean" },
+            ingredient_id: { type: ["string", "null"] },
+            quantity:      { type: ["number", "null"], exclusiveMinimum: 0 },
+            unit:          { type: ["string", "null"] },
           },
         },
         response: { 201: genericOk, ...errResponses },

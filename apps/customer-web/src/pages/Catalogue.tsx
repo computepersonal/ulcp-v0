@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { useAppDispatch, useAppSelector } from '../hooks/redux';
 import { addItem, updateQuantity } from '../store/cartSlice';
@@ -26,6 +26,10 @@ interface CatalogueItem {
   veg_type?: 'veg' | 'vegan' | 'non_veg' | 'egg';
   is_available: boolean;
   section_id: string;
+  prep_time_mins?: number;
+  calories?: number;
+  rating?: number;
+  rating_count?: number;
 }
 
 interface Section {
@@ -267,6 +271,10 @@ export default function Catalogue() {
   const [collapsedSections, setCollapsedSections] = useState<Set<string>>(new Set());
   const [showLogin, setShowLogin] = useState(false);
   const [pendingItem, setPendingItem] = useState<CatalogueItem | null>(null);
+  const [fbtItem, setFbtItem] = useState<CatalogueItem | null>(null);
+  const [fbtDismissed, setFbtDismissed] = useState<Set<string>>(new Set());
+  const [showMenuJump, setShowMenuJump] = useState(false);
+  const [hasActiveOrder, setHasActiveOrder] = useState(false);
   // Profile + Social Room state
   const [showProfileDrawer, setShowProfileDrawer] = useState(false);
   const [showAliasSelect, setShowAliasSelect] = useState(false);
@@ -279,6 +287,26 @@ export default function Catalogue() {
 
   const tenantServiceUrl = import.meta.env.VITE_TENANT_SERVICE_URL ?? 'http://localhost:3002';
   const catalogueServiceUrl = import.meta.env.VITE_CATALOGUE_SERVICE_URL ?? 'http://localhost:3003';
+
+  // Track whether the floating order tracker is showing — so the Menu button can lift above it
+  useEffect(() => {
+    const check = () => {
+      try {
+        const raw = localStorage.getItem('active_orders');
+        if (!raw) { setHasActiveOrder(false); return; }
+        const list = JSON.parse(raw) as Array<{ status?: string }>;
+        const isTerminal = (s?: string) => s === 'served' || s === 'delivered' || s === 'completed' || s === 'cancelled';
+        setHasActiveOrder(list.some(o => !isTerminal(o.status)));
+      } catch { setHasActiveOrder(false); }
+    };
+    check();
+    window.addEventListener('active_orders:changed', check);
+    window.addEventListener('storage', check);
+    return () => {
+      window.removeEventListener('active_orders:changed', check);
+      window.removeEventListener('storage', check);
+    };
+  }, []);
 
   useEffect(() => {
     if (!slug) return;
@@ -407,7 +435,12 @@ export default function Catalogue() {
       setShowLogin(true);
       return;
     }
+    const wasInCart = cart.items.some(i => i.item_id === item.id);
     doAddItem(item);
+    // Trigger "Frequently bought together" 1s after the first ADD for this item
+    if (!wasInCart && !fbtDismissed.has(item.id)) {
+      setTimeout(() => setFbtItem(item), 1000);
+    }
   };
 
   const handleRemoveItem = (item: CatalogueItem) => {
@@ -527,6 +560,41 @@ export default function Catalogue() {
       if (next.has(id)) next.delete(id); else next.add(id);
       return next;
     });
+  };
+
+  const jumpToSection = (section: Section) => {
+    if (collapsedSections.has(section.id)) {
+      setCollapsedSections(prev => {
+        const next = new Set(prev);
+        next.delete(section.id);
+        return next;
+      });
+    }
+    const slugId = `section-${section.name.toLowerCase().replace(/\s+/g, '-')}`;
+    setTimeout(() => {
+      document.getElementById(slugId)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 50);
+  };
+
+  const jumpableSections = sections.filter(
+    s => filteredItems.some(i => i.section_id === s.id),
+  );
+
+  const fbtSuggestions: CatalogueItem[] = fbtItem
+    ? items
+        .filter(i => i.is_available && i.id !== fbtItem.id && i.section_id === fbtItem.section_id)
+        .slice(0, 3)
+    : [];
+
+  const closeFbt = () => {
+    if (fbtItem) {
+      setFbtDismissed(prev => {
+        const next = new Set(prev);
+        next.add(fbtItem.id);
+        return next;
+      });
+    }
+    setFbtItem(null);
   };
 
   if (loading) {
@@ -698,13 +766,16 @@ export default function Catalogue() {
             if (sectionItems.length === 0) return null;
             const collapsed = collapsedSections.has(section.id);
             return (
-              <div key={section.id} id={`section-${section.name.toLowerCase().replace(/\s+/g, '-')}`} className="mb-6">
-                <button onClick={() => toggleSection(section.id)} className="w-full flex items-center justify-between py-2 text-left">
+              <div key={section.id} id={`section-${section.name.toLowerCase().replace(/\s+/g, '-')}`} className="mb-6 scroll-mt-24">
+                <button
+                  onClick={() => toggleSection(section.id)}
+                  className="sticky top-14 z-20 w-full flex items-center justify-between py-2 px-1 text-left bg-gray-50/95 backdrop-blur border-b border-gray-100 -mx-1"
+                >
                   <h3 className="font-semibold text-gray-900">{section.name} ({sectionItems.length})</h3>
                   <span className="text-gray-400">{collapsed ? '▶' : '▼'}</span>
                 </button>
                 {!collapsed && (
-                  <div className="space-y-3 mt-1">
+                  <div className="space-y-3 mt-2">
                     {sectionItems.map(item => (
                       <ItemCard
                         key={item.id}
@@ -712,6 +783,7 @@ export default function Catalogue() {
                         cartQty={isLoggedIn ? (cart.items.find(i => i.item_id === item.id)?.quantity ?? 0) : 0}
                         onAdd={() => handleAddItem(item)}
                         onRemove={() => handleRemoveItem(item)}
+                        onOpen={() => navigate(`/place/${slug}/item/${item.id}`, { state: { item: { ...item, tenant_id: tenantInfo?.tenant_id } } })}
                       />
                     ))}
                   </div>
@@ -728,11 +800,72 @@ export default function Catalogue() {
                 cartQty={isLoggedIn ? (cart.items.find(i => i.item_id === item.id)?.quantity ?? 0) : 0}
                 onAdd={() => handleAddItem(item)}
                 onRemove={() => handleRemoveItem(item)}
+                onOpen={() => navigate(`/place/${slug}/item/${item.id}`, { state: { item: { ...item, tenant_id: tenantInfo?.tenant_id } } })}
               />
             ))}
           </div>
         )}
       </div>
+
+      {/* Swiggy-style Menu floating button + upward popup — shown when 2+ sections have items */}
+      {jumpableSections.length >= 2 && (
+        <>
+          {showMenuJump && (
+            <div
+              className="fixed inset-0 bg-black/40 z-40"
+              onClick={() => setShowMenuJump(false)}
+            />
+          )}
+          <div
+            className={`fixed right-4 z-50 transition-[bottom] duration-200 ${
+              isLoggedIn && (cartCount > 0 || hasActiveOrder) ? 'bottom-32' : 'bottom-20'
+            }`}
+          >
+            {showMenuJump && (
+              <div className="absolute bottom-14 right-0 mb-2 w-56 max-h-[60vh] overflow-y-auto bg-white rounded-2xl shadow-2xl border border-gray-100 animate-in fade-in slide-in-from-bottom-2 duration-150">
+                <div className="px-4 py-2 text-[11px] font-semibold uppercase tracking-wider text-gray-400 border-b border-gray-100 sticky top-0 bg-white">
+                  Menu
+                </div>
+                <div className="flex flex-col-reverse">
+                  {jumpableSections.map(s => {
+                    const count = filteredItems.filter(i => i.section_id === s.id).length;
+                    return (
+                      <button
+                        key={s.id}
+                        onClick={() => {
+                          jumpToSection(s);
+                          setShowMenuJump(false);
+                        }}
+                        className="flex items-center justify-between px-4 py-3 hover:bg-gray-50 active:bg-gray-100 transition-colors text-left border-t border-gray-50"
+                      >
+                        <span className="text-sm font-medium text-gray-800 truncate">{s.name}</span>
+                        <span className="text-xs text-gray-400 ml-2 shrink-0">{count}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+            <button
+              onClick={() => setShowMenuJump(v => !v)}
+              className="h-12 px-4 bg-gray-900 hover:bg-black text-white rounded-full shadow-xl flex items-center gap-2 text-sm font-semibold transition-transform active:scale-95"
+            >
+              {showMenuJump ? (
+                <>
+                  <span className="text-base leading-none">×</span>
+                  <span>Close</span>
+                </>
+              ) : (
+                <>
+                  <span className="text-base leading-none">☰</span>
+                  <span>Menu</span>
+                  <span className="text-[10px] bg-white/20 px-1.5 py-0.5 rounded-full">{jumpableSections.length}</span>
+                </>
+              )}
+            </button>
+          </div>
+        </>
+      )}
 
       {isLoggedIn && cartCount > 0 && <FloatingCart count={cartCount} total={cartTotal} slug={slug ?? ''} />}
       {isLoggedIn && cartCount === 0 && <FloatingOrderTracker />}
@@ -743,6 +876,18 @@ export default function Catalogue() {
         <LoginSheet
           onSuccess={handleLoginSuccess}
           onClose={() => { setShowLogin(false); setPendingItem(null); }}
+        />
+      )}
+
+      {/* Frequently bought together — auto-shown 1s after ADD */}
+      {fbtItem && fbtSuggestions.length > 0 && (
+        <FrequentlyBoughtSheet
+          trigger={fbtItem}
+          suggestions={fbtSuggestions}
+          cartItemIds={new Set(cart.items.map(i => i.item_id))}
+          onAddOne={(s) => doAddItem(s)}
+          onRemoveOne={(s) => handleRemoveItem(s)}
+          onClose={closeFbt}
         />
       )}
 
@@ -800,6 +945,103 @@ export default function Catalogue() {
           }}
         />
       )}
+    </div>
+  );
+}
+
+// ─── Frequently Bought Together Sheet ────────────────────────────────────────
+
+function FrequentlyBoughtSheet({ trigger, suggestions, cartItemIds, onAddOne, onRemoveOne, onClose }: {
+  trigger: CatalogueItem;
+  suggestions: CatalogueItem[];
+  cartItemIds: Set<string>;
+  onAddOne: (item: CatalogueItem) => void;
+  onRemoveOne: (item: CatalogueItem) => void;
+  onClose: () => void;
+}) {
+  const [dragY, setDragY] = useState(0);
+  const startYRef = useRef<number | null>(null);
+
+  const handleTouchStart = (e: React.TouchEvent) => {
+    startYRef.current = e.touches[0].clientY;
+  };
+  const handleTouchMove = (e: React.TouchEvent) => {
+    if (startYRef.current === null) return;
+    const delta = e.touches[0].clientY - startYRef.current;
+    if (delta > 0) setDragY(delta);
+  };
+  const handleTouchEnd = () => {
+    if (dragY > 80) {
+      onClose();
+    } else {
+      setDragY(0);
+    }
+    startYRef.current = null;
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/40 z-40 flex items-end" onClick={onClose}>
+      <div
+        className="bg-white rounded-t-2xl w-full pb-5 transition-transform"
+        style={{ transform: `translateY(${dragY}px)` }}
+        onClick={e => e.stopPropagation()}
+      >
+        {/* Drag handle — swipe down to dismiss */}
+        <div
+          className="pt-3 pb-1 cursor-grab active:cursor-grabbing"
+          onTouchStart={handleTouchStart}
+          onTouchMove={handleTouchMove}
+          onTouchEnd={handleTouchEnd}
+        >
+          <div className="w-10 h-1.5 bg-gray-300 rounded-full mx-auto" />
+        </div>
+        <div className="px-5">
+          <div className="flex items-center justify-between mb-1">
+            <h3 className="font-semibold text-gray-900">Frequently bought together</h3>
+            <button onClick={onClose} className="text-gray-400 text-lg leading-none">✕</button>
+          </div>
+          <p className="text-xs text-gray-500 mb-4">Goes well with <span className="font-medium text-gray-700">{trigger.name}</span></p>
+
+          <div className="space-y-2.5 mb-4">
+            {suggestions.map(s => {
+              const inCart = cartItemIds.has(s.id);
+              const img = s.images?.find(i => i.isPrimary)?.url ?? s.images?.[0]?.url;
+              return (
+                <div key={s.id} className="flex items-center gap-3 bg-gray-50 rounded-xl p-2.5">
+                  <div className="w-12 h-12 rounded-lg bg-gray-200 overflow-hidden flex-shrink-0">
+                    {img
+                      ? <img src={img} alt={s.name} className="w-full h-full object-cover" loading="lazy" />
+                      : <div className="w-full h-full flex items-center justify-center text-lg">🍽</div>
+                    }
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="text-sm font-medium text-gray-900 truncate">{s.name}</div>
+                    <div className="text-brand-600 font-semibold text-sm font-mono">₹{(s.price / 100).toFixed(0)}</div>
+                  </div>
+                  <button
+                    onClick={() => inCart ? onRemoveOne(s) : onAddOne(s)}
+                    title={inCart ? 'Remove from cart' : 'Add to cart'}
+                    className={`w-8 h-8 rounded-full font-bold text-base flex items-center justify-center shadow-sm transition-colors ${
+                      inCart
+                        ? 'bg-emerald-500 hover:bg-red-500 text-white'
+                        : 'bg-brand-500 hover:bg-brand-600 text-white'
+                    }`}
+                  >
+                    {inCart ? '✓' : '+'}
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+
+          <button
+            onClick={onClose}
+            className="w-full py-3 bg-brand-500 hover:bg-brand-600 text-white font-semibold rounded-xl"
+          >
+            Back to cart
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
@@ -866,31 +1108,48 @@ function ComboCard({ combo, cartQty, onAdd, onRemove }: {
 
 // ─── Item Card ────────────────────────────────────────────────────────────────
 
-function ItemCard({ item, cartQty, onAdd, onRemove }: {
+function ItemCard({ item, cartQty, onAdd, onRemove, onOpen }: {
   item: CatalogueItem;
   cartQty: number;
   onAdd: () => void;
   onRemove: () => void;
+  onOpen: () => void;
 }) {
   const primaryImage = item.images?.find(i => i.isPrimary)?.url ?? item.images?.[0]?.url;
   const vegColor = item.veg_type === 'veg' || item.veg_type === 'vegan' ? 'border-green-500' : item.veg_type === 'non_veg' ? 'border-red-500' : 'border-yellow-500';
 
   return (
-    <div className="bg-white rounded-xl border border-gray-100 p-3 flex gap-3 shadow-sm">
+    <div
+      role="button"
+      tabIndex={0}
+      onClick={onOpen}
+      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onOpen(); } }}
+      className="bg-white rounded-xl border border-gray-100 p-3 flex gap-3 shadow-sm cursor-pointer hover:shadow-md hover:border-brand-200 transition-all"
+    >
       <div className="flex-1">
         {item.veg_type && (
           <div className={`inline-block w-4 h-4 border-2 ${vegColor} rounded-sm mb-1 relative`}>
             <div className={`absolute inset-0.5 rounded-full ${item.veg_type === 'non_veg' ? 'bg-red-500' : 'bg-green-500'}`} />
           </div>
         )}
-        <div className="font-medium text-gray-900 text-sm">{item.name}</div>
+        <div className="flex items-center gap-1.5 flex-wrap">
+          <div className="font-medium text-gray-900 text-sm">{item.name}</div>
+          {typeof item.prep_time_mins === 'number' && item.prep_time_mins > 0 && item.prep_time_mins < 30 && (
+            <span className="inline-flex items-center gap-0.5 text-[10px] font-semibold text-amber-700 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded-full">
+              ⏱ {item.prep_time_mins} min
+            </span>
+          )}
+        </div>
         {item.description && <div className="text-xs text-gray-400 mt-0.5 line-clamp-2">{item.description}</div>}
         <div className="text-brand-600 font-semibold text-sm mt-1 font-mono">
           ₹{(item.price / 100).toFixed(0)}
-          {item.mrp > 0 && item.mrp > item.price && (
+          {item.mrp && item.mrp > 0 && item.mrp > item.price && (
             <span className="text-gray-400 line-through ml-2 font-normal">₹{(item.mrp / 100).toFixed(0)}</span>
           )}
         </div>
+        {typeof item.calories === 'number' && item.calories > 0 && (
+          <div className="text-[11px] text-gray-400 mt-0.5">{item.calories} cal</div>
+        )}
       </div>
       <div className="relative shrink-0">
         <div className="w-20 h-20 bg-gray-100 rounded-xl overflow-hidden">

@@ -2,6 +2,8 @@ import { FastifyInstance, FastifyRequest, FastifyReply } from "fastify";
 import { z } from "zod";
 import { deductStockForOrder, receiveStock } from "../services/stock.service";
 import { createPurchaseOrder, getNextPoNumber, updatePurchaseOrder, findPurchaseOrderById } from "../repositories/purchaseOrder.repository";
+import { findIngredientById, adjustStock } from "../repositories/ingredient.repository";
+import { prisma } from "../lib/prisma";
 import { logger } from "../lib/logger";
 
 const INTERNAL_SECRET = process.env.INTERNAL_API_SECRET ?? "";
@@ -123,6 +125,88 @@ export default async function internalRoutes(app: FastifyInstance) {
     });
 
     return reply.status(201).send({ success: true, data: { purchase_order: po } });
+  });
+
+  // PATCH /internal/ingredients/:id/receive — called by procurement-service GRN-complete
+  app.patch("/internal/ingredients/:id/receive", {
+    schema: {
+      tags: ["Internal"],
+      headers: { type: "object", properties: { "x-internal-secret": { type: "string" } } },
+      body: {
+        type: "object",
+        required: ["tenant_id", "branch_id", "quantity", "unit_cost"],
+        properties: {
+          tenant_id: { type: "string" },
+          branch_id: { type: "string" },
+          quantity: { type: "number" },
+          unit_cost: { type: "number" },
+          batch_number: { type: "string" },
+          expiry_date: { type: "string" },
+          reference_id: { type: "string" },
+          reference_type: { type: "string" },
+        },
+      },
+    },
+  }, async (req, reply) => {
+    const early = requireInternal(req, reply);
+    if (early) return;
+
+    const body = z.object({
+      tenant_id: z.string(),
+      branch_id: z.string(),
+      quantity: z.number().positive(),
+      unit_cost: z.number().min(0),
+      batch_number: z.string().nullable().optional(),
+      expiry_date: z.string().nullable().optional(),
+      reference_id: z.string().nullable().optional(),
+      reference_type: z.string().nullable().optional(),
+    }).safeParse(req.body);
+    if (!body.success) return reply.status(400).send({ success: false, error: body.error.errors[0]?.message });
+
+    const { id } = req.params as { id: string };
+    const { tenant_id, branch_id, quantity, unit_cost, reference_id, reference_type } = body.data;
+
+    const ingredient = await findIngredientById(id, tenant_id);
+    if (!ingredient) return reply.status(404).send({ success: false, error: "Ingredient not found" });
+
+    try {
+      const { ingredient: after } = await adjustStock(id, tenant_id, branch_id, quantity, {
+        movement_type: "purchase",
+        unit: ingredient.unit,
+        reference_id: reference_id ?? undefined,
+        reference_type: reference_type ?? "grn",
+      });
+
+      // Rolling weighted average cost
+      const oldStock = ingredient.current_stock;
+      const oldAvg = ingredient.average_cost;
+      const newStock = oldStock + quantity;
+      const newAvg = newStock > 0
+        ? Math.round((oldAvg * oldStock + unit_cost * quantity) / newStock)
+        : unit_cost;
+
+      await prisma.ingredient.update({
+        where: { id },
+        data: {
+          last_purchase_price: unit_cost,
+          unit_cost,
+          average_cost: newAvg,
+        },
+      });
+
+      return reply.send({
+        success: true,
+        data: {
+          ingredient_id: id,
+          current_stock: after.current_stock,
+          average_cost: newAvg,
+          last_purchase_price: unit_cost,
+        },
+      });
+    } catch (err) {
+      logger.error({ err }, "ingredient receive failed");
+      return reply.status(500).send({ success: false, error: "Receive failed" });
+    }
   });
 
   // POST /internal/purchase-orders/:id/receive — called by procurement-service on direct order delivered

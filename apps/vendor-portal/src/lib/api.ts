@@ -110,3 +110,68 @@ export function timeUntil(iso?: string): string {
   if (h >= 24) return `${Math.floor(h / 24)}d ${h % 24}h remaining`;
   return `${h}h ${m}m remaining`;
 }
+
+// ── Portal (long-lived token: profile + invoices + catalog) ───────────────────
+
+export interface VendorProfile {
+  id: string; name: string;
+  contact_name: string; contact_email: string; contact_phone: string;
+  contact_whatsapp?: string;
+  address?: string; city?: string; state?: string; pincode?: string;
+  gstin?: string; pan?: string;
+  bank_account?: string; bank_ifsc?: string; bank_name?: string;
+  rating: number; total_orders: number; total_spent: number;
+  outstanding_balance: number;
+  status: string;
+}
+
+export interface InvoiceLite {
+  id: string; bill_number: string; internal_ref: string;
+  bill_date: string; due_date: string;
+  total_amount: number; amount_paid: number; amount_due: number;
+  status: string;
+  payments: Array<{ id: string; amount: number; method: string; payment_date: string; reference_number?: string }>;
+}
+
+export interface CatalogItem {
+  id: string; ingredient_id: string; ingredient_name: string;
+  unit: string; unit_price: number;
+  min_order_quantity: number; lead_time_days: number;
+  is_available: boolean;
+}
+
+export async function getMyProfile(token: string): Promise<{ vendor: VendorProfile }> {
+  return request(`/portal/${token}/me`);
+}
+
+export async function updateMyProfile(token: string, patch: Partial<VendorProfile>): Promise<{ vendor: VendorProfile }> {
+  return request(`/portal/${token}/me`, { method: "PATCH", body: JSON.stringify(patch) });
+}
+
+export async function getMyInvoices(token: string): Promise<{ bills: InvoiceLite[]; totals: { total_billed: number; total_paid: number; outstanding: number } }> {
+  return request(`/portal/${token}/invoices`);
+}
+
+export async function getMyCatalog(token: string): Promise<{ items: CatalogItem[] }> {
+  return request(`/portal/${token}/catalog`);
+}
+
+export async function addCatalogItem(token: string, item: Omit<CatalogItem, "id">): Promise<{ item: CatalogItem }> {
+  return request(`/portal/${token}/catalog`, { method: "POST", body: JSON.stringify(item) });
+}
+
+export async function updateCatalogItem(token: string, id: string, patch: Partial<CatalogItem>): Promise<{ updated: boolean }> {
+  return request(`/portal/${token}/catalog/${id}`, { method: "PATCH", body: JSON.stringify(patch) });
+}
+
+export async function deleteCatalogItem(token: string, id: string): Promise<{ deleted: boolean }> {
+  return request(`/portal/${token}/catalog/${id}`, { method: "DELETE" });
+}
+
+export async function getMyOrders(token: string): Promise<{ purchase_orders: Array<{
+  id: string; po_number: string; status: string; total_amount: number;
+  created_at: string; expected_delivery_date?: string;
+  items: Array<{ ingredient_name: string; quantity: number; unit: string; unit_price: number; total_price: number }>;
+}> }> {
+  return request(`/portal/${token}/orders`);
+}

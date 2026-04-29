@@ -26,6 +26,15 @@ interface OptionGroup {
   choices: OptionChoice[];
 }
 
+interface Review {
+  id: string;
+  reviewer_name: string;
+  rating: number;
+  text: string;
+  created_at: string;
+  is_verified?: boolean;
+}
+
 interface ItemData {
   id: string;
   name: string;
@@ -39,6 +48,9 @@ interface ItemData {
   variants?: Variant[];
   option_groups?: OptionGroup[];
   tenant_id?: string;
+  rating?: number;
+  rating_count?: number;
+  reviews?: Review[];
 }
 
 export default function ItemDetail() {
@@ -54,6 +66,7 @@ export default function ItemDetail() {
   );
   const [quantity, setQuantity] = useState(1);
   const [notes, setNotes] = useState('');
+  const [showAllReviews, setShowAllReviews] = useState(false);
 
   if (!item) {
     return (
@@ -177,6 +190,15 @@ export default function ItemDetail() {
           </div>
         ))}
 
+        {/* Reviews */}
+        <ReviewsSection
+          rating={item.rating}
+          ratingCount={item.rating_count}
+          reviews={item.reviews ?? []}
+          showAll={showAllReviews}
+          onToggleShowAll={() => setShowAllReviews(v => !v)}
+        />
+
         {/* Special instructions */}
         <div className="mb-6">
           <div className="font-semibold text-gray-900 mb-2 text-sm">Special Instructions</div>
@@ -214,6 +236,100 @@ export default function ItemDetail() {
           Add to Cart — ₹{((displayPrice * quantity) / 100).toFixed(0)}
         </button>
       </div>
+    </div>
+  );
+}
+
+// ─── Reviews Section ──────────────────────────────────────────────────────────
+
+function Stars({ rating, size = 'sm' }: { rating: number; size?: 'sm' | 'md' }) {
+  const full = Math.floor(rating);
+  const half = rating - full >= 0.5;
+  const empty = 5 - full - (half ? 1 : 0);
+  const cls = size === 'md' ? 'text-base' : 'text-xs';
+  return (
+    <span className={`text-amber-400 ${cls} leading-none`}>
+      {'★'.repeat(full)}
+      {half ? '⯨' : ''}
+      <span className="text-gray-300">{'★'.repeat(empty)}</span>
+    </span>
+  );
+}
+
+function formatReviewDate(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  const now = new Date();
+  const diffDays = Math.floor((now.getTime() - d.getTime()) / 86400000);
+  if (diffDays < 1) return 'Today';
+  if (diffDays < 7) return `${diffDays}d ago`;
+  return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+}
+
+function ReviewsSection({ rating, ratingCount, reviews, showAll, onToggleShowAll }: {
+  rating?: number;
+  ratingCount?: number;
+  reviews: Review[];
+  showAll: boolean;
+  onToggleShowAll: () => void;
+}) {
+  const totalCount = ratingCount ?? reviews.length;
+  const visible = showAll ? reviews : reviews.slice(0, 3);
+
+  return (
+    <div className="mb-6">
+      <div className="flex items-center justify-between mb-2">
+        <div className="font-semibold text-gray-900 text-sm">Reviews</div>
+        {typeof rating === 'number' && rating > 0 && (
+          <div className="flex items-center gap-1.5">
+            <Stars rating={rating} />
+            <span className="text-xs text-gray-600 font-medium">{rating.toFixed(1)}</span>
+            {totalCount > 0 && <span className="text-xs text-gray-400">({totalCount})</span>}
+          </div>
+        )}
+      </div>
+
+      {visible.length === 0 ? (
+        <div className="bg-gray-50 rounded-xl px-4 py-5 text-center">
+          <div className="text-2xl mb-1">💬</div>
+          <div className="text-sm text-gray-600 font-medium">No reviews yet</div>
+          <div className="text-xs text-gray-400 mt-0.5">Be the first to share your experience</div>
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {visible.map(r => (
+            <div key={r.id} className="border border-gray-100 rounded-xl p-3">
+              <div className="flex items-center justify-between mb-1">
+                <div className="flex items-center gap-2">
+                  <div className="w-7 h-7 rounded-full bg-brand-100 text-brand-600 text-xs font-bold flex items-center justify-center">
+                    {r.reviewer_name.trim().charAt(0).toUpperCase()}
+                  </div>
+                  <div>
+                    <div className="text-sm font-medium text-gray-900 leading-tight">{r.reviewer_name}</div>
+                    <div className="text-[11px] text-gray-400">{formatReviewDate(r.created_at)}</div>
+                  </div>
+                </div>
+                {r.is_verified && (
+                  <span className="text-[10px] font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded-full">
+                    ✓ Verified
+                  </span>
+                )}
+              </div>
+              <div className="mb-1"><Stars rating={r.rating} /></div>
+              <p className="text-sm text-gray-700 leading-snug">{r.text}</p>
+            </div>
+          ))}
+
+          {totalCount > 3 && (
+            <button
+              onClick={onToggleShowAll}
+              className="w-full text-center text-sm font-semibold text-brand-600 py-2 hover:bg-brand-50 rounded-lg"
+            >
+              {showAll ? 'Show less' : `See all ${totalCount} reviews →`}
+            </button>
+          )}
+        </div>
+      )}
     </div>
   );
 }

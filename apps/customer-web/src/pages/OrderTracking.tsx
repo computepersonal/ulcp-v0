@@ -111,6 +111,7 @@ export default function OrderTracking() {
             const orders = JSON.parse(localStorage.getItem('active_orders') ?? '[]') as Array<{ id: string }>;
             const filtered = orders.filter(o => o.id !== id);
             localStorage.setItem('active_orders', JSON.stringify(filtered));
+            window.dispatchEvent(new Event('active_orders:changed'));
           } catch { /* ignore */ }
         }
       }

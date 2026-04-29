@@ -70,3 +70,58 @@ export async function findPreferredVendors(tenant_id: string, ingredient_id: str
     where: { tenant_id, ingredient_id, is_preferred: true },
   });
 }
+
+// ─── Vendor profile + ledger ──────────────────────────────────────────────────
+
+export async function updateVendorProfile(
+  vendor_id: string,
+  tenant_id: string,
+  data: Prisma.VendorUpdateInput
+) {
+  return prisma.vendor.updateMany({ where: { id: vendor_id, tenant_id }, data });
+}
+
+export async function getVendorLedger(vendor_id: string, tenant_id: string) {
+  const vendor = await prisma.vendor.findFirst({ where: { id: vendor_id, tenant_id } });
+  if (!vendor) return null;
+
+  const [bills, payments, recentPOs] = await Promise.all([
+    prisma.vendorBill.findMany({
+      where: { tenant_id, vendor_id },
+      orderBy: { bill_date: "desc" },
+      take: 100,
+    }),
+    prisma.vendorPayment.findMany({
+      where: { tenant_id, vendor_id },
+      orderBy: { payment_date: "desc" },
+      take: 100,
+    }),
+    prisma.purchaseOrder.findMany({
+      where: { tenant_id, vendor_id },
+      orderBy: { created_at: "desc" },
+      take: 20,
+    }),
+  ]);
+
+  const total_billed = bills.reduce((sum, b) => sum + b.total_amount, 0);
+  const total_paid = payments.reduce((sum, p) => sum + p.amount, 0);
+  const outstanding = bills
+    .filter((b) => b.status !== "paid" && b.status !== "cancelled")
+    .reduce((sum, b) => sum + b.amount_due, 0);
+
+  return {
+    vendor,
+    summary: {
+      total_billed,
+      total_paid,
+      outstanding,
+      total_orders: vendor.total_orders,
+      total_spent: vendor.total_spent,
+      credit_limit: vendor.credit_limit,
+      credit_days: vendor.credit_days,
+    },
+    bills,
+    payments,
+    recent_pos: recentPOs,
+  };
+}

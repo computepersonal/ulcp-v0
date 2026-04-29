@@ -8,6 +8,26 @@ import {
   deleteIngredient,
 } from "../repositories/ingredient.repository";
 
+export interface IngredientInput {
+  name: string;
+  calories?: number;
+  allergens?: string[];
+  is_critical?: boolean;
+  ingredient_id?: string | null;
+  quantity?: number | null;
+  unit?: string | null;
+}
+
+export interface IngredientPatch {
+  name?: string;
+  calories?: number | null;
+  allergens?: string[];
+  is_critical?: boolean;
+  ingredient_id?: string | null;
+  quantity?: number | null;
+  unit?: string | null;
+}
+
 export async function getItemIngredients(tenant_id: string, item_id: string) {
   const item = await findItemById(item_id, tenant_id);
   if (!item) throw new NotFoundError("Item not found");
@@ -17,12 +37,7 @@ export async function getItemIngredients(tenant_id: string, item_id: string) {
 export async function addIngredient(
   tenant_id: string,
   item_id: string,
-  data: {
-    name: string;
-    calories?: number;
-    allergens?: string[];
-    is_critical?: boolean;
-  }
+  data: IngredientInput
 ) {
   const item = await findItemById(item_id, tenant_id);
   if (!item) throw new NotFoundError("Item not found");
@@ -33,12 +48,7 @@ export async function editIngredient(
   tenant_id: string,
   item_id: string,
   id: string,
-  data: Partial<{
-    name: string;
-    calories: number | null;
-    allergens: string[];
-    is_critical: boolean;
-  }>
+  data: IngredientPatch
 ) {
   const ingredient = await findIngredientById(id, tenant_id);
   if (!ingredient || ingredient.item_id !== item_id)

@@ -18,6 +18,12 @@ import { vendorRoutes } from "./routes/vendor.routes";
 import { bidRoutes } from "./routes/bid.routes";
 import { marketRoutes } from "./routes/market.routes";
 import { directOrderRoutes } from "./routes/directOrder.routes";
+import { purchaseOrderRoutes } from "./routes/purchaseOrder.routes";
+import { grnRoutes } from "./routes/grn.routes";
+import { billRoutes } from "./routes/bill.routes";
+import { spendRoutes } from "./routes/spend.routes";
+import { autoReorderRoutes } from "./routes/autoReorder.routes";
+import { vendorPortalRoutes } from "./routes/vendorPortal.routes";
 
 const PORT = parseInt(process.env["PORT"] ?? "3013", 10);
 
@@ -86,6 +92,12 @@ async function buildApp() {
   await app.register(bidRoutes, { prefix: "/api/v1/procurement" });
   await app.register(marketRoutes, { prefix: "/api/v1/procurement" });
   await app.register(directOrderRoutes, { prefix: "/api/v1/procurement" });
+  await app.register(purchaseOrderRoutes, { prefix: "/api/v1/procurement" });
+  await app.register(grnRoutes, { prefix: "/api/v1/procurement" });
+  await app.register(billRoutes, { prefix: "/api/v1/procurement" });
+  await app.register(spendRoutes, { prefix: "/api/v1/procurement" });
+  await app.register(autoReorderRoutes, { prefix: "/api/v1/procurement" });
+  await app.register(vendorPortalRoutes, { prefix: "/api/v1/procurement/portal" });
 
   app.get("/health", async () => ({
     success: true,

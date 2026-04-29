@@ -42,6 +42,8 @@ interface CatalogueItem {
   is_food?: boolean;
   veg_type?: 'veg' | 'vegan' | 'non_veg' | 'egg';
   allergens?: string[];
+  prep_time_mins?: number;
+  calories?: number;
   images?: Array<{ url: string; isPrimary?: boolean }>;
 }
 
@@ -169,6 +171,8 @@ function AddItemModal({
     is_food?: boolean;
     veg_type?: string;
     allergens?: string[];
+    prep_time_mins?: number;
+    calories?: number;
   }) => Promise<void>;
 }) {
   const [name, setName] = useState('');
@@ -178,6 +182,8 @@ function AddItemModal({
   const [isFood, setIsFood] = useState(true);
   const [vegType, setVegType] = useState<'veg' | 'non_veg' | 'egg' | 'vegan'>('veg');
   const [allergens, setAllergens] = useState<string[]>([]);
+  const [prepTimeStr, setPrepTimeStr] = useState('');
+  const [caloriesStr, setCaloriesStr] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
@@ -197,6 +203,8 @@ function AddItemModal({
     setSaving(true);
     setError('');
     try {
+      const prep = parseInt(prepTimeStr, 10);
+      const cal = parseInt(caloriesStr, 10);
       await onSave({
         name: name.trim(),
         price,
@@ -205,6 +213,8 @@ function AddItemModal({
         is_food: isFood,
         veg_type: isFood ? vegType : undefined,
         allergens: allergens.length > 0 ? allergens : undefined,
+        prep_time_mins: !isNaN(prep) && prep >= 0 ? prep : undefined,
+        calories: !isNaN(cal) && cal >= 0 ? cal : undefined,
       });
       onClose();
     } catch (err) {
@@ -254,6 +264,32 @@ function AddItemModal({
               placeholder="Brief description..."
               className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm outline-none focus:border-brand-500 transition-colors resize-none"
             />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-medium text-gray-500 mb-1">Prep time (mins)</label>
+              <input
+                type="number"
+                min="0"
+                step="1"
+                value={prepTimeStr}
+                onChange={(e) => setPrepTimeStr(e.target.value)}
+                placeholder="e.g. 15"
+                className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm outline-none focus:border-brand-500 transition-colors font-mono"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-500 mb-1">Calories</label>
+              <input
+                type="number"
+                min="0"
+                step="1"
+                value={caloriesStr}
+                onChange={(e) => setCaloriesStr(e.target.value)}
+                placeholder="e.g. 320"
+                className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm outline-none focus:border-brand-500 transition-colors font-mono"
+              />
+            </div>
           </div>
           {sections.length > 0 && (
             <div>
@@ -339,16 +375,122 @@ function AddItemModal({
   );
 }
 
+// ─── Recipe Types & Picker ────────────────────────────────────────────────────
+
+const RECIPE_UNITS = ['g', 'kg', 'ml', 'l', 'pcs', 'tbsp', 'tsp', 'cup'] as const;
+type RecipeUnit = typeof RECIPE_UNITS[number];
+
+interface ItemIngredientRow {
+  id: string;
+  name: string;
+  quantity: number | null;
+  unit: RecipeUnit | null;
+  ingredient_id: string | null;
+  is_critical: boolean;
+}
+
+interface InventoryIngredient {
+  id: string;
+  name: string;
+  unit: string;
+  current_stock: number;
+  category: string;
+}
+
+function InventoryPicker({
+  inventoryServiceUrl,
+  tenantId,
+  branchId,
+  authToken,
+  onPick,
+}: {
+  inventoryServiceUrl: string;
+  tenantId: string;
+  branchId: string;
+  authToken: string;
+  onPick: (ing: InventoryIngredient) => void;
+}) {
+  const [query, setQuery] = useState('');
+  const [results, setResults] = useState<InventoryIngredient[]>([]);
+  const [open, setOpen] = useState(false);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (!query.trim() || !branchId) { setResults([]); return; }
+    let cancelled = false;
+    const t = setTimeout(() => {
+      void (async () => {
+        setLoading(true);
+        try {
+          const res = await fetch(
+            `${inventoryServiceUrl}/api/v1/inventory/${tenantId}/${branchId}/ingredients?search=${encodeURIComponent(query)}&limit=8`,
+            { headers: { Authorization: `Bearer ${authToken}` } }
+          );
+          if (!res.ok) return;
+          const json = (await res.json()) as { success: boolean; data?: { items: InventoryIngredient[] } };
+          if (!cancelled) setResults(json.data?.items ?? []);
+        } finally { if (!cancelled) setLoading(false); }
+      })();
+    }, 250);
+    return () => { cancelled = true; clearTimeout(t); };
+  }, [query, branchId, tenantId, inventoryServiceUrl, authToken]);
+
+  return (
+    <div className="relative">
+      <input
+        type="text"
+        value={query}
+        onChange={(e) => { setQuery(e.target.value); setOpen(true); }}
+        onFocus={() => setOpen(true)}
+        onBlur={() => setTimeout(() => setOpen(false), 150)}
+        placeholder="Search inventory…"
+        className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-brand-500"
+      />
+      {open && query.trim() && (
+        <div className="absolute z-10 mt-1 w-full bg-white border border-gray-200 rounded-lg shadow-lg max-h-48 overflow-y-auto">
+          {loading && <div className="px-3 py-2 text-xs text-gray-400">Searching…</div>}
+          {!loading && results.length === 0 && (
+            <div className="px-3 py-2 text-xs text-gray-400">
+              No match in inventory. Add it under Inventory first to enable auto-deduct.
+            </div>
+          )}
+          {results.map((r) => (
+            <button
+              key={r.id}
+              type="button"
+              onMouseDown={(e) => { e.preventDefault(); onPick(r); setQuery(''); setOpen(false); }}
+              className="w-full text-left px-3 py-2 text-sm hover:bg-brand-50 flex items-center justify-between"
+            >
+              <span>{r.name}</span>
+              <span className="text-xs text-gray-400">{r.current_stock} {r.unit}</span>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Edit Item Modal ──────────────────────────────────────────────────────────
 
 function EditItemModal({
   item,
+  tenantId,
+  branchId,
+  authToken,
+  catalogueServiceUrl,
+  inventoryServiceUrl,
   onClose,
   onSave,
 }: {
   item: CatalogueItem;
+  tenantId: string;
+  branchId: string;
+  authToken: string;
+  catalogueServiceUrl: string;
+  inventoryServiceUrl: string;
   onClose: () => void;
-  onSave: (data: { name: string; price: number; mrp?: number; description?: string; is_food?: boolean; veg_type?: string; allergens?: string[] }) => Promise<void>;
+  onSave: (data: { name: string; price: number; mrp?: number; description?: string; is_food?: boolean; veg_type?: string; allergens?: string[]; prep_time_mins?: number; calories?: number }) => Promise<void>;
 }) {
   const [name, setName] = useState(item.name);
   const [priceStr, setPriceStr] = useState(String(item.price / 100));
@@ -359,8 +501,76 @@ function EditItemModal({
     (item.veg_type as 'veg' | 'non_veg' | 'egg' | 'vegan') ?? 'veg'
   );
   const [allergens, setAllergens] = useState<string[]>(item.allergens ?? []);
+  const [prepTimeStr, setPrepTimeStr] = useState(
+    item.prep_time_mins != null ? String(item.prep_time_mins) : ''
+  );
+  const [caloriesStr, setCaloriesStr] = useState(
+    item.calories != null ? String(item.calories) : ''
+  );
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+
+  // ─── Recipe state ──────────────────────────────────────────────────────────
+  const [recipe, setRecipe] = useState<ItemIngredientRow[]>([]);
+  const [recipeLoading, setRecipeLoading] = useState(true);
+
+  const ingredientsBase = `${catalogueServiceUrl}/api/v1/catalogue/${tenantId}/items/${item.id}/ingredients`;
+  const authHdr = { Authorization: `Bearer ${authToken}` };
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const res = await apiFetch(ingredientsBase, { headers: authHdr });
+        if (!res.ok) return;
+        const json = (await res.json()) as { success: boolean; data?: { ingredients: ItemIngredientRow[] } };
+        if (!cancelled) setRecipe(json.data?.ingredients ?? []);
+      } finally { if (!cancelled) setRecipeLoading(false); }
+    })();
+    return () => { cancelled = true; };
+  }, [item.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const addIngredient = async (data: Partial<ItemIngredientRow>) => {
+    if (!data.name?.trim()) return;
+    const res = await apiFetch(ingredientsBase, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...authHdr },
+      body: JSON.stringify({
+        name:          data.name.trim(),
+        ingredient_id: data.ingredient_id ?? null,
+        quantity:      data.quantity ?? null,
+        unit:          data.unit ?? null,
+        is_critical:   data.is_critical ?? false,
+      }),
+    });
+    if (!res.ok) return;
+    const json = (await res.json()) as { success: boolean; data?: { ingredient: ItemIngredientRow } };
+    if (json.data?.ingredient) setRecipe((prev) => [...prev, json.data!.ingredient]);
+  };
+
+  const updateIngredient = async (id: string, patch: Partial<ItemIngredientRow>) => {
+    setRecipe((prev) => prev.map((r) => (r.id === id ? { ...r, ...patch } : r)));
+    const res = await apiFetch(`${ingredientsBase}/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', ...authHdr },
+      body: JSON.stringify(patch),
+    });
+    if (!res.ok) {
+      // revert by refetching on failure
+      const fresh = await apiFetch(ingredientsBase, { headers: authHdr });
+      if (fresh.ok) {
+        const j = (await fresh.json()) as { data?: { ingredients: ItemIngredientRow[] } };
+        setRecipe(j.data?.ingredients ?? []);
+      }
+    }
+  };
+
+  const removeIngredient = async (id: string) => {
+    const prev = recipe;
+    setRecipe((cur) => cur.filter((r) => r.id !== id));
+    const res = await apiFetch(`${ingredientsBase}/${id}`, { method: 'DELETE', headers: authHdr });
+    if (!res.ok) setRecipe(prev);
+  };
 
   const toggleAllergen = (allergen: string) => {
     setAllergens((prev) =>
@@ -379,6 +589,8 @@ function EditItemModal({
     setSaving(true);
     setError('');
     try {
+      const prep = parseInt(prepTimeStr, 10);
+      const cal = parseInt(caloriesStr, 10);
       await onSave({
         name: name.trim(),
         price,
@@ -387,6 +599,8 @@ function EditItemModal({
         is_food: isFood,
         veg_type: isFood ? vegType : undefined,
         allergens,
+        prep_time_mins: !isNaN(prep) && prep >= 0 ? prep : undefined,
+        calories: !isNaN(cal) && cal >= 0 ? cal : undefined,
       });
       onClose();
     } catch (err) {
@@ -398,7 +612,7 @@ function EditItemModal({
 
   return (
     <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm p-6 max-h-[90vh] overflow-y-auto">
+      <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-6 max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between mb-5">
           <h3 className="text-lg font-bold text-gray-900">Edit item</h3>
           <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-xl leading-none">✕</button>
@@ -443,6 +657,32 @@ function EditItemModal({
               onChange={(e) => setDesc(e.target.value)}
               className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm outline-none focus:border-brand-500 transition-colors resize-none"
             />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-medium text-gray-500 mb-1">Prep time (mins)</label>
+              <input
+                type="number"
+                min="0"
+                step="1"
+                value={prepTimeStr}
+                onChange={(e) => setPrepTimeStr(e.target.value)}
+                placeholder="e.g. 15"
+                className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm outline-none focus:border-brand-500 transition-colors font-mono"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-500 mb-1">Calories</label>
+              <input
+                type="number"
+                min="0"
+                step="1"
+                value={caloriesStr}
+                onChange={(e) => setCaloriesStr(e.target.value)}
+                placeholder="e.g. 320"
+                className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm outline-none focus:border-brand-500 transition-colors font-mono"
+              />
+            </div>
           </div>
           <div className="flex items-center justify-between">
             <span className="text-xs font-medium text-gray-500">Food item?</span>
@@ -494,6 +734,19 @@ function EditItemModal({
               ))}
             </div>
           </div>
+          {/* ── Recipe ─────────────────────────────────────────────────── */}
+          <RecipeEditor
+            recipe={recipe}
+            loading={recipeLoading}
+            onAdd={addIngredient}
+            onUpdate={updateIngredient}
+            onRemove={removeIngredient}
+            inventoryServiceUrl={inventoryServiceUrl}
+            tenantId={tenantId}
+            branchId={branchId}
+            authToken={authToken}
+          />
+
           {error && <p className="text-red-500 text-xs">{error}</p>}
           <div className="flex gap-3 pt-1">
             <button type="button" onClick={onClose} className="flex-1 py-2.5 border border-gray-200 rounded-xl text-sm text-gray-600 hover:border-gray-300">
@@ -509,6 +762,197 @@ function EditItemModal({
           </div>
         </form>
       </div>
+    </div>
+  );
+}
+
+// ─── Recipe Editor ────────────────────────────────────────────────────────────
+
+function RecipeEditor({
+  recipe,
+  loading,
+  onAdd,
+  onUpdate,
+  onRemove,
+  inventoryServiceUrl,
+  tenantId,
+  branchId,
+  authToken,
+}: {
+  recipe: ItemIngredientRow[];
+  loading: boolean;
+  onAdd: (data: Partial<ItemIngredientRow>) => Promise<void>;
+  onUpdate: (id: string, patch: Partial<ItemIngredientRow>) => Promise<void>;
+  onRemove: (id: string) => Promise<void>;
+  inventoryServiceUrl: string;
+  tenantId: string;
+  branchId: string;
+  authToken: string;
+}) {
+  const [draft, setDraft] = useState<{
+    name: string;
+    ingredient_id: string | null;
+    quantity: string;
+    unit: RecipeUnit | '';
+    is_critical: boolean;
+  }>({ name: '', ingredient_id: null, quantity: '', unit: '', is_critical: false });
+
+  const handleAddRow = async () => {
+    if (!draft.name.trim()) return;
+    const qty = draft.quantity ? parseFloat(draft.quantity) : null;
+    await onAdd({
+      name:          draft.name,
+      ingredient_id: draft.ingredient_id,
+      quantity:      qty && !isNaN(qty) && qty > 0 ? qty : null,
+      unit:          draft.unit || null,
+      is_critical:   draft.is_critical,
+    });
+    setDraft({ name: '', ingredient_id: null, quantity: '', unit: '', is_critical: false });
+  };
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-2">
+        <label className="block text-xs font-medium text-gray-500">
+          Recipe <span className="font-normal text-gray-400">(optional, drives stock deduction)</span>
+        </label>
+      </div>
+
+      {loading ? (
+        <div className="text-xs text-gray-400">Loading recipe…</div>
+      ) : (
+        <div className="space-y-2">
+          {recipe.map((r) => (
+            <div key={r.id} className="border border-gray-200 rounded-lg p-2 space-y-1.5">
+              <div className="flex items-center gap-1.5">
+                <input
+                  type="text"
+                  value={r.name}
+                  onChange={(e) => void onUpdate(r.id, { name: e.target.value })}
+                  className="flex-1 border border-gray-200 rounded-md px-2 py-1 text-xs outline-none focus:border-brand-500"
+                />
+                {r.ingredient_id ? (
+                  <span className="text-[10px] font-semibold text-green-700 bg-green-50 border border-green-200 px-1.5 py-0.5 rounded">
+                    ✓ Linked
+                  </span>
+                ) : (
+                  <span className="text-[10px] font-semibold text-amber-700 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded" title="Link to inventory ingredient to enable auto-deduct">
+                    ⚠ No stock link
+                  </span>
+                )}
+                <button
+                  type="button"
+                  onClick={() => void onRemove(r.id)}
+                  className="text-gray-400 hover:text-red-500 text-sm leading-none px-1"
+                  title="Remove"
+                >
+                  ✕
+                </button>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={r.quantity ?? ''}
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    void onUpdate(r.id, { quantity: v ? parseFloat(v) : null });
+                  }}
+                  placeholder="Qty"
+                  className="w-16 border border-gray-200 rounded-md px-2 py-1 text-xs outline-none focus:border-brand-500 font-mono"
+                />
+                <select
+                  value={r.unit ?? ''}
+                  onChange={(e) => void onUpdate(r.id, { unit: (e.target.value || null) as RecipeUnit | null })}
+                  className="border border-gray-200 rounded-md px-1.5 py-1 text-xs outline-none focus:border-brand-500"
+                >
+                  <option value="">—</option>
+                  {RECIPE_UNITS.map((u) => <option key={u} value={u}>{u}</option>)}
+                </select>
+                <label className="flex items-center gap-1 ml-auto cursor-pointer text-xs text-gray-600">
+                  <input
+                    type="checkbox"
+                    checked={r.is_critical}
+                    onChange={(e) => void onUpdate(r.id, { is_critical: e.target.checked })}
+                    className="accent-brand-500"
+                  />
+                  Critical
+                </label>
+              </div>
+            </div>
+          ))}
+
+          {/* New row form */}
+          <div className="border border-dashed border-gray-300 rounded-lg p-2 space-y-1.5 bg-gray-50">
+            <InventoryPicker
+              inventoryServiceUrl={inventoryServiceUrl}
+              tenantId={tenantId}
+              branchId={branchId}
+              authToken={authToken}
+              onPick={(ing) => setDraft((d) => ({
+                ...d,
+                name:          ing.name,
+                ingredient_id: ing.id,
+                unit:          (RECIPE_UNITS as readonly string[]).includes(ing.unit) ? (ing.unit as RecipeUnit) : d.unit,
+              }))}
+            />
+            <div className="flex items-center gap-1.5">
+              <input
+                type="text"
+                value={draft.name}
+                onChange={(e) => setDraft({ ...draft, name: e.target.value, ingredient_id: null })}
+                placeholder="Or type a name (no stock link)"
+                className="flex-1 border border-gray-200 rounded-md px-2 py-1 text-xs outline-none focus:border-brand-500"
+              />
+              {draft.ingredient_id && (
+                <span className="text-[10px] font-semibold text-green-700 bg-green-50 border border-green-200 px-1.5 py-0.5 rounded">
+                  ✓ Linked
+                </span>
+              )}
+            </div>
+            <div className="flex items-center gap-1.5">
+              <input
+                type="number"
+                min="0"
+                step="0.01"
+                value={draft.quantity}
+                onChange={(e) => setDraft({ ...draft, quantity: e.target.value })}
+                placeholder="Qty"
+                className="w-16 border border-gray-200 rounded-md px-2 py-1 text-xs outline-none focus:border-brand-500 font-mono"
+              />
+              <select
+                value={draft.unit}
+                onChange={(e) => setDraft({ ...draft, unit: e.target.value as RecipeUnit | '' })}
+                className="border border-gray-200 rounded-md px-1.5 py-1 text-xs outline-none focus:border-brand-500"
+              >
+                <option value="">—</option>
+                {RECIPE_UNITS.map((u) => <option key={u} value={u}>{u}</option>)}
+              </select>
+              <label className="flex items-center gap-1 cursor-pointer text-xs text-gray-600">
+                <input
+                  type="checkbox"
+                  checked={draft.is_critical}
+                  onChange={(e) => setDraft({ ...draft, is_critical: e.target.checked })}
+                  className="accent-brand-500"
+                />
+                Critical
+              </label>
+              <button
+                type="button"
+                onClick={() => void handleAddRow()}
+                disabled={!draft.name.trim()}
+                className="ml-auto px-3 py-1 bg-brand-500 hover:bg-brand-600 disabled:opacity-40 text-white text-xs font-semibold rounded-md"
+              >
+                Add
+              </button>
+            </div>
+            <p className="text-[10px] text-gray-400 leading-snug">
+              Pick from inventory to enable stock auto-deduct on order. Free-text names track allergens only.
+            </p>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -763,6 +1207,24 @@ export default function Catalogue() {
   const tenantId = auth.user?.tenant_id ?? '';
 
   const catalogueServiceUrl = import.meta.env.VITE_CATALOGUE_SERVICE_URL ?? 'http://localhost:3003';
+  const inventoryServiceUrl = import.meta.env.VITE_INVENTORY_SERVICE_URL ?? 'http://localhost:3005';
+  const tenantServiceUrl    = import.meta.env.VITE_TENANT_SERVICE_URL    ?? 'http://localhost:3002';
+
+  const [branchId, setBranchId] = useState<string>('');
+  useEffect(() => {
+    if (!tenantId || !auth.token) return;
+    void (async () => {
+      try {
+        const res = await fetch(`${tenantServiceUrl}/api/v1/tenants/${tenantId}/branches`, {
+          headers: { Authorization: `Bearer ${auth.token}` },
+        });
+        if (!res.ok) return;
+        const json = (await res.json()) as { success: boolean; data?: { branches: { id: string; is_primary: boolean }[] } };
+        const primary = json.data?.branches?.find((b) => b.is_primary) ?? json.data?.branches?.[0];
+        if (primary) setBranchId(primary.id);
+      } catch { /* empty */ }
+    })();
+  }, [tenantId, auth.token, tenantServiceUrl]);
 
   const [view, setView] = useState<'items' | 'combos'>('items');
   const [editMode, setEditMode] = useState(false);
@@ -790,6 +1252,10 @@ export default function Catalogue() {
   // Edit item — store ID only so the modal always reads the latest price from `items` state
   const [editingItemId, setEditingItemId] = useState<string | null>(null);
   const editingItem = editingItemId ? (items.find((i) => i.id === editingItemId) ?? null) : null;
+
+  // View item — full detail modal (read-only)
+  const [viewingItemId, setViewingItemId] = useState<string | null>(null);
+  const viewingItem = viewingItemId ? (items.find((i) => i.id === viewingItemId) ?? null) : null;
 
   // Inline rename
   const [renamingSection, setRenamingSection] = useState<{ id: string; name: string } | null>(null);
@@ -885,6 +1351,7 @@ export default function Catalogue() {
   const handleAddItem = async (d: {
     name: string; price: number; description?: string;
     section_id?: string; is_food?: boolean; veg_type?: string; allergens?: string[];
+    prep_time_mins?: number; calories?: number;
   }) => {
     const res = await apiFetch(`${catalogueServiceUrl}/api/v1/catalogue/${tenantId}/items`, {
       method: 'POST',
@@ -932,7 +1399,7 @@ export default function Catalogue() {
 
   const handleEditItem = async (
     itemId: string,
-    data: { name: string; price: number; mrp?: number; description?: string; is_food?: boolean; veg_type?: string; allergens?: string[] }
+    data: { name: string; price: number; mrp?: number; description?: string; is_food?: boolean; veg_type?: string; allergens?: string[]; prep_time_mins?: number; calories?: number }
   ) => {
     const res = await apiFetch(`${catalogueServiceUrl}/api/v1/catalogue/${tenantId}/items/${itemId}`, {
       method: 'PATCH',
@@ -1074,8 +1541,24 @@ export default function Catalogue() {
       {editingItem && (
         <EditItemModal
           item={editingItem}
+          tenantId={tenantId}
+          branchId={branchId}
+          authToken={auth.token ?? ''}
+          catalogueServiceUrl={catalogueServiceUrl}
+          inventoryServiceUrl={inventoryServiceUrl}
           onClose={() => setEditingItemId(null)}
           onSave={(data) => handleEditItem(editingItem.id, data)}
+        />
+      )}
+      {viewingItem && (
+        <ItemDetailModal
+          item={viewingItem}
+          tenantId={tenantId}
+          authToken={auth.token ?? ''}
+          catalogueServiceUrl={catalogueServiceUrl}
+          canEdit={canEdit}
+          onClose={() => setViewingItemId(null)}
+          onEdit={() => { setViewingItemId(null); setEditingItemId(viewingItem.id); }}
         />
       )}
       {showAddCombo && (
@@ -1102,7 +1585,7 @@ export default function Catalogue() {
         />
       )}
 
-      <div className="p-6 max-w-5xl">
+      <div className="p-6 max-w-[1600px] mx-auto">
         {/* Header — only show title row; Edit toggle hidden when catalogue is empty */}
         <div className="flex items-center justify-between mb-6">
           <div>
@@ -1334,6 +1817,7 @@ export default function Catalogue() {
                       onEdit={() => setEditingItemId(item.id)}
                       onDelete={() => setConfirmDeleteItem(item.id)}
                       onMoveToSection={(sid) => void handleMoveItemToSection(item.id, sid)}
+                      onView={() => setViewingItemId(item.id)}
                       confirmingDelete={confirmDeleteItem === item.id}
                       onConfirmDelete={() => void handleDeleteItem(item.id)}
                       onCancelDelete={() => setConfirmDeleteItem(null)}
@@ -1369,6 +1853,7 @@ export default function Catalogue() {
                     onEdit={() => setEditingItemId(item.id)}
                     onDelete={() => setConfirmDeleteItem(item.id)}
                     onMoveToSection={(sid) => void handleMoveItemToSection(item.id, sid)}
+                    onView={() => setViewingItemId(item.id)}
                     confirmingDelete={confirmDeleteItem === item.id}
                     onConfirmDelete={() => void handleDeleteItem(item.id)}
                     onCancelDelete={() => setConfirmDeleteItem(null)}
@@ -1404,6 +1889,7 @@ function ItemCard({
   onEdit,
   onDelete,
   onMoveToSection,
+  onView,
   confirmingDelete,
   onConfirmDelete,
   onCancelDelete,
@@ -1415,6 +1901,7 @@ function ItemCard({
   onEdit: () => void;
   onDelete: () => void;
   onMoveToSection: (sectionId: string | null) => void;
+  onView: () => void;
   confirmingDelete: boolean;
   onConfirmDelete: () => void;
   onCancelDelete: () => void;
@@ -1422,15 +1909,24 @@ function ItemCard({
   const primaryImage = item.images?.find((img) => img.isPrimary) ?? item.images?.[0];
 
   return (
-    <div className={`bg-white border rounded-xl p-4 shadow-sm transition-all ${!item.is_available ? 'opacity-55' : ''}`}>
-      <div className="flex items-start justify-between gap-3">
+    <div className={`bg-white border rounded-xl p-4 shadow-sm transition-all hover:shadow-md hover:border-brand-200 ${!item.is_available ? 'opacity-55' : ''}`}>
+      <button
+        type="button"
+        onClick={onView}
+        className="w-full text-left flex items-start justify-between gap-3 cursor-pointer"
+      >
         <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-1.5 mb-0.5">
+          <div className="flex items-center gap-1.5 mb-0.5 flex-wrap">
             {item.is_food && <VegDot type={item.veg_type} />}
             <span className="font-medium text-gray-900 text-sm truncate">{item.name}</span>
+            {typeof item.prep_time_mins === 'number' && item.prep_time_mins > 0 && (
+              <span className="inline-flex items-center gap-0.5 text-[10px] font-semibold text-amber-700 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded-full">
+                ⏱ {item.prep_time_mins} min
+              </span>
+            )}
           </div>
           {item.description && (
-            <p className="text-xs text-gray-400 line-clamp-1 mt-0.5">{item.description}</p>
+            <p className="text-xs text-gray-400 line-clamp-2 mt-0.5">{item.description}</p>
           )}
           <div className="text-brand-600 font-semibold text-sm mt-1.5 font-mono">
             ₹{(item.price / 100).toFixed(0)}
@@ -1438,6 +1934,9 @@ function ItemCard({
               <span className="ml-1.5 line-through text-gray-400 font-normal text-xs">₹{(item.mrp / 100).toFixed(0)}</span>
             )}
           </div>
+          {typeof item.calories === 'number' && item.calories > 0 && (
+            <div className="text-[11px] text-gray-400 mt-0.5">{item.calories} cal</div>
+          )}
         </div>
         {primaryImage ? (
           <img src={primaryImage.url} alt={item.name} className="w-12 h-12 rounded-lg object-cover shrink-0" />
@@ -1446,7 +1945,7 @@ function ItemCard({
             {item.is_food ? '🍽' : '📦'}
           </div>
         )}
-      </div>
+      </button>
 
       <div className="mt-3 flex items-center gap-2">
         {!editMode ? (
@@ -1488,6 +1987,188 @@ function ItemCard({
           </select>
         </div>
       )}
+    </div>
+  );
+}
+
+// ─── Item Detail Modal (full info, read-only) ─────────────────────────────────
+
+const ALLERGEN_LABELS: Record<string, string> = {
+  gluten: 'Gluten', dairy: 'Dairy', eggs: 'Eggs', nuts: 'Nuts', peanuts: 'Peanuts',
+  soy: 'Soy', fish: 'Fish', shellfish: 'Shellfish', sesame: 'Sesame', mustard: 'Mustard',
+};
+
+interface ItemDetailIngredient {
+  id: string;
+  name: string;
+  quantity: number | null;
+  unit: string | null;
+  is_critical: boolean;
+  ingredient_id: string | null;
+  calories: number | null;
+  allergens: string[];
+}
+
+function ItemDetailModal({
+  item,
+  tenantId,
+  authToken,
+  catalogueServiceUrl,
+  canEdit,
+  onClose,
+  onEdit,
+}: {
+  item: CatalogueItem;
+  tenantId: string;
+  authToken: string;
+  catalogueServiceUrl: string;
+  canEdit: boolean;
+  onClose: () => void;
+  onEdit: () => void;
+}) {
+  const [recipe, setRecipe] = useState<ItemDetailIngredient[]>([]);
+  const [loadingRecipe, setLoadingRecipe] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      setLoadingRecipe(true);
+      try {
+        const res = await fetch(
+          `${catalogueServiceUrl}/api/v1/catalogue/${tenantId}/items/${item.id}/ingredients`,
+          { headers: { Authorization: `Bearer ${authToken}` } }
+        );
+        if (!res.ok) return;
+        const body = await res.json() as { data?: { ingredients?: ItemDetailIngredient[] } };
+        if (!cancelled) setRecipe(body.data?.ingredients ?? []);
+      } catch {
+        // swallow — non-critical
+      } finally {
+        if (!cancelled) setLoadingRecipe(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [tenantId, item.id, authToken, catalogueServiceUrl]);
+
+  const primaryImage = item.images?.find((img) => img.isPrimary) ?? item.images?.[0];
+  const savings = item.mrp && item.mrp > item.price ? item.mrp - item.price : 0;
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+        {/* Hero image */}
+        <div className="relative">
+          {primaryImage ? (
+            <img src={primaryImage.url} alt={item.name} className="w-full h-56 object-cover rounded-t-2xl" />
+          ) : (
+            <div className="w-full h-56 bg-gradient-to-br from-gray-100 to-gray-200 flex items-center justify-center text-6xl rounded-t-2xl">
+              {item.is_food ? '🍽' : '📦'}
+            </div>
+          )}
+          <button
+            onClick={onClose}
+            className="absolute top-3 right-3 w-9 h-9 bg-white/90 hover:bg-white rounded-full shadow flex items-center justify-center text-gray-600 hover:text-gray-900 transition-colors"
+            aria-label="Close"
+          >
+            ✕
+          </button>
+          {!item.is_available && (
+            <div className="absolute top-3 left-3 bg-red-500 text-white text-xs font-semibold px-2.5 py-1 rounded-full">
+              Unavailable
+            </div>
+          )}
+        </div>
+
+        <div className="p-6 space-y-5">
+          {/* Title + veg dot */}
+          <div className="flex items-start justify-between gap-3">
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2 mb-1">
+                {item.is_food && <VegDot type={item.veg_type} />}
+                <h2 className="text-xl font-bold text-gray-900">{item.name}</h2>
+              </div>
+              {item.description && (
+                <p className="text-sm text-gray-600 leading-relaxed">{item.description}</p>
+              )}
+            </div>
+          </div>
+
+          {/* Price block */}
+          <div className="flex items-baseline gap-3 pb-4 border-b border-gray-100">
+            <span className="text-2xl font-bold text-brand-600 font-mono">
+              ₹{(item.price / 100).toFixed(0)}
+            </span>
+            {savings > 0 && item.mrp && (
+              <>
+                <span className="text-base line-through text-gray-400 font-mono">₹{(item.mrp / 100).toFixed(0)}</span>
+                <span className="text-xs font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full">
+                  Save ₹{(savings / 100).toFixed(0)}
+                </span>
+              </>
+            )}
+          </div>
+
+          {/* Allergens */}
+          {item.allergens && item.allergens.length > 0 && (
+            <div>
+              <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Contains allergens</div>
+              <div className="flex flex-wrap gap-1.5">
+                {item.allergens.map((a) => (
+                  <span key={a} className="text-xs px-2.5 py-1 rounded-full bg-amber-50 border border-amber-200 text-amber-800 font-medium">
+                    {ALLERGEN_LABELS[a] ?? a}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Recipe / ingredients */}
+          {loadingRecipe ? (
+            <div className="text-xs text-gray-400">Loading ingredients…</div>
+          ) : recipe.length > 0 && (
+            <div>
+              <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Ingredients</div>
+              <ul className="space-y-1.5">
+                {recipe.map((r) => (
+                  <li key={r.id} className="flex items-center justify-between text-sm">
+                    <div className="flex items-center gap-2">
+                      <span className="text-gray-700">{r.name}</span>
+                      {r.is_critical && (
+                        <span className="text-[10px] font-semibold uppercase tracking-wide text-red-600 bg-red-50 px-1.5 py-0.5 rounded">
+                          Critical
+                        </span>
+                      )}
+                    </div>
+                    {r.quantity != null && (
+                      <span className="text-xs text-gray-500 font-mono">
+                        {r.quantity} {r.unit ?? ''}
+                      </span>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {/* Footer actions */}
+          <div className="flex gap-3 pt-2">
+            <button
+              onClick={onClose}
+              className="flex-1 py-2.5 border border-gray-200 hover:bg-gray-50 rounded-xl text-sm font-medium text-gray-700 transition-colors"
+            >
+              Close
+            </button>
+            {canEdit && (
+              <button
+                onClick={onEdit}
+                className="flex-1 py-2.5 bg-brand-500 hover:bg-brand-600 text-white text-sm font-semibold rounded-xl transition-colors"
+              >
+                Edit item
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
     </div>
   );
 }

@@ -7,6 +7,7 @@ import {
   updateIngredient,
   deleteIngredient,
   adjustStock,
+  findSimilarIngredients,
 } from "../repositories/ingredient.repository";
 import { prisma } from "../lib/prisma";
 
@@ -91,6 +92,19 @@ export default async function ingredientRoutes(app: FastifyInstance) {
     const parsed = createIngredientBody.safeParse(req.body);
     if (!parsed.success) return reply.status(400).send({ success: false, error: parsed.error.errors[0]?.message });
 
+    const body = req.body as { force?: boolean };
+    if (!body.force) {
+      const matches = await findSimilarIngredients(tenant_id, branch_id, parsed.data.name);
+      const blocking = matches.filter((m) => m.match_type === "exact" || m.match_type === "canonical");
+      if (blocking.length > 0) {
+        return reply.status(409).send({
+          success: false,
+          error: `An item like "${blocking[0].name}" already exists in this inventory.`,
+          data: { matches },
+        });
+      }
+    }
+
     const ingredient = await createIngredient({
       tenant_id,
       branch_id,
@@ -98,6 +112,21 @@ export default async function ingredientRoutes(app: FastifyInstance) {
     });
 
     return reply.status(201).send({ success: true, data: { ingredient } });
+  });
+
+  // GET /:tenant_id/:branch_id/ingredients/check-duplicate?name=...
+  app.get("/:tenant_id/:branch_id/ingredients/check-duplicate", {
+    schema: {
+      tags: ["Ingredients"],
+      params: { type: "object", properties: { tenant_id: { type: "string" }, branch_id: { type: "string" } }, required: ["tenant_id", "branch_id"] },
+      querystring: { type: "object", required: ["name"], properties: { name: { type: "string" } } },
+    },
+  }, async (req, reply) => {
+    const { tenant_id, branch_id } = req.params as { tenant_id: string; branch_id: string };
+    const { name } = req.query as { name: string };
+    if (!name || !name.trim()) return reply.send({ success: true, data: { matches: [] } });
+    const matches = await findSimilarIngredients(tenant_id, branch_id, name);
+    return reply.send({ success: true, data: { matches } });
   });
 
   // PATCH /:tenant_id/:branch_id/ingredients/:id

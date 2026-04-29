@@ -120,6 +120,7 @@ export default function Checkout() {
             items_count: cart.items.reduce((sum, i) => sum + i.quantity, 0),
           });
           localStorage.setItem('active_orders', JSON.stringify(activeOrders));
+          window.dispatchEvent(new Event('active_orders:changed'));
         } catch { /* ignore */ }
 
         setConfirmedTableName(cart.table_name);

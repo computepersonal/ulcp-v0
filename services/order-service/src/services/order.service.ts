@@ -24,6 +24,7 @@ import { logger } from "../lib/logger";
 import { Prisma } from "../generated/prisma";
 import { scheduleKotAutoAck, cancelKotAutoAck } from "../lib/queue";
 import { updateTableStatus } from "../lib/tenantClient";
+import { deductStockForOrder } from "../lib/inventoryClient";
 
 // Commission rates from env (fallback to plan constants)
 const COMMISSION_RATES: Record<string, number> = {
@@ -368,6 +369,17 @@ export async function changeOrderStatus(
 
   if (new_status === "completed") {
     await handleOrderCompleted(order_id, tenant_id, order.total);
+  }
+
+  // When order moves to "preparing", auto-deduct ingredient stock based on item recipes.
+  // Fire-and-forget — never block the status change.
+  if (new_status === "preparing" && order.status !== "preparing" && order.branch_id) {
+    void deductStockForOrder({
+      tenant_id,
+      branch_id: order.branch_id,
+      order_id,
+      items: order.items,
+    });
   }
 
   // When order reaches "ready", mark table as billed (bill generated, awaiting payment)

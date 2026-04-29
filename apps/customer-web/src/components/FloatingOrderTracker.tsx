@@ -14,23 +14,51 @@ interface ActiveOrder {
   items_count?: number;
 }
 
-const STATUS_CONFIG: Record<OrderStatus, { label: string; icon: string; color: string }> = {
-  pending:   { label: 'Placed', icon: '📋', color: 'bg-gray-500' },
-  confirmed: { label: 'Confirmed', icon: '✅', color: 'bg-blue-500' },
-  preparing: { label: 'Preparing', icon: '👨‍🍳', color: 'bg-orange-500' },
-  ready:     { label: 'Ready!', icon: '🔔', color: 'bg-green-500' },
-  served:    { label: 'Served', icon: '🍽', color: 'bg-green-600' },
-  delivered: { label: 'Delivered', icon: '📦', color: 'bg-green-600' },
+const STATUS_CONFIG: Record<OrderStatus, { label: string; icon: string; color: string; ring: string; text: string }> = {
+  pending:   { label: 'Order Placed',      icon: '📋', color: 'bg-gray-500',   ring: '#9ca3af', text: 'text-gray-600' },
+  confirmed: { label: 'Order Confirmed',   icon: '✅', color: 'bg-blue-500',   ring: '#3b82f6', text: 'text-blue-600' },
+  preparing: { label: 'Order In Progress', icon: '👨‍🍳', color: 'bg-amber-500', ring: '#f59e0b', text: 'text-amber-600' },
+  ready:     { label: 'Order Ready',       icon: '🔔', color: 'bg-green-500',  ring: '#10b981', text: 'text-green-600' },
+  served:    { label: 'Order Served',      icon: '🍽', color: 'bg-green-600',  ring: '#059669', text: 'text-green-700' },
+  delivered: { label: 'Order Delivered',   icon: '📦', color: 'bg-green-600',  ring: '#059669', text: 'text-green-700' },
 };
 
-function progressWidth(status: OrderStatus): string {
+function progressPct(status: OrderStatus): number {
   switch (status) {
-    case 'pending': return '20%';
-    case 'confirmed': return '40%';
-    case 'preparing': return '60%';
-    case 'ready': return '85%';
-    default: return '100%';
+    case 'pending':   return 20;
+    case 'confirmed': return 40;
+    case 'preparing': return 60;
+    case 'ready':     return 85;
+    default:          return 100;
   }
+}
+
+// Circular progress ring — shows % inside an arc
+function ProgressRing({ pct, color, size = 44 }: { pct: number; color: string; size?: number }) {
+  const stroke = 4;
+  const r = (size - stroke) / 2;
+  const c = 2 * Math.PI * r;
+  const offset = c - (pct / 100) * c;
+  return (
+    <div className="relative shrink-0" style={{ width: size, height: size }}>
+      <svg width={size} height={size} className="-rotate-90">
+        <circle cx={size / 2} cy={size / 2} r={r} stroke="#f3f4f6" strokeWidth={stroke} fill="none" />
+        <circle
+          cx={size / 2} cy={size / 2} r={r}
+          stroke={color}
+          strokeWidth={stroke}
+          fill="none"
+          strokeLinecap="round"
+          strokeDasharray={c}
+          strokeDashoffset={offset}
+          style={{ transition: 'stroke-dashoffset 700ms ease' }}
+        />
+      </svg>
+      <div className="absolute inset-0 flex items-center justify-center text-[11px] font-bold text-gray-700">
+        {pct}%
+      </div>
+    </div>
+  );
 }
 
 export default function FloatingOrderTracker() {
@@ -62,6 +90,7 @@ export default function FloatingOrderTracker() {
     });
     if (localValid.length !== parsed.length) {
       localStorage.setItem('active_orders', JSON.stringify(localValid));
+      window.dispatchEvent(new Event('active_orders:changed'));
     }
     setOrders(localValid);
 
@@ -95,6 +124,7 @@ export default function FloatingOrderTracker() {
 
       const stillActive = results.filter(o => !isTerminal(o.status));
       localStorage.setItem('active_orders', JSON.stringify(stillActive));
+      window.dispatchEvent(new Event('active_orders:changed'));
       setOrders(stillActive);
     })();
 
@@ -126,6 +156,7 @@ export default function FloatingOrderTracker() {
             ? prev.filter(o => o.id !== eventOrderId)
             : prev.map(o => o.id === eventOrderId ? { ...o, status: data.status } : o);
           localStorage.setItem('active_orders', JSON.stringify(updated));
+          window.dispatchEvent(new Event('active_orders:changed'));
           return updated;
         });
       });
@@ -145,21 +176,17 @@ export default function FloatingOrderTracker() {
       <div className="fixed bottom-16 left-4 right-4 z-50">
         <button
           onClick={() => navigate(`/place/${order.slug}/order/${order.id}`)}
-          className="w-full rounded-2xl shadow-lg border border-gray-100 overflow-hidden"
+          className="w-full rounded-2xl shadow-lg border border-gray-100 overflow-hidden bg-white"
         >
-          <div className="h-1 bg-gray-100 w-full">
-            <div className={`h-full ${config.color} transition-all duration-700`} style={{ width: progressWidth(order.status) }} />
-          </div>
-          <div className="bg-white px-4 py-3 flex items-center gap-3">
-            <div className={`w-10 h-10 rounded-full ${config.color} flex items-center justify-center text-lg shrink-0`}>
-              {config.icon}
-            </div>
+          <div className="px-4 py-3 flex items-center gap-3">
+            <ProgressRing pct={progressPct(order.status)} color={config.ring} />
             <div className="flex-1 text-left min-w-0">
-              <div className="text-sm font-semibold text-gray-900 truncate">
-                {config.label}{order.status === 'preparing' ? '...' : ''}
+              <div className={`text-sm font-semibold truncate flex items-center gap-1 ${config.text}`}>
+                {config.label}
+                {order.status === 'preparing' && <span className="inline-block w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />}
               </div>
               <div className="text-xs text-gray-500 truncate">
-                {order.place_name} · Tap to track
+                {order.place_name}{order.items_count ? ` · ${order.items_count} items` : ' · Tap to track'}
               </div>
             </div>
             <div className="text-brand-500 text-sm font-medium shrink-0">View →</div>
@@ -181,18 +208,14 @@ export default function FloatingOrderTracker() {
               <button
                 key={order.id}
                 onClick={() => navigate(`/place/${order.slug}/order/${order.id}`)}
-                className="w-full rounded-2xl shadow-lg border border-gray-100 overflow-hidden"
+                className="w-full rounded-2xl shadow-lg border border-gray-100 overflow-hidden bg-white"
               >
-                <div className="h-1 bg-gray-100 w-full">
-                  <div className={`h-full ${config.color} transition-all duration-700`} style={{ width: progressWidth(order.status) }} />
-                </div>
-                <div className="bg-white px-4 py-3 flex items-center gap-3">
-                  <div className={`w-9 h-9 rounded-full ${config.color} flex items-center justify-center text-base shrink-0`}>
-                    {config.icon}
-                  </div>
+                <div className="px-4 py-3 flex items-center gap-3">
+                  <ProgressRing pct={progressPct(order.status)} color={config.ring} size={40} />
                   <div className="flex-1 text-left min-w-0">
-                    <div className="text-sm font-semibold text-gray-900 truncate">
-                      {config.label}{order.status === 'preparing' ? '...' : ''}
+                    <div className={`text-sm font-semibold truncate flex items-center gap-1 ${config.text}`}>
+                      {config.label}
+                      {order.status === 'preparing' && <span className="inline-block w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />}
                     </div>
                     <div className="text-xs text-gray-500 truncate">
                       {order.place_name}{order.items_count ? ` · ${order.items_count} items` : ''}

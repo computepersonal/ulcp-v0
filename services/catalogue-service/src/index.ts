@@ -16,6 +16,7 @@ import { optionRoutes } from "./routes/option.routes";
 import { addonRoutes } from "./routes/addon.routes";
 import { comboRoutes } from "./routes/combo.routes";
 import { ingredientRoutes } from "./routes/ingredient.routes";
+import { internalRoutes } from "./routes/internal.routes";
 import { PORT } from "./constants";
 import {
   resetTemporaryDisabledItems,
@@ -219,6 +220,12 @@ async function buildApp() {
   await app.register(
     async (instance) => { await instance.register(comboRoutes); },
     { prefix: "/api/v1/catalogue/:tenant_id/combos" }
+  );
+
+  // Internal endpoints (service-to-service, secret-auth)
+  await app.register(
+    async (instance) => { await instance.register(internalRoutes); },
+    { prefix: "/api/v1/catalogue/internal" }
   );
 
   // Health check

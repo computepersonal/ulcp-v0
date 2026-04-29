@@ -33,6 +33,87 @@ function getElapsed(since?: string): string {
   return `${mins}m`;
 }
 
+// ─── Table shape icon ─────────────────────────────────────────────────────────
+// Top-down restaurant-table glyph. Shape reflects capacity, color reflects status.
+//   capacity 1–2  → bistro 2-top
+//            3–4  → square 4-top
+//            5–6  → 6-top
+//            7+   → long banquet
+//   status   available    → green
+//            occupied     → amber
+//            billed       → red
+//            disabled     → grey
+function TableShape({
+  capacity,
+  status,
+  disabled = false,
+  className = '',
+}: {
+  capacity: number;
+  status: TableStatus;
+  disabled?: boolean;
+  className?: string;
+}) {
+  const palette = disabled
+    ? { stroke: '#9ca3af', fill: '#f3f4f6', chair: '#d1d5db' } // grey
+    : status === 'billed'
+      ? { stroke: '#ef4444', fill: '#ffffff', chair: '#fca5a5' } // red
+      : status === 'occupied' || status === 'pending_confirmation'
+        ? { stroke: '#f59e0b', fill: '#fffbeb', chair: '#fbbf24' } // amber
+        : { stroke: '#10b981', fill: '#ffffff', chair: '#34d399' }; // green
+
+  // Reusable chair bump
+  const chair = (cx: number, cy: number, w = 5, h = 3.5) => (
+    <rect
+      x={cx - w / 2}
+      y={cy - h / 2}
+      width={w}
+      height={h}
+      rx="1.2"
+      fill={palette.chair}
+    />
+  );
+
+  const sw = 1.6;
+
+  if (capacity <= 2) {
+    return (
+      <svg width="34" height="30" viewBox="0 0 40 32" fill="none" className={className}>
+        {chair(20, 5)}
+        {chair(20, 27)}
+        <rect x="11" y="10" width="18" height="12" rx="3" fill={palette.fill} stroke={palette.stroke} strokeWidth={sw} />
+      </svg>
+    );
+  }
+  if (capacity <= 4) {
+    return (
+      <svg width="34" height="30" viewBox="0 0 40 32" fill="none" className={className}>
+        {chair(14, 4)} {chair(26, 4)}
+        {chair(14, 28)} {chair(26, 28)}
+        <rect x="7" y="9" width="26" height="14" rx="3" fill={palette.fill} stroke={palette.stroke} strokeWidth={sw} />
+      </svg>
+    );
+  }
+  if (capacity <= 6) {
+    return (
+      <svg width="34" height="30" viewBox="0 0 40 32" fill="none" className={className}>
+        {chair(10, 4)} {chair(20, 4)} {chair(30, 4)}
+        {chair(10, 28)} {chair(20, 28)} {chair(30, 28)}
+        <rect x="3" y="9" width="34" height="14" rx="3" fill={palette.fill} stroke={palette.stroke} strokeWidth={sw} />
+      </svg>
+    );
+  }
+  // 7+ banquet
+  return (
+    <svg width="34" height="30" viewBox="0 0 40 32" fill="none" className={className}>
+      {chair(9, 4)} {chair(17, 4)} {chair(25, 4)} {chair(33, 4)}
+      {chair(9, 28)} {chair(17, 28)} {chair(25, 28)} {chair(33, 28)}
+      {chair(2.5, 16, 3.5, 5)} {chair(37.5, 16, 3.5, 5)}
+      <rect x="1" y="9" width="38" height="14" rx="6" fill={palette.fill} stroke={palette.stroke} strokeWidth={sw} />
+    </svg>
+  );
+}
+
 // ─── Auto-naming helpers ──────────────────────────────────────────────────────
 
 /** Returns the next available number for a given name prefix across all tables */
@@ -954,10 +1035,14 @@ export default function FloorMap() {
     ? tables.filter((t) => !t.section_id)
     : [];
 
+  const closedSectionIds = new Set(sections.filter((s) => !s.is_active).map((s) => s.id));
+  const isTableClosed = (t: TableData) =>
+    !t.is_active || (t.section_id ? closedSectionIds.has(t.section_id) : false);
   const stats = {
-    available: tables.filter((t) => t.status === 'available').length,
-    occupied: tables.filter((t) => t.status === 'occupied').length,
-    billed: tables.filter((t) => t.status === 'billed').length,
+    available: tables.filter((t) => !isTableClosed(t) && t.status === 'available').length,
+    occupied: tables.filter((t) => !isTableClosed(t) && t.status === 'occupied').length,
+    billed: tables.filter((t) => !isTableClosed(t) && t.status === 'billed').length,
+    closed: tables.filter(isTableClosed).length,
   };
 
   const statusColors: Record<TableStatus, string> = {
@@ -1055,6 +1140,10 @@ export default function FloorMap() {
               <span className="font-semibold text-red-700">{stats.billed}</span>
               <span className="text-red-600 ml-1">Billed</span>
             </div>
+            <div className="bg-gray-100 border border-gray-200 rounded-xl px-4 py-2 text-sm">
+              <span className="font-semibold text-gray-700">{stats.closed}</span>
+              <span className="text-gray-500 ml-1">Closed</span>
+            </div>
             <div className="ml-auto flex gap-2">
               <button
                 onClick={() => setShowAddSection(true)}
@@ -1090,43 +1179,59 @@ export default function FloorMap() {
               const isActive = activeSection === s.name;
               const isDisabled = !s.is_active;
               return (
-                <div key={s.id} className="relative flex items-center">
+                <div
+                  key={s.id}
+                  className={`relative flex items-stretch rounded-full overflow-hidden whitespace-nowrap transition-colors ${
+                    isActive
+                      ? isDisabled ? 'bg-gray-400 text-white' : 'bg-brand-500 text-white'
+                      : isDisabled
+                        ? 'bg-white border border-gray-200 text-gray-400'
+                        : 'bg-white border border-gray-200 text-gray-600 hover:border-brand-300'
+                  }`}
+                >
                   <button
                     onClick={() => { setActiveSection(s.name); setZoneMenu(null); }}
-                    className={`px-4 py-1.5 rounded-full text-sm font-medium whitespace-nowrap transition-colors flex items-center gap-1.5 ${
-                      isActive
-                        ? isDisabled ? 'bg-gray-400 text-white' : 'bg-brand-500 text-white'
-                        : isDisabled
-                          ? 'bg-white border border-gray-200 text-gray-400 line-through'
-                          : 'bg-white border border-gray-200 text-gray-600 hover:border-brand-300'
-                    }`}
+                    className={`pl-4 ${canEditTables ? 'pr-2' : 'pr-4'} py-1.5 text-sm font-medium flex items-center gap-1.5 ${isDisabled && !isActive ? 'line-through' : ''}`}
                   >
                     {isDisabled && <span className="text-xs">⚠</span>}
                     {s.name}
                     {isDisabled && <span className={`text-xs font-normal ${isActive ? 'text-white/80' : 'text-orange-500'}`}>Closed</span>}
                   </button>
 
-                  {/* Manage button — owners/managers only */}
+                  {/* Vertical kebab menu — owners/managers only, baked into the chip */}
                   {canEditTables && (
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setActiveSection(s.name);
-                        setZoneActionError('');
-                        if (zoneMenu?.id === s.id) {
-                          setZoneMenu(null);
-                        } else {
-                          const rect = (e.currentTarget as HTMLButtonElement).getBoundingClientRect();
-                          setZoneMenu({ id: s.id, x: rect.left, y: rect.bottom + 6 });
-                        }
-                      }}
-                      className="ml-1 w-7 h-7 flex items-center justify-center rounded-full border border-gray-200 bg-white text-gray-500 hover:text-brand-600 hover:border-brand-300 transition-colors text-sm font-bold"
-                      title="Manage zone"
-                    >
-                      ···
-                    </button>
+                    <>
+                      <span
+                        className={`w-px my-1.5 ${isActive ? 'bg-white/30' : 'bg-gray-200'}`}
+                        aria-hidden="true"
+                      />
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setActiveSection(s.name);
+                          setZoneActionError('');
+                          if (zoneMenu?.id === s.id) {
+                            setZoneMenu(null);
+                          } else {
+                            const rect = (e.currentTarget as HTMLButtonElement).getBoundingClientRect();
+                            setZoneMenu({ id: s.id, x: rect.left, y: rect.bottom + 6 });
+                          }
+                        }}
+                        className={`px-2.5 flex items-center justify-center transition-colors ${
+                          isActive
+                            ? 'text-white/90 hover:bg-white/10'
+                            : 'text-gray-500 hover:text-brand-600 hover:bg-gray-50'
+                        }`}
+                        title="Manage zone"
+                      >
+                        <svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor" aria-hidden="true">
+                          <circle cx="7" cy="3" r="1.4" />
+                          <circle cx="7" cy="7" r="1.4" />
+                          <circle cx="7" cy="11" r="1.4" />
+                        </svg>
+                      </button>
+                    </>
                   )}
-
                 </div>
               );
             })}
@@ -1180,8 +1285,18 @@ export default function FloorMap() {
                               selectedTable?.id === table.id ? 'ring-2 ring-brand-500' : ''
                             }`}
                           >
-                            <div className="font-bold text-gray-900">{table.name}</div>
-                            <div className="text-xs text-gray-500">{table.capacity} seats</div>
+                            <div className="flex items-start justify-between gap-2">
+                              <div className="min-w-0">
+                                <div className="font-bold text-gray-900 truncate">{table.name}</div>
+                                <div className="text-xs text-gray-500">{table.capacity} seats</div>
+                              </div>
+                              <TableShape
+                                capacity={table.capacity}
+                                status={table.status}
+                                disabled={zoneDisabled || tableDisabled}
+                                className="shrink-0"
+                              />
+                            </div>
                             {table.waiter_name && (
                               <div className="text-xs text-gray-600 mt-1 truncate">👤 {table.waiter_name}</div>
                             )}
@@ -1229,8 +1344,18 @@ export default function FloorMap() {
                               selectedTable?.id === table.id ? 'ring-2 ring-brand-500' : ''
                             }`}
                           >
-                            <div className="font-bold text-gray-900">{table.name}</div>
-                            <div className="text-xs text-gray-500">{table.capacity} seats</div>
+                            <div className="flex items-start justify-between gap-2">
+                              <div className="min-w-0">
+                                <div className="font-bold text-gray-900 truncate">{table.name}</div>
+                                <div className="text-xs text-gray-500">{table.capacity} seats</div>
+                              </div>
+                              <TableShape
+                                capacity={table.capacity}
+                                status={table.status}
+                                disabled={tableDisabled}
+                                className="shrink-0"
+                              />
+                            </div>
                             {table.waiter_name && (
                               <div className="text-xs text-gray-600 mt-1 truncate">👤 {table.waiter_name}</div>
                             )}
@@ -1273,8 +1398,18 @@ export default function FloorMap() {
                       selectedTable?.id === table.id ? 'ring-2 ring-brand-500' : ''
                     }`}
                   >
-                    <div className="font-bold text-gray-900">{table.name}</div>
-                    <div className="text-xs text-gray-500">{table.capacity} seats</div>
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <div className="font-bold text-gray-900 truncate">{table.name}</div>
+                        <div className="text-xs text-gray-500">{table.capacity} seats</div>
+                      </div>
+                      <TableShape
+                        capacity={table.capacity}
+                        status={table.status}
+                        disabled={zoneDisabled || tableDisabled}
+                        className="shrink-0"
+                      />
+                    </div>
                     {table.waiter_name && (
                       <div className="text-xs text-gray-600 mt-1 truncate">👤 {table.waiter_name}</div>
                     )}
