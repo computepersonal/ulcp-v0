@@ -36,6 +36,9 @@ desktop.ini
 *.swp
 *.swo
 
+# Claude Code per-developer permission allowlist
+.claude/settings.local.json
+
 # Uploads / media
 uploads/
 tmp/

@@ -4,6 +4,25 @@ import { useAppSelector } from '../hooks/redux';
 import SetupReturnBanner from '../components/SetupReturnBanner';
 import { apiFetch } from '../lib/apiFetch';
 
+function OnboardReturnBanner() {
+  const navigate = useNavigate();
+  if (!localStorage.getItem('onboarding_floormap_return')) return null;
+  return (
+    <div className="bg-indigo-600 text-white px-4 py-2.5 flex items-center justify-between text-sm">
+      <span className="font-medium">You came here from onboarding</span>
+      <button
+        onClick={() => {
+          localStorage.removeItem('onboarding_floormap_return');
+          navigate('/onboard');
+        }}
+        className="flex items-center gap-1.5 bg-white text-indigo-600 font-semibold px-3 py-1 rounded-lg text-xs hover:bg-indigo-50 transition-colors"
+      >
+        ← Back to onboarding
+      </button>
+    </div>
+  );
+}
+
 type TableStatus = 'available' | 'occupied' | 'billed' | 'pending_confirmation';
 
 interface TableData {
@@ -148,7 +167,7 @@ interface AddTableModalProps {
 
 function AddTableModal({ tables, sections, defaultSectionId, onClose, onSave }: AddTableModalProps) {
   const [capacity, setCapacity] = useState(4);
-  const [sectionId, setSectionId] = useState(defaultSectionId ?? '');
+  const [sectionId, setSectionId] = useState(defaultSectionId ?? sections[0]?.id ?? '');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
@@ -208,25 +227,19 @@ function AddTableModal({ tables, sections, defaultSectionId, onClose, onSave }: 
             </div>
           </div>
 
-          {sections.length > 0 ? (
-            <div>
-              <label className="text-sm font-medium text-gray-700 block mb-1">Floor zone</label>
-              <select
-                value={sectionId}
-                onChange={(e) => setSectionId(e.target.value)}
-                className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm outline-none focus:border-brand-500 transition-colors bg-white"
-              >
-                <option value="">No zone (general floor)</option>
-                {sections.map((s) => (
-                  <option key={s.id} value={s.id}>{s.name}</option>
-                ))}
-              </select>
-            </div>
-          ) : (
-            <div className="bg-blue-50 border border-blue-100 rounded-xl p-3 text-sm text-blue-700">
-              This table will be placed on the general floor. You can add floor zones later and assign tables to them.
-            </div>
-          )}
+          <div>
+            <label className="text-sm font-medium text-gray-700 block mb-1">Floor zone</label>
+            <select
+              value={sectionId}
+              onChange={(e) => setSectionId(e.target.value)}
+              required
+              className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm outline-none focus:border-brand-500 transition-colors bg-white"
+            >
+              {sections.map((s) => (
+                <option key={s.id} value={s.id}>{s.name}</option>
+              ))}
+            </select>
+          </div>
 
           {error && (
             <div className="bg-red-50 border border-red-200 rounded-xl p-3 text-red-600 text-sm">{error}</div>
@@ -1056,6 +1069,7 @@ export default function FloorMap() {
   if (loading) {
     return (
       <div>
+        <OnboardReturnBanner />
         <SetupReturnBanner />
         <div className="p-6 flex items-center justify-center min-h-[60vh]">
           <div className="text-gray-400 text-sm">Loading floor map...</div>
@@ -1064,10 +1078,11 @@ export default function FloorMap() {
     );
   }
 
-  // ── Empty state — no tables yet ─────────────────────────────────────────────
-  if (tables.length === 0) {
+  // ── Empty state — no sections and no tables yet ─────────────────────────────
+  if (tables.length === 0 && sections.length === 0) {
     return (
       <div>
+        <OnboardReturnBanner />
         <SetupReturnBanner />
         <div className="p-6 flex flex-col items-center justify-center min-h-[60vh] text-center">
           <div className="text-5xl mb-4">🪑</div>
@@ -1075,25 +1090,14 @@ export default function FloorMap() {
           {canEditTables ? (
             <>
               <p className="text-gray-500 text-sm max-w-xs mb-6">
-                Add your first table to start managing dine-in orders from the floor map.
+                Start by adding a floor zone. Tables can be added once you have at least one floor zone.
               </p>
-              <div className="flex flex-col gap-3 w-full max-w-xs">
-                <button
-                  onClick={() => setShowAddSection(true)}
-                  className="px-6 py-3 bg-brand-500 hover:bg-brand-600 text-white font-semibold rounded-xl transition-colors"
-                >
-                  + Add a floor zone
-                </button>
-                <button
-                  onClick={() => setShowAddTable(true)}
-                  className="px-6 py-3 border border-gray-200 text-gray-600 font-medium rounded-xl hover:border-gray-300 transition-colors"
-                >
-                  + Add a table
-                </button>
-              </div>
-              <p className="text-xs text-gray-400 mt-4">
-                Floor zones group tables by area (e.g. Main Hall, Outdoor, Bar)
-              </p>
+              <button
+                onClick={() => setShowAddSection(true)}
+                className="px-6 py-3 bg-brand-500 hover:bg-brand-600 text-white font-semibold rounded-xl transition-colors w-full max-w-xs"
+              >
+                + Add a floor zone
+              </button>
             </>
           ) : (
             <p className="text-gray-500 text-sm max-w-xs">
@@ -1123,6 +1127,7 @@ export default function FloorMap() {
   // ── Floor map ────────────────────────────────────────────────────────────────
   return (
     <div>
+      <OnboardReturnBanner />
       <SetupReturnBanner />
       <div className="p-6 h-full flex gap-4">
         <div className="flex-1">

@@ -5,23 +5,26 @@
 
 ---
 
-## BUSINESS ONBOARDING (6-step wizard)
+## BUSINESS ONBOARDING (7-step wizard)
 
 ```
 Step 1: Account (name, mobile, email, password + OTP verify)
 Step 2: Business type (visual grid — all types)
 Step 3: Profile (name, slug, logo, cover, address, GST toggle)
 Step 4: Catalogue (preset sections auto-loaded, add first item)
-Step 5: Operations (tables config OR delivery zones)
-Step 6: Go Live (QR generated, download/share, checklist)
+Step 5: Operations (tables config OR delivery zones) — deep-links to /floor-map
+Step 6: Staff (invite waiters / kitchen / cashiers) — deep-links to /staff
+Step 7: Go Live (QR generated, download/share, live checklist)
 ```
 
 - State saved at every step — resume anytime
 - Business preset auto-loads on type selection
 - QR code generated immediately on completion
+- Steps 5 & 6 deep-link to /floor-map and /staff respectively; a "← Back to onboarding" banner returns the user to the wizard
+- Step 7 checklist queries catalogue / sections / staff endpoints live to mark items done
 - Post-onboarding checklist: 7 tasks = 30-day Starter trial reward
 - Slug auto-generated from name, editable before confirm
-- Handled by: tenant-service wizard endpoints
+- Handled by: tenant-service wizard endpoints (step6Schema = staff confirmation, step7Schema = go-live)
 
 ---
 

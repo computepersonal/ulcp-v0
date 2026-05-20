@@ -75,8 +75,8 @@ interface OnboardingStateResponse {
 
 // ─── Step definitions ─────────────────────────────────────────────────────────
 
-const STEP_LABELS = ['Business type', 'Details', 'Profile', 'Catalogue', 'Operations', 'Go live'];
-const TOTAL_STEPS = 6;
+const STEP_LABELS = ['Business type', 'Details', 'Profile', 'Catalogue', 'Operations', 'Staff', 'Go live'];
+const TOTAL_STEPS = 7;
 
 // ─── Wizard ───────────────────────────────────────────────────────────────────
 
@@ -436,7 +436,29 @@ export default function Onboard() {
     }
   };
 
-  // ── Step 6: Complete onboarding ───────────────────────────────────────────
+  // ── Step 6: Save staff step ───────────────────────────────────────────────
+  const saveStaffStep = async () => {
+    if (!tenantId) return;
+    setLoading(true);
+    setError('');
+    try {
+      const res = await fetch(`${tenantUrl}/api/v1/onboarding/${tenantId}/step`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${liveToken}` },
+        body: JSON.stringify({ step: 6, data: { confirmed: true } }),
+      });
+      const data = (await res.json()) as { success: boolean; error?: string };
+      if (res.status === 401) { handle401(data.error); return; }
+      if (!res.ok || !data.success) { setError(data.error ?? 'Failed to save step.'); return; }
+      goToStep(7);
+    } catch {
+      setError('Unable to connect.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // ── Step 7: Complete onboarding ───────────────────────────────────────────
   const finishOnboarding = async () => {
     if (!tenantId) return;
     setLoading(true);
@@ -454,7 +476,7 @@ export default function Onboard() {
         return;
       }
 
-      dispatch(setOnboardingStatus({ completed: true, step: 6 }));
+      dispatch(setOnboardingStatus({ completed: true, step: 7 }));
       navigate('/setup');
     } catch {
       setError('Unable to connect. Please check your connection.');
@@ -576,6 +598,15 @@ export default function Onboard() {
         )}
 
         {step === 6 && (
+          <Step6Staff
+            loading={loading}
+            onNext={() => void saveStaffStep()}
+            onSkip={() => void saveStaffStep()}
+            onBack={() => goToStep(5)}
+          />
+        )}
+
+        {step === 7 && (
           <Step6GoLive
             bizName={bizName}
             businessType={businessType}
@@ -887,11 +918,20 @@ function Step5Operations({
         <p className="text-sm text-gray-800 font-medium mb-1">
           {isDineIn ? 'Tables & Floor Map' : 'Delivery Zones'}
         </p>
-        <p className="text-xs text-gray-500">
+        <p className="text-xs text-gray-500 mb-4">
           {isDineIn
             ? 'Add tables, create sections (indoor, outdoor, VIP), and assign seating capacity. You can do this from the Floor Map page after onboarding.'
             : 'Configure your delivery radius, pricing, and zones. You can set this up from Settings after onboarding.'}
         </p>
+        {isDineIn && (
+          <Link
+            to="/floor-map"
+            onClick={() => localStorage.setItem('onboarding_floormap_return', 'true')}
+            className="inline-flex items-center gap-2 px-4 py-2 bg-brand-500 hover:bg-brand-600 text-white text-sm font-semibold rounded-xl transition-colors"
+          >
+            Set up floor map →
+          </Link>
+        )}
       </div>
 
       <div className="flex justify-between mt-8">
@@ -914,21 +954,112 @@ function Step5Operations({
   );
 }
 
-// ─── Step 6: Go Live ─────────────────────────────────────────────────────────
+// ─── Step 6: Staff ───────────────────────────────────────────────────────────
+
+function Step6Staff({
+  loading, onNext, onSkip, onBack,
+}: { loading: boolean; onNext: () => void; onSkip: () => void; onBack: () => void }) {
+  return (
+    <div>
+      <h2 className="text-2xl font-bold text-gray-900 mb-1">Invite your team</h2>
+      <p className="text-gray-500 text-sm mb-8">
+        Add staff members so they can take orders, manage the floor, and run the kitchen.
+      </p>
+
+      <div className="bg-gray-50 border border-gray-200 rounded-2xl p-6 mb-6">
+        <div className="text-3xl mb-3">👥</div>
+        <p className="text-sm text-gray-800 font-medium mb-1">Invite waiters, cashiers & kitchen staff</p>
+        <p className="text-xs text-gray-500 mb-4">
+          Each staff member gets their own login. You can set their role and permissions from the Staff page.
+        </p>
+        <Link
+          to="/staff"
+          onClick={() => localStorage.setItem('onboarding_staff_return', 'true')}
+          className="inline-flex items-center gap-2 px-4 py-2 bg-brand-500 hover:bg-brand-600 text-white text-sm font-semibold rounded-xl transition-colors"
+        >
+          Invite staff members →
+        </Link>
+      </div>
+
+      <div className="flex justify-between mt-8">
+        <button onClick={onBack} className="px-6 py-3 border border-gray-200 text-gray-600 font-medium rounded-xl hover:border-gray-300 transition-colors">
+          Back
+        </button>
+        <div className="flex gap-3">
+          <button onClick={onSkip} className="px-6 py-3 text-gray-400 font-medium rounded-xl hover:text-gray-600 transition-colors">
+            Skip for now
+          </button>
+          <button
+            onClick={onNext} disabled={loading}
+            className="px-8 py-3 bg-brand-500 hover:bg-brand-600 disabled:opacity-40 text-white font-semibold rounded-xl transition-colors"
+          >
+            {loading ? 'Saving...' : 'Continue'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Step 7: Go Live ─────────────────────────────────────────────────────────
 
 function Step6GoLive({
   bizName, businessType, loading, onComplete,
 }: { bizName: string; businessType: string; loading: boolean; onComplete: () => void }) {
   const [goLive, setGoLive] = useState(false);
+  const [hasItems, setHasItems] = useState(false);
+  const [hasZones, setHasZones] = useState(false);
+  const [hasStaff, setHasStaff] = useState(false);
   const typeLabel = BUSINESS_TYPES.find((t) => t.value === businessType)?.label ?? businessType;
+
+  const auth = useAppSelector((s) => s.auth);
+  const tenantId = auth.user?.tenant_id ?? '';
+  const token = auth.token ?? '';
+  const catalogueUrl = import.meta.env.VITE_CATALOGUE_SERVICE_URL ?? 'http://localhost:3003';
+  const tenantServiceUrl = import.meta.env.VITE_TENANT_SERVICE_URL ?? 'http://localhost:3002';
+
+  useEffect(() => {
+    if (!tenantId || !token) return;
+    // Check if any catalogue items exist
+    void fetch(`${catalogueUrl}/api/v1/catalogue/${tenantId}/items`, {
+      headers: { Authorization: `Bearer ${token}` },
+    }).then(async (r) => {
+      const d = (await r.json()) as { success: boolean; data?: { items?: unknown[] } };
+      if (d.success && (d.data?.items?.length ?? 0) > 0) setHasItems(true);
+    }).catch(() => undefined);
+
+    // Check if any staff (beyond the owner) have been invited
+    void fetch(`${tenantServiceUrl}/api/v1/tenants/${tenantId}/staff`, {
+      headers: { Authorization: `Bearer ${token}` },
+    }).then(async (r) => {
+      const d = (await r.json()) as { success: boolean; data?: { staff?: unknown[] } };
+      if (d.success && (d.data?.staff?.length ?? 0) > 1) setHasStaff(true);
+    }).catch(() => undefined);
+
+    // Check if any floor zones exist (fetch primary branch first, then its sections)
+    void fetch(`${tenantServiceUrl}/api/v1/tenants/${tenantId}/branches`, {
+      headers: { Authorization: `Bearer ${token}` },
+    }).then(async (r) => {
+      const d = (await r.json()) as { success: boolean; data?: { branches?: Array<{ id: string; is_primary: boolean }> } };
+      const primary = d.data?.branches?.find((b) => b.is_primary) ?? d.data?.branches?.[0];
+      if (!primary) return;
+      return fetch(`${tenantServiceUrl}/api/v1/tenants/${tenantId}/branches/${primary.id}/sections`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+    }).then(async (r) => {
+      if (!r) return;
+      const d = (await r.json()) as { success: boolean; data?: { sections?: unknown[] } };
+      if (d.success && (d.data?.sections?.length ?? 0) > 0) setHasZones(true);
+    }).catch(() => undefined);
+  }, [tenantId, token, catalogueUrl, tenantServiceUrl]);
 
   const checklist = [
     { done: true, text: 'Account created' },
     { done: true, text: `Business type set — ${typeLabel}` },
     { done: true, text: `"${bizName}" profile ready` },
-    { done: false, text: 'Add your menu / catalogue items' },
-    { done: false, text: 'Invite your first staff member' },
-    { done: false, text: 'Configure tables or delivery zones' },
+    { done: hasItems, text: 'Add your menu / catalogue items' },
+    { done: hasZones, text: 'Configure tables or delivery zones' },
+    { done: hasStaff, text: 'Invite your first staff member' },
   ];
 
   return (

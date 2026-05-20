@@ -4,7 +4,7 @@ import { useAppSelector } from '../hooks/redux';
 const OWNER_ROLES = new Set(['tenant_owner', 'primary_owner', 'managing_partner', 'platform_superadmin']);
 
 // Routes accessible even while onboarding is incomplete (e.g. launched from wizard)
-const ONBOARDING_PASSTHROUGH = new Set(['/catalogue']);
+const ONBOARDING_PASSTHROUGH = new Set(['/catalogue', '/floor-map', '/staff']);
 
 interface ProtectedRouteProps {
   children: React.ReactNode;

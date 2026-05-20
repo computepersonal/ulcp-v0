@@ -80,4 +80,5 @@ Invite flow: email + role + permissions selector
 ### 6. Settings
 
 Business profile, branches, payment setup,
-QR management, printer config (IP address), notifications, subscription
+QR management, KDS setup codes (kitchen/bar 6-digit code generator with countdown),
+printer config (IP address), notifications, subscription, promotions, jukebox

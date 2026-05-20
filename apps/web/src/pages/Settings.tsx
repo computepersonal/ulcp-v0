@@ -4,7 +4,7 @@ import { apiFetch } from '../lib/apiFetch';
 import SetupReturnBanner from '../components/SetupReturnBanner';
 import { QRCodeSVG } from 'qrcode.react';
 
-type SettingsTab = 'business' | 'branches' | 'qr' | 'subscription' | 'promotions' | 'jukebox';
+type SettingsTab = 'business' | 'branches' | 'qr' | 'kds' | 'subscription' | 'promotions' | 'jukebox';
 
 interface Promotion {
   id: string;
@@ -1188,6 +1188,139 @@ function BillingModeCard({ tenantId, token }: { tenantId: string; token: string 
   );
 }
 
+// ─── KDS Tab ─────────────────────────────────────────────────────────────────
+
+type Station = 'kitchen' | 'bar';
+
+interface GeneratedCode {
+  station: Station;
+  code: string;
+  expiresAt: Date;
+  secondsLeft: number;
+}
+
+function KdsTab({ tenantId, token }: { tenantId: string; token: string }) {
+  const tenantUrl = import.meta.env.VITE_TENANT_SERVICE_URL ?? 'http://localhost:3002';
+  const [branchId, setBranchId] = useState('');
+  const [codes, setCodes] = useState<GeneratedCode[]>([]);
+  const [generating, setGenerating] = useState<Station | null>(null);
+  const [error, setError] = useState('');
+
+  // Fetch primary branch on mount
+  useEffect(() => {
+    void apiFetch(`${tenantUrl}/api/v1/tenants/${tenantId}/branches`, {
+      headers: { Authorization: `Bearer ${token}` },
+    }).then(async (r) => {
+      const d = (await r.json()) as { data?: { branches?: Array<{ id: string; is_primary: boolean }> } };
+      const primary = d.data?.branches?.find((b) => b.is_primary) ?? d.data?.branches?.[0];
+      if (primary) setBranchId(primary.id);
+    });
+  }, [tenantId, token, tenantUrl]);
+
+  // Countdown timer — tick every second
+  useEffect(() => {
+    if (codes.length === 0) return;
+    const interval = setInterval(() => {
+      setCodes((prev) =>
+        prev
+          .map((c) => ({ ...c, secondsLeft: Math.max(0, Math.floor((c.expiresAt.getTime() - Date.now()) / 1000)) }))
+          .filter((c) => c.secondsLeft > 0)
+      );
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [codes.length]);
+
+  const generate = async (station: Station) => {
+    if (!branchId) return;
+    setGenerating(station);
+    setError('');
+    try {
+      const res = await apiFetch(`${tenantUrl}/api/v1/tenants/${tenantId}/generate-code`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ branch_id: branchId, station }),
+      });
+      const d = (await res.json()) as { success: boolean; data?: { code: string; expires_at: string }; error?: string };
+      if (!res.ok || !d.success || !d.data) { setError(d.error ?? 'Failed to generate code'); return; }
+      const expiresAt = new Date(d.data.expires_at);
+      setCodes((prev) => [
+        ...prev.filter((c) => c.station !== station),
+        { station, code: d.data!.code, expiresAt, secondsLeft: Math.floor((expiresAt.getTime() - Date.now()) / 1000) },
+      ]);
+    } catch {
+      setError('Unable to connect to server');
+    } finally {
+      setGenerating(null);
+    }
+  };
+
+  const formatTime = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+
+  const stations: Array<{ id: Station; label: string; emoji: string; desc: string }> = [
+    { id: 'kitchen', label: 'Kitchen Display', emoji: '👨‍🍳', desc: 'Shows food orders' },
+    { id: 'bar',     label: 'Bar Display',     emoji: '🍸', desc: 'Shows drink orders' },
+  ];
+
+  return (
+    <div className="max-w-lg space-y-4">
+      <div className="bg-brand-50 border border-brand-100 rounded-2xl p-4 text-sm text-brand-700">
+        <p className="font-semibold mb-1">How to connect a KDS screen</p>
+        <ol className="list-decimal list-inside space-y-1 text-brand-600">
+          <li>Generate a code below for kitchen or bar</li>
+          <li>Open <span className="font-mono bg-brand-100 px-1 rounded">http://localhost:5177</span> on your kitchen TV/tablet</li>
+          <li>Enter the 6-digit code — screen connects instantly</li>
+          <li>Code expires in 10 minutes and works only once</li>
+        </ol>
+      </div>
+
+      {error && (
+        <div className="bg-red-50 border border-red-200 rounded-xl p-3 text-red-600 text-sm">{error}</div>
+      )}
+
+      {stations.map((s) => {
+        const active = codes.find((c) => c.station === s.id);
+        return (
+          <div key={s.id} className="bg-white border border-gray-100 rounded-2xl p-5 shadow-sm">
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-3">
+                <span className="text-2xl">{s.emoji}</span>
+                <div>
+                  <p className="font-semibold text-gray-900">{s.label}</p>
+                  <p className="text-xs text-gray-400">{s.desc}</p>
+                </div>
+              </div>
+              <button
+                onClick={() => void generate(s.id)}
+                disabled={generating === s.id || !branchId}
+                className="px-4 py-2 bg-brand-500 hover:bg-brand-600 disabled:opacity-50 text-white text-sm font-semibold rounded-xl transition-colors"
+              >
+                {generating === s.id ? 'Generating...' : active ? 'Regenerate' : 'Generate Code'}
+              </button>
+            </div>
+
+            {active && (
+              <div className="bg-gray-50 border border-gray-200 rounded-xl p-4 flex items-center justify-between">
+                <div>
+                  <p className="text-xs text-gray-400 mb-1">Setup code</p>
+                  <p className="text-4xl font-mono font-bold tracking-widest text-gray-900">
+                    {active.code.slice(0, 3)} {active.code.slice(3)}
+                  </p>
+                </div>
+                <div className="text-right">
+                  <p className="text-xs text-gray-400 mb-1">Expires in</p>
+                  <p className={`text-xl font-mono font-bold ${active.secondsLeft < 60 ? 'text-red-500' : 'text-gray-700'}`}>
+                    {formatTime(active.secondsLeft)}
+                  </p>
+                </div>
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 export default function Settings() {
   const auth = useAppSelector((s) => s.auth);
   const [tab, setTab] = useState<SettingsTab>('business');
@@ -1198,6 +1331,7 @@ export default function Settings() {
     { id: 'business', label: 'Business' },
     { id: 'branches', label: 'Branches' },
     { id: 'qr', label: 'QR Codes' },
+    { id: 'kds', label: '📺 KDS' },
     { id: 'subscription', label: 'Subscription' },
     { id: 'promotions', label: '📢 Promotions' },
     { id: 'jukebox', label: '🎵 Jukebox' },
@@ -1265,6 +1399,10 @@ export default function Settings() {
 
       {tab === 'qr' && auth.user?.tenant_id && auth.token && (
         <QRCodesTab tenantId={auth.user.tenant_id} token={auth.token} />
+      )}
+
+      {tab === 'kds' && auth.user?.tenant_id && auth.token && (
+        <KdsTab tenantId={auth.user.tenant_id} token={auth.token} />
       )}
 
       {tab === 'promotions' && auth.user?.tenant_id && auth.token && (

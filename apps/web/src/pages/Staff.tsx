@@ -1,7 +1,27 @@
 import { useState, useEffect, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useAppSelector } from '../hooks/redux';
 import { apiFetch } from '../lib/apiFetch';
 import SetupReturnBanner from '../components/SetupReturnBanner';
+
+function OnboardReturnBanner() {
+  const navigate = useNavigate();
+  if (!localStorage.getItem('onboarding_staff_return')) return null;
+  return (
+    <div className="bg-indigo-600 text-white px-4 py-2.5 flex items-center justify-between text-sm">
+      <span className="font-medium">You came here from onboarding</span>
+      <button
+        onClick={() => {
+          localStorage.removeItem('onboarding_staff_return');
+          navigate('/onboard');
+        }}
+        className="flex items-center gap-1.5 bg-white text-indigo-600 font-semibold px-3 py-1 rounded-lg text-xs hover:bg-indigo-50 transition-colors"
+      >
+        ← Back to onboarding
+      </button>
+    </div>
+  );
+}
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -387,6 +407,7 @@ export default function Staff() {
   if (loading) {
     return (
       <div>
+        <OnboardReturnBanner />
         <SetupReturnBanner />
         <div className="p-6 flex items-center justify-center min-h-[60vh]">
           <div className="text-gray-400 text-sm">Loading staff...</div>
@@ -397,6 +418,7 @@ export default function Staff() {
 
   return (
     <div>
+      <OnboardReturnBanner />
       <SetupReturnBanner />
       <div className="p-6">
         {/* Header */}

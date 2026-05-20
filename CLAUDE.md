@@ -392,6 +392,14 @@ CLOUDFLARE_R2_SECRET_KEY, CLOUDFLARE_R2_BUCKET, CLOUDFLARE_API_TOKEN
 2026-04-27: apps/web: /onboard redirect gated to OWNER_ROLES; waiters always go to /floor-map
 2026-04-27: apps/web: FloorMap empty state — owners see add controls, others see manager message
 2026-04-27: root CLAUDE.md restructured — Bootstrap → docs/BOOTSTRAP.md, Build Order → docs/BUILD_ORDER.md
+2026-05-20: tenant-service: onboarding wizard 6→7 steps — Step 6 Staff inserted before Go Live (step6Schema + step7Schema)
+2026-05-20: apps/web: Onboard wizard deep-links to /floor-map (Step 5) and /staff (Step 6); FloorMap/Staff show "← Back to onboarding" banner via onboarding_*_return localStorage keys
+2026-05-20: apps/web: Step 7 Go Live checklist queries catalogue items, branch sections, and staff endpoints to mark items done in real time
+2026-05-20: apps/web: FloorMap empty state now requires a floor zone before any table can be added; AddTableModal makes zone required
+2026-05-20: apps/web: Settings — new 📺 KDS tab generates 6-digit setup codes (10-min expiry, countdown) for kitchen / bar displays
+2026-05-20: apps/web: ProtectedRoute — /floor-map and /staff added to ONBOARDING_PASSTHROUGH so wizard deep-links work pre-completion
+2026-05-20: services (6): dev script migrated from ts-node-dev → tsx watch (analytics, delivery, inventory, order, procurement, superadmin); tsx added as root devDep
+2026-05-20: .claude/settings.local.json removed from tracking and gitignored — per-developer permission allowlist
 ```
 
 ---

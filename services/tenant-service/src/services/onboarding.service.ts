@@ -43,6 +43,11 @@ const step5Schema = z.object({
 });
 
 const step6Schema = z.object({
+  // Staff invite step — optional confirmation
+  confirmed: z.boolean().optional(),
+});
+
+const step7Schema = z.object({
   // Go Live — nothing to validate, just confirmation
 });
 
@@ -53,6 +58,7 @@ const STEP_SCHEMAS: Record<number, z.ZodSchema> = {
   4: step4Schema,
   5: step5Schema,
   6: step6Schema,
+  7: step7Schema,
 };
 
 // ─── Setup tasks (post-onboarding checklist) ─────────────────────────────────
