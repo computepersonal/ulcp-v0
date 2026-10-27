@@ -53,6 +53,17 @@ Flags:
 
 To stop everything: `Ctrl+C` in the `pnpm dev` terminal, then `docker compose -f docker-compose.dev.yml down` to stop the databases.
 
+### Day-to-day: one-shot start / stop
+
+After setup, `pnpm start` brings up Docker Desktop (if needed), Postgres + Redis, frees stale dev ports, starts every implemented service and app, and prints a health table. Stub packages (delivery/analytics/superadmin services, mobile/superadmin apps) are skipped.
+
+```powershell
+pnpm start           # everything
+pnpm start -NoApps   # backend only
+pnpm start -Setup    # also pnpm install + prisma generate + db push (after pulling schema changes)
+pnpm stop            # kill dev processes + stop the containers
+```
+
 ## Quick start (manual — if you'd rather not run the script)
 
 ```powershell

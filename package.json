@@ -3,6 +3,8 @@
   "private": true,
   "scripts": {
     "dev": "turbo dev --concurrency 30",
+    "start": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/start-all.ps1",
+    "stop": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/start-all.ps1 -Stop",
     "build": "turbo build",
     "test": "turbo test",
     "lint": "turbo lint",
