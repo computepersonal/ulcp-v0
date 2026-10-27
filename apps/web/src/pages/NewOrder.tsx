@@ -166,7 +166,7 @@ export default function NewOrder() {
           apiFetch(`${tenantUrl}/api/v1/tenants/${tenantId}/branches/${primary.id}/tables`, { headers }),
           apiFetch(`${tenantUrl}/api/v1/tenants/${tenantId}/branches/${primary.id}/sessions?status=open,pending_confirmation`, { headers }),
           apiFetch(`${tenantUrl}/api/v1/tenants/${tenantId}/branches/${primary.id}/sections`, { headers }),
-          apiFetch(`${orderUrl}/api/v1/orders/${tenantId}?branch_id=${primary.id}&status=pending,confirmed,preparing,ready`, { headers }),
+          apiFetch(`${orderUrl}/api/v1/orders/${tenantId}?branch_id=${primary.id}&status=pending,preparing,ready`, { headers }),
         ]);
 
         // Build session lookup: table_id → session_id

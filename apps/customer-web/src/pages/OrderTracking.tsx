@@ -5,7 +5,7 @@ import { useAppSelector } from '../hooks/redux';
 import { NativeAdCard } from '../components/ads/NativeAdCard';
 import { useAds } from '../components/ads/useAds';
 
-type OrderStatus = 'pending' | 'confirmed' | 'preparing' | 'ready' | 'served' | 'delivered';
+type OrderStatus = 'pending' | 'preparing' | 'ready' | 'served' | 'delivered';
 
 interface OrderData {
   id: string;
@@ -16,9 +16,14 @@ interface OrderData {
   total?: number;
 }
 
+interface RejectedItem {
+  item_name: string;
+  reason: string;
+  at: number;
+}
+
 const STEPS: Array<{ status: OrderStatus; label: string; icon: string }> = [
   { status: 'pending', label: 'Order Placed', icon: '📋' },
-  { status: 'confirmed', label: 'Confirmed', icon: '✅' },
   { status: 'preparing', label: 'Being Prepared', icon: '👨‍🍳' },
   { status: 'ready', label: 'Ready', icon: '🔔' },
   { status: 'served', label: 'Served', icon: '🍽' }
@@ -56,6 +61,7 @@ export default function OrderTracking() {
   });
   const [connected, setConnected] = useState(false);
   const [showExitSheet, setShowExitSheet] = useState(false);
+  const [rejectedItems, setRejectedItems] = useState<RejectedItem[]>([]);
   const orderServiceUrl = import.meta.env.VITE_ORDER_SERVICE_URL ?? 'http://localhost:3004';
 
   // Fetch current order state on mount — ensures status is correct on navigate-back
@@ -115,6 +121,15 @@ export default function OrderTracking() {
           } catch { /* ignore */ }
         }
       }
+    });
+
+    // Kitchen rejected one item — surface it to the customer so they know to reorder
+    socket.on('kot:item:rejected', (data: { order_id?: string; item_name?: string; reason?: string }) => {
+      if (data.order_id !== id || !data.item_name) return;
+      setRejectedItems(prev => [
+        ...prev,
+        { item_name: data.item_name!, reason: data.reason ?? 'Kitchen unable to fulfill', at: Date.now() },
+      ]);
     });
 
     return () => { socket.disconnect(); };
@@ -190,6 +205,29 @@ export default function OrderTracking() {
             })}
           </div>
         </div>
+
+        {/* Kitchen rejection notice — shown when chef can't fulfill an item */}
+        {rejectedItems.length > 0 && (
+          <div className="bg-red-50 border border-red-200 rounded-2xl p-4">
+            <div className="flex items-start gap-3">
+              <div className="text-2xl">⚠️</div>
+              <div className="flex-1">
+                <div className="font-semibold text-red-700 text-sm mb-1">Sorry — kitchen couldn't make {rejectedItems.length === 1 ? 'an item' : 'some items'}</div>
+                <div className="space-y-1.5">
+                  {rejectedItems.map((r, idx) => (
+                    <div key={idx} className="text-xs text-red-600">
+                      <span className="font-semibold">{r.item_name}</span>
+                      <span className="text-red-500 italic"> — {r.reason}</span>
+                    </div>
+                  ))}
+                </div>
+                <div className="text-xs text-red-500/80 mt-2">
+                  No charge for these items. {isAtPlace && 'Tap "Back to Menu" to add a substitute.'}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Order items */}
         {order.items && order.items.length > 0 && (

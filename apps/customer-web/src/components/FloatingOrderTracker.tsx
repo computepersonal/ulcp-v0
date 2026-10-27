@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { io, Socket } from 'socket.io-client';
 import { useAppSelector } from '../hooks/redux';
 
-type OrderStatus = 'pending' | 'confirmed' | 'preparing' | 'ready' | 'served' | 'delivered';
+type OrderStatus = 'pending' | 'preparing' | 'ready' | 'served' | 'delivered';
 
 interface ActiveOrder {
   id: string;
@@ -16,7 +16,6 @@ interface ActiveOrder {
 
 const STATUS_CONFIG: Record<OrderStatus, { label: string; icon: string; color: string; ring: string; text: string }> = {
   pending:   { label: 'Order Placed',      icon: '📋', color: 'bg-gray-500',   ring: '#9ca3af', text: 'text-gray-600' },
-  confirmed: { label: 'Order Confirmed',   icon: '✅', color: 'bg-blue-500',   ring: '#3b82f6', text: 'text-blue-600' },
   preparing: { label: 'Order In Progress', icon: '👨‍🍳', color: 'bg-amber-500', ring: '#f59e0b', text: 'text-amber-600' },
   ready:     { label: 'Order Ready',       icon: '🔔', color: 'bg-green-500',  ring: '#10b981', text: 'text-green-600' },
   served:    { label: 'Order Served',      icon: '🍽', color: 'bg-green-600',  ring: '#059669', text: 'text-green-700' },
@@ -25,8 +24,7 @@ const STATUS_CONFIG: Record<OrderStatus, { label: string; icon: string; color: s
 
 function progressPct(status: OrderStatus): number {
   switch (status) {
-    case 'pending':   return 20;
-    case 'confirmed': return 40;
+    case 'pending':   return 25;
     case 'preparing': return 60;
     case 'ready':     return 85;
     default:          return 100;

@@ -40,9 +40,10 @@ function formatAmount(paise: number): string {
 
 const STATUS_STYLE: Record<string, { label: string; color: string }> = {
   placed: { label: 'Placed', color: 'bg-blue-100 text-blue-700' },
-  confirmed: { label: 'Confirmed', color: 'bg-yellow-100 text-yellow-700' },
+  pending: { label: 'Placed', color: 'bg-blue-100 text-blue-700' },
   preparing: { label: 'Preparing', color: 'bg-orange-100 text-orange-700' },
   ready: { label: 'Ready', color: 'bg-green-100 text-green-700' },
+  served: { label: 'Served', color: 'bg-green-100 text-green-700' },
   completed: { label: 'Completed', color: 'bg-green-100 text-green-700' },
   cancelled: { label: 'Cancelled', color: 'bg-red-100 text-red-700' },
 };

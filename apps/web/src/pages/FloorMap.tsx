@@ -614,7 +614,7 @@ export default function FloorMap() {
       };
       // Fetch active orders to determine table occupancy + payment status
       const ordersRes = await apiFetch(
-        `${orderServiceUrl}/api/v1/orders/${tenantId}?branch_id=${primary.id}&status=pending,confirmed,preparing,ready,completed`,
+        `${orderServiceUrl}/api/v1/orders/${tenantId}?branch_id=${primary.id}&status=pending,preparing,ready,completed`,
         { headers: { Authorization: `Bearer ${auth.token}` } }
       ).catch(() => null);
 

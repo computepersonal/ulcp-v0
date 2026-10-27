@@ -15,7 +15,11 @@ import {
   createKOT,
   findKOTs,
   findKOTById,
+  findKOTsByOrderId,
   updateKOTStatus,
+  updateKOTStatusAndItems,
+  updateKOTItems,
+  allKotsRejected,
 } from "../repositories/kot.repository";
 import { createCommissionRecord } from "../repositories/commission.repository";
 import { nextOrderNumber, nextKotNumber } from "../repositories/counter.repository";
@@ -364,6 +368,38 @@ export async function changeOrderStatus(
   const order = await findOrderById(order_id, tenant_id);
   if (!order) throw new AppError("Order not found", 404);
 
+  // ── Kitchen-state guards: staff POS cannot bypass KDS for transitions that depend on it ──
+  // "preparing" — every KOT must be at least acknowledged on the KDS
+  // "ready"     — every non-rejected KOT must be ready (or already served)
+  if (new_status === "preparing" || new_status === "ready") {
+    const kots = await findKOTsByOrderId(order_id, tenant_id);
+    if (kots.length > 0) {
+      const liveKots = kots.filter((k) => k.status !== "rejected");
+      if (new_status === "preparing") {
+        const pending = liveKots.filter((k) => k.status === "pending");
+        if (pending.length > 0) {
+          const numbers = pending.map((k) => k.kot_number).join(", ");
+          throw new AppError(
+            `Kitchen hasn't accepted yet (${numbers}). Wait for the chef to accept items on the KDS.`,
+            409
+          );
+        }
+      }
+      if (new_status === "ready") {
+        const notReady = liveKots.filter(
+          (k) => k.status !== "ready" && k.status !== "served"
+        );
+        if (notReady.length > 0) {
+          const numbers = notReady.map((k) => `${k.kot_number} (${k.status})`).join(", ");
+          throw new AppError(
+            `Kitchen is still preparing (${numbers}). Items must be marked ready on the KDS first.`,
+            409
+          );
+        }
+      }
+    }
+  }
+
   const updated = await updateOrderStatus(order_id, new_status);
   await createStatusHistory(order_id, new_status, changed_by);
 
@@ -519,6 +555,43 @@ export async function getOrderBill(order_id: string, tenant_id: string) {
 }
 
 /**
+ * When kitchen acknowledges a KOT, the parent order should leave the staff POS
+ * "Pending" / "Confirmed" column and show up under "Preparing" — same status
+ * change `changeOrderStatus()` makes when staff manually accept. Idempotent:
+ * skips if order is already preparing or beyond.
+ */
+async function bumpOrderToPreparingFromKitchen(
+  order_id: string,
+  tenant_id: string,
+  branch_id: string | null,
+  reason: string
+): Promise<void> {
+  const order = await findOrderById(order_id, tenant_id);
+  if (!order) return;
+  if (order.status !== "pending" && order.status !== "confirmed") return;
+
+  await updateOrderStatus(order_id, "preparing");
+  await createStatusHistory(order_id, "preparing", "kitchen", reason);
+
+  await redisPublish(
+    "ORDER_STATUS_CHANGED",
+    JSON.stringify({ order_id, tenant_id, branch_id, status: "preparing" })
+  ).catch((err: unknown) =>
+    logger.warn({ err }, "Failed to publish ORDER_STATUS_CHANGED on kitchen-ack auto-bump")
+  );
+
+  // Auto-deduct ingredient stock — same hook `changeOrderStatus()` runs on manual preparing
+  if (branch_id) {
+    void deductStockForOrder({
+      tenant_id,
+      branch_id,
+      order_id,
+      items: order.items,
+    });
+  }
+}
+
+/**
  * Acknowledge a KOT — used by all 3 modes.
  * - kds: called when chef taps on KDS screen
  * - printer: called by printer-ack endpoint after successful print
@@ -529,21 +602,237 @@ export async function acknowledgeKot(kot_id: string, tenant_id: string) {
   const kot = await findKOTById(kot_id, tenant_id);
   if (!kot) throw new AppError("KOT not found", 404);
   if (kot.status !== "pending") {
-    // Already acknowledged — idempotent, return current state
     return kot;
   }
 
-  const updated = await updateKOTStatus(kot_id, "acknowledged");
+  // Flip all pending items → preparing in the same write that flips KOT to acknowledged
+  const items = (kot.items as Array<{ id: string; status?: string }>).map(
+    (it) => ({ ...it, status: it.status === "pending" || !it.status ? "preparing" : it.status })
+  );
+  const updated = await updateKOTStatusAndItems(
+    kot_id,
+    "acknowledged",
+    items as unknown as Prisma.InputJsonValue[]
+  );
 
-  // Cancel the pending auto-ack job if it exists (for kds/printer modes)
   await cancelKotAutoAck(kot_id).catch(
     (err: unknown) => logger.warn({ err, kot_id }, "Could not cancel auto-ack job")
   );
 
   await redisPublish(
     "KOT_STATUS_CHANGED",
-    JSON.stringify({ kot_id, tenant_id, status: "acknowledged" })
+    JSON.stringify({
+      kot_id,
+      tenant_id,
+      branch_id: kot.branch_id,
+      station: kot.station,
+      status: "acknowledged",
+      items,
+    })
   ).catch((err: unknown) => logger.warn({ err }, "Failed to publish KOT_STATUS_CHANGED"));
+
+  await bumpOrderToPreparingFromKitchen(
+    kot.order_id,
+    tenant_id,
+    kot.branch_id,
+    "Kitchen acknowledged KOT"
+  );
+
+  return updated;
+}
+
+/**
+ * Set the status of a single item within a KOT.
+ *
+ * KDS per-item flow:
+ * - chef taps ✓ on a pending item → status "preparing"
+ * - chef taps ✗ on a pending item → status "cancelled" (with reason)
+ * - once every item has been decided (status ≠ "pending"), the KOT auto-flips:
+ *     • all items cancelled → KOT status "rejected" (and order cancelled if all KOTs rejected)
+ *     • else                → KOT status "acknowledged"
+ *
+ * When the last non-cancelled item flips to "ready", auto-progresses the KOT
+ * through "ready" → "served" so it disappears from the kitchen view, and
+ * triggers the same order-level auto-bump that the manual SERVED flow does.
+ */
+export async function setKotItemStatus(
+  kot_id: string,
+  tenant_id: string,
+  item_id: string,
+  new_status: "pending" | "preparing" | "ready" | "served" | "cancelled",
+  reason?: string
+) {
+  const kot = await findKOTById(kot_id, tenant_id);
+  if (!kot) throw new AppError("KOT not found", 404);
+
+  const items = (
+    kot.items as Array<{ id: string; status?: string; reject_reason?: string }>
+  ).map((it) =>
+    it.id === item_id
+      ? {
+          ...it,
+          status: new_status,
+          ...(new_status === "cancelled" && reason ? { reject_reason: reason } : {}),
+        }
+      : it
+  );
+
+  let updated = await updateKOTItems(kot_id, items as unknown as Prisma.InputJsonValue[]);
+  let kotStatus: string = kot.status;
+
+  // ── Auto-acknowledge / auto-reject when KOT is pending and every item is decided ──
+  if (kot.status === "pending") {
+    const allDecided = items.length > 0 && items.every((i) => i.status && i.status !== "pending");
+    if (allDecided) {
+      const allCancelled = items.every((i) => i.status === "cancelled");
+      if (allCancelled) {
+        updated = await updateKOTStatus(kot_id, "rejected");
+        kotStatus = "rejected";
+        await cancelKotAutoAck(kot_id).catch((err: unknown) =>
+          logger.warn({ err, kot_id }, "Could not cancel auto-ack job")
+        );
+        await redisPublish(
+          "KOT_REJECTED",
+          JSON.stringify({
+            kot_id,
+            kot_number: kot.kot_number,
+            order_id: kot.order_id,
+            tenant_id,
+            branch_id: kot.branch_id,
+            reason: reason ?? "Kitchen rejected all items",
+          })
+        ).catch((err: unknown) => logger.warn({ err }, "Failed to publish KOT_REJECTED"));
+
+        // If every KOT for the order is now rejected → cancel the order
+        const allRejected = await allKotsRejected(kot.order_id, tenant_id);
+        if (allRejected) {
+          await updateOrderStatus(kot.order_id, "cancelled", {
+            cancelled_reason: `Kitchen rejected: ${reason ?? "all items"}`,
+            cancelled_by: "kitchen",
+          });
+          await createStatusHistory(
+            kot.order_id,
+            "cancelled",
+            "kitchen",
+            `KOT rejected: ${reason ?? "all items"}`
+          );
+          await redisPublish(
+            "ORDER_STATUS_CHANGED",
+            JSON.stringify({
+              order_id: kot.order_id,
+              tenant_id,
+              branch_id: kot.branch_id,
+              status: "cancelled",
+              reason: `Kitchen rejected: ${reason ?? "all items"}`,
+            })
+          ).catch((err: unknown) =>
+            logger.warn({ err }, "Failed to publish ORDER_STATUS_CHANGED after kitchen reject all")
+          );
+        }
+      } else {
+        updated = await updateKOTStatus(kot_id, "acknowledged");
+        kotStatus = "acknowledged";
+        await cancelKotAutoAck(kot_id).catch((err: unknown) =>
+          logger.warn({ err, kot_id }, "Could not cancel auto-ack job")
+        );
+        await bumpOrderToPreparingFromKitchen(
+          kot.order_id,
+          tenant_id,
+          kot.branch_id,
+          "Kitchen accepted all items"
+        );
+      }
+    }
+  }
+
+  // Publish item-rejected event so waiter UI can surface the reason at the table
+  if (new_status === "cancelled") {
+    const cancelledItem = items.find((i) => i.id === item_id);
+    await redisPublish(
+      "KOT_ITEM_REJECTED",
+      JSON.stringify({
+        kot_id,
+        kot_number: kot.kot_number,
+        order_id: kot.order_id,
+        tenant_id,
+        branch_id: kot.branch_id,
+        item_id,
+        item_name: (cancelledItem as { name?: string } | undefined)?.name,
+        reason: reason ?? "Kitchen unable to fulfill",
+      })
+    ).catch((err: unknown) => logger.warn({ err }, "Failed to publish KOT_ITEM_REJECTED"));
+  }
+
+  await redisPublish(
+    "KOT_STATUS_CHANGED",
+    JSON.stringify({
+      kot_id,
+      tenant_id,
+      branch_id: kot.branch_id,
+      station: kot.station,
+      status: kotStatus,
+      items,
+    })
+  ).catch((err: unknown) => logger.warn({ err }, "Failed to publish KOT_STATUS_CHANGED on item update"));
+
+  // ── Auto-progress: when every non-cancelled item is "ready", flip the KOT to "ready" ──
+  // KOT then sits in "ready" — kitchen's job is done. The KDS filters ready KOTs out so
+  // the card clears. Marking KOTs "served" happens later when the waiter delivers and
+  // the staff POS moves the parent order ready → served.
+  const allItemsReady =
+    items.length > 0 &&
+    items.every((i) => i.status === "ready" || i.status === "served" || i.status === "cancelled") &&
+    items.some((i) => i.status === "ready" || i.status === "served");
+
+  if (allItemsReady && kot.status !== "ready" && kot.status !== "served") {
+    updated = await updateKOTStatus(kot_id, "ready");
+    await redisPublish(
+      "KOT_STATUS_CHANGED",
+      JSON.stringify({
+        kot_id,
+        tenant_id,
+        branch_id: kot.branch_id,
+        station: kot.station,
+        status: "ready",
+        items,
+      })
+    ).catch((err: unknown) => logger.warn({ err }, "Failed to publish KOT_STATUS_CHANGED ready"));
+
+    // Order-level auto-bump: when every KOT for the order is "ready" (or served, in case
+    // an earlier KOT was already manually marked served), move the order preparing → ready
+    // so the staff POS shows it under the "Ready" column.
+    const siblings = await findKOTsByOrderId(kot.order_id, tenant_id);
+    const allKitchenDone =
+      siblings.length > 0 &&
+      siblings.every((k) => k.status === "ready" || k.status === "served" || k.status === "rejected") &&
+      siblings.some((k) => k.status === "ready" || k.status === "served");
+
+    if (allKitchenDone) {
+      const parent = await findOrderById(kot.order_id, tenant_id);
+      if (parent && (parent.status === "preparing" || parent.status === "confirmed")) {
+        await updateOrderStatus(kot.order_id, "ready");
+        await createStatusHistory(kot.order_id, "ready", "kitchen", "All KOTs ready");
+
+        if (parent.table_id && parent.branch_id) {
+          updateTableStatus(tenant_id, parent.branch_id, parent.table_id, "billed").catch(
+            (err: unknown) => logger.warn({ err, table_id: parent.table_id }, "Failed to mark table billed on auto-ready")
+          );
+        }
+
+        await redisPublish(
+          "ORDER_STATUS_CHANGED",
+          JSON.stringify({
+            order_id: kot.order_id,
+            tenant_id,
+            branch_id: kot.branch_id,
+            status: "ready",
+          })
+        ).catch((err: unknown) =>
+          logger.warn({ err }, "Failed to publish ORDER_STATUS_CHANGED after KOTs ready")
+        );
+      }
+    }
+  }
 
   return updated;
 }

@@ -407,6 +407,278 @@ function QRCodesTab({ tenantId, token }: { tenantId: string; token: string }) {
   );
 }
 
+// ─── Kitchen Displays Tab ────────────────────────────────────────────────────
+
+interface KdsCode {
+  id: string;
+  code: string;
+  station: string;
+  expires_at: string;
+}
+
+interface KdsBranch {
+  id: string;
+  name: string;
+  is_primary?: boolean;
+}
+
+interface KdsDevice {
+  id: string;
+  branch_id: string;
+  branch_name: string;
+  station: string;
+  paired_at: string;
+}
+
+function KDSTab({ tenantId, token }: { tenantId: string; token: string }) {
+  const [branches, setBranches] = useState<KdsBranch[]>([]);
+  const [branchId, setBranchId] = useState('');
+  const [activeCodes, setActiveCodes] = useState<KdsCode[]>([]);
+  const [devices, setDevices] = useState<KdsDevice[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [generating, setGenerating] = useState<'kitchen' | 'bar' | null>(null);
+  const [unpairing, setUnpairing] = useState<string | null>(null);
+  const [newCode, setNewCode] = useState<{ code: string; station: string; expiresAt: number } | null>(null);
+  const [now, setNow] = useState(Date.now());
+  const [error, setError] = useState('');
+  const tenantUrl = import.meta.env.VITE_TENANT_SERVICE_URL ?? 'http://localhost:3002';
+  const kdsUrl = import.meta.env.VITE_KDS_URL ?? 'http://localhost:5177';
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    const headers = { Authorization: `Bearer ${token}` };
+    try {
+      const [brRes, codesRes, devRes] = await Promise.all([
+        apiFetch(`${tenantUrl}/api/v1/tenants/${tenantId}/branches`, { headers }),
+        apiFetch(`${tenantUrl}/api/v1/tenants/${tenantId}/codes`, { headers }),
+        apiFetch(`${tenantUrl}/api/v1/tenants/${tenantId}/devices`, { headers }),
+      ]);
+      if (brRes.ok) {
+        const j = await brRes.json() as { data?: { branches?: KdsBranch[] } };
+        const list = j.data?.branches ?? [];
+        setBranches(list);
+        setBranchId((prev) => {
+          if (prev) return prev;
+          const primary = list.find((b) => b.is_primary) ?? list[0];
+          return primary?.id ?? '';
+        });
+      }
+      if (codesRes.ok) {
+        const j = await codesRes.json() as { data?: KdsCode[] };
+        setActiveCodes(j.data ?? []);
+      }
+      if (devRes.ok) {
+        const j = await devRes.json() as { data?: KdsDevice[] };
+        setDevices(j.data ?? []);
+      }
+    } catch { /* silently fail */ }
+    setLoading(false);
+  }, [tenantId, token, tenantUrl]);
+
+  useEffect(() => { void load(); }, [load]);
+
+  useEffect(() => {
+    if (!newCode) return;
+    const t = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(t);
+  }, [newCode]);
+
+  useEffect(() => {
+    if (newCode && newCode.expiresAt < now) {
+      setNewCode(null);
+      void load();
+    }
+  }, [newCode, now, load]);
+
+  const generate = async (station: 'kitchen' | 'bar') => {
+    if (!branchId) { setError('Pick a branch first'); return; }
+    setGenerating(station);
+    setError('');
+    setNewCode(null);
+    try {
+      const res = await apiFetch(`${tenantUrl}/api/v1/tenants/${tenantId}/generate-code`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ branch_id: branchId, station }),
+      });
+      if (res.ok) {
+        const j = await res.json() as { data?: { code: string; station: string; expires_at: string } };
+        if (j.data) {
+          setNewCode({
+            code: j.data.code,
+            station: j.data.station,
+            expiresAt: new Date(j.data.expires_at).getTime(),
+          });
+          await load();
+        }
+      } else {
+        const j = await res.json().catch(() => ({})) as { error?: string };
+        setError(j.error ?? 'Failed to generate code');
+      }
+    } catch {
+      setError('Network error');
+    }
+    setGenerating(null);
+  };
+
+  const unpair = async (deviceId: string) => {
+    if (!confirm('Unpair this display? The tablet will need a new code to reconnect.')) return;
+    setUnpairing(deviceId);
+    try {
+      const res = await apiFetch(`${tenantUrl}/api/v1/tenants/${tenantId}/devices/${deviceId}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.ok) {
+        setDevices((prev) => prev.filter((d) => d.id !== deviceId));
+      } else {
+        const j = await res.json().catch(() => ({})) as { error?: string };
+        setError(j.error ?? 'Failed to unpair');
+      }
+    } catch {
+      setError('Network error');
+    }
+    setUnpairing(null);
+  };
+
+  if (loading) return <div className="text-sm text-gray-400 py-8 text-center">Loading...</div>;
+
+  const remainingSecs = newCode ? Math.max(0, Math.floor((newCode.expiresAt - now) / 1000)) : 0;
+  const mins = Math.floor(remainingSecs / 60);
+  const secs = remainingSecs % 60;
+
+  return (
+    <div className="max-w-3xl space-y-6">
+      <div className="bg-white border border-gray-100 rounded-2xl p-6 shadow-sm">
+        <div className="flex items-start justify-between mb-4">
+          <div>
+            <h3 className="font-semibold text-gray-900">Kitchen Displays</h3>
+            <p className="text-sm text-gray-500 mt-1">
+              Pair tablets or screens in your kitchen and bar to receive KOTs in real time.
+            </p>
+          </div>
+          <span className="text-xs px-2 py-1 rounded bg-purple-50 text-purple-700 font-medium whitespace-nowrap">Premium</span>
+        </div>
+
+        <div className="mb-4">
+          <label className="text-xs text-gray-400 uppercase font-medium">Branch</label>
+          <select
+            value={branchId}
+            onChange={(e) => setBranchId(e.target.value)}
+            className="mt-1 w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
+          >
+            {branches.length === 0 && <option value="">No branches found</option>}
+            {branches.map((b) => (
+              <option key={b.id} value={b.id}>
+                {b.name}{b.is_primary ? ' (Primary)' : ''}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        {error && (
+          <div className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2 mb-4">
+            {error}
+          </div>
+        )}
+
+        {!newCode && (
+          <div className="grid grid-cols-2 gap-3">
+            <button
+              onClick={() => void generate('kitchen')}
+              disabled={!branchId || generating !== null}
+              className="px-4 py-3 bg-brand-600 text-white rounded-lg text-sm font-medium hover:bg-brand-700 disabled:opacity-50"
+            >
+              {generating === 'kitchen' ? 'Generating...' : 'Pair Kitchen Display'}
+            </button>
+            <button
+              onClick={() => void generate('bar')}
+              disabled={!branchId || generating !== null}
+              className="px-4 py-3 bg-amber-600 text-white rounded-lg text-sm font-medium hover:bg-amber-700 disabled:opacity-50"
+            >
+              {generating === 'bar' ? 'Generating...' : 'Pair Bar Display'}
+            </button>
+          </div>
+        )}
+
+        {newCode && (
+          <div className="bg-gradient-to-br from-brand-50 to-purple-50 border border-brand-200 rounded-xl p-6 text-center">
+            <div className="text-xs uppercase font-medium text-gray-500 mb-2">
+              Pairing code · {newCode.station}
+            </div>
+            <div className="font-mono text-5xl font-bold tracking-widest text-brand-700">{newCode.code}</div>
+            <div className="text-sm text-gray-600 mt-3">
+              Expires in <span className="font-mono font-semibold">{mins}:{secs.toString().padStart(2, '0')}</span>
+            </div>
+            <div className="mt-4 text-sm text-gray-700 space-y-1 text-left max-w-md mx-auto">
+              <div>1. Open the KDS app on your tablet: <a href={kdsUrl} target="_blank" rel="noreferrer" className="text-brand-600 underline">{kdsUrl}</a></div>
+              <div>2. Type the 6-digit code above</div>
+              <div>3. The tablet pairs and starts showing live KOTs for this branch</div>
+            </div>
+            <button
+              onClick={() => setNewCode(null)}
+              className="mt-4 text-sm text-gray-500 hover:text-gray-700 underline"
+            >
+              Generate a different code
+            </button>
+          </div>
+        )}
+      </div>
+
+      {devices.length > 0 && (
+        <div className="bg-white border border-gray-100 rounded-2xl p-5 shadow-sm">
+          <h4 className="font-semibold text-gray-900 mb-1">Paired displays</h4>
+          <div className="text-xs text-gray-500 mb-3">
+            Tablets currently paired to your branches. Unpair if a device is lost or replaced.
+          </div>
+          <div className="space-y-2">
+            {devices.map((d) => (
+              <div key={d.id} className="flex items-center justify-between text-sm py-2 border-b border-gray-50 last:border-0">
+                <div>
+                  <span className="font-medium text-gray-900">{d.branch_name}</span>
+                  <span className="ml-3 text-gray-500 capitalize">{d.station}</span>
+                  <span className="ml-3 text-xs text-gray-400">
+                    paired {new Date(d.paired_at).toLocaleDateString()}
+                  </span>
+                </div>
+                <button
+                  onClick={() => void unpair(d.id)}
+                  disabled={unpairing === d.id}
+                  className="text-xs px-3 py-1 rounded border border-red-200 text-red-600 hover:bg-red-50 disabled:opacity-50"
+                >
+                  {unpairing === d.id ? 'Unpairing...' : 'Unpair'}
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {activeCodes.length > 0 && (
+        <div className="bg-white border border-gray-100 rounded-2xl p-5 shadow-sm">
+          <h4 className="font-semibold text-gray-900 mb-1">Pending pairings</h4>
+          <div className="text-xs text-gray-500 mb-3">
+            Codes that have been generated but not yet typed into a KDS device. They expire 10 minutes after creation.
+          </div>
+          <div className="space-y-2">
+            {activeCodes.map((c) => (
+              <div key={c.id} className="flex items-center justify-between text-sm py-2 border-b border-gray-50 last:border-0">
+                <div>
+                  <span className="font-mono font-semibold text-gray-900">{c.code}</span>
+                  <span className="ml-3 text-gray-500 capitalize">{c.station}</span>
+                </div>
+                <div className="text-xs text-gray-400">
+                  Expires {new Date(c.expires_at).toLocaleTimeString()}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Promotions Tab ──────────────────────────────────────────────────────────
 
 function PromotionsTab({ tenantId, token }: { tenantId: string; token: string }) {
@@ -1188,139 +1460,6 @@ function BillingModeCard({ tenantId, token }: { tenantId: string; token: string 
   );
 }
 
-// ─── KDS Tab ─────────────────────────────────────────────────────────────────
-
-type Station = 'kitchen' | 'bar';
-
-interface GeneratedCode {
-  station: Station;
-  code: string;
-  expiresAt: Date;
-  secondsLeft: number;
-}
-
-function KdsTab({ tenantId, token }: { tenantId: string; token: string }) {
-  const tenantUrl = import.meta.env.VITE_TENANT_SERVICE_URL ?? 'http://localhost:3002';
-  const [branchId, setBranchId] = useState('');
-  const [codes, setCodes] = useState<GeneratedCode[]>([]);
-  const [generating, setGenerating] = useState<Station | null>(null);
-  const [error, setError] = useState('');
-
-  // Fetch primary branch on mount
-  useEffect(() => {
-    void apiFetch(`${tenantUrl}/api/v1/tenants/${tenantId}/branches`, {
-      headers: { Authorization: `Bearer ${token}` },
-    }).then(async (r) => {
-      const d = (await r.json()) as { data?: { branches?: Array<{ id: string; is_primary: boolean }> } };
-      const primary = d.data?.branches?.find((b) => b.is_primary) ?? d.data?.branches?.[0];
-      if (primary) setBranchId(primary.id);
-    });
-  }, [tenantId, token, tenantUrl]);
-
-  // Countdown timer — tick every second
-  useEffect(() => {
-    if (codes.length === 0) return;
-    const interval = setInterval(() => {
-      setCodes((prev) =>
-        prev
-          .map((c) => ({ ...c, secondsLeft: Math.max(0, Math.floor((c.expiresAt.getTime() - Date.now()) / 1000)) }))
-          .filter((c) => c.secondsLeft > 0)
-      );
-    }, 1000);
-    return () => clearInterval(interval);
-  }, [codes.length]);
-
-  const generate = async (station: Station) => {
-    if (!branchId) return;
-    setGenerating(station);
-    setError('');
-    try {
-      const res = await apiFetch(`${tenantUrl}/api/v1/tenants/${tenantId}/generate-code`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ branch_id: branchId, station }),
-      });
-      const d = (await res.json()) as { success: boolean; data?: { code: string; expires_at: string }; error?: string };
-      if (!res.ok || !d.success || !d.data) { setError(d.error ?? 'Failed to generate code'); return; }
-      const expiresAt = new Date(d.data.expires_at);
-      setCodes((prev) => [
-        ...prev.filter((c) => c.station !== station),
-        { station, code: d.data!.code, expiresAt, secondsLeft: Math.floor((expiresAt.getTime() - Date.now()) / 1000) },
-      ]);
-    } catch {
-      setError('Unable to connect to server');
-    } finally {
-      setGenerating(null);
-    }
-  };
-
-  const formatTime = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
-
-  const stations: Array<{ id: Station; label: string; emoji: string; desc: string }> = [
-    { id: 'kitchen', label: 'Kitchen Display', emoji: '👨‍🍳', desc: 'Shows food orders' },
-    { id: 'bar',     label: 'Bar Display',     emoji: '🍸', desc: 'Shows drink orders' },
-  ];
-
-  return (
-    <div className="max-w-lg space-y-4">
-      <div className="bg-brand-50 border border-brand-100 rounded-2xl p-4 text-sm text-brand-700">
-        <p className="font-semibold mb-1">How to connect a KDS screen</p>
-        <ol className="list-decimal list-inside space-y-1 text-brand-600">
-          <li>Generate a code below for kitchen or bar</li>
-          <li>Open <span className="font-mono bg-brand-100 px-1 rounded">http://localhost:5177</span> on your kitchen TV/tablet</li>
-          <li>Enter the 6-digit code — screen connects instantly</li>
-          <li>Code expires in 10 minutes and works only once</li>
-        </ol>
-      </div>
-
-      {error && (
-        <div className="bg-red-50 border border-red-200 rounded-xl p-3 text-red-600 text-sm">{error}</div>
-      )}
-
-      {stations.map((s) => {
-        const active = codes.find((c) => c.station === s.id);
-        return (
-          <div key={s.id} className="bg-white border border-gray-100 rounded-2xl p-5 shadow-sm">
-            <div className="flex items-center justify-between mb-4">
-              <div className="flex items-center gap-3">
-                <span className="text-2xl">{s.emoji}</span>
-                <div>
-                  <p className="font-semibold text-gray-900">{s.label}</p>
-                  <p className="text-xs text-gray-400">{s.desc}</p>
-                </div>
-              </div>
-              <button
-                onClick={() => void generate(s.id)}
-                disabled={generating === s.id || !branchId}
-                className="px-4 py-2 bg-brand-500 hover:bg-brand-600 disabled:opacity-50 text-white text-sm font-semibold rounded-xl transition-colors"
-              >
-                {generating === s.id ? 'Generating...' : active ? 'Regenerate' : 'Generate Code'}
-              </button>
-            </div>
-
-            {active && (
-              <div className="bg-gray-50 border border-gray-200 rounded-xl p-4 flex items-center justify-between">
-                <div>
-                  <p className="text-xs text-gray-400 mb-1">Setup code</p>
-                  <p className="text-4xl font-mono font-bold tracking-widest text-gray-900">
-                    {active.code.slice(0, 3)} {active.code.slice(3)}
-                  </p>
-                </div>
-                <div className="text-right">
-                  <p className="text-xs text-gray-400 mb-1">Expires in</p>
-                  <p className={`text-xl font-mono font-bold ${active.secondsLeft < 60 ? 'text-red-500' : 'text-gray-700'}`}>
-                    {formatTime(active.secondsLeft)}
-                  </p>
-                </div>
-              </div>
-            )}
-          </div>
-        );
-      })}
-    </div>
-  );
-}
-
 export default function Settings() {
   const auth = useAppSelector((s) => s.auth);
   const [tab, setTab] = useState<SettingsTab>('business');
@@ -1402,7 +1541,7 @@ export default function Settings() {
       )}
 
       {tab === 'kds' && auth.user?.tenant_id && auth.token && (
-        <KdsTab tenantId={auth.user.tenant_id} token={auth.token} />
+        <KDSTab tenantId={auth.user.tenant_id} token={auth.token} />
       )}
 
       {tab === 'promotions' && auth.user?.tenant_id && auth.token && (

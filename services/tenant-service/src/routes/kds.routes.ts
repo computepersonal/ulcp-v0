@@ -86,9 +86,8 @@ export async function kdsRoutes(app: FastifyInstance) {
         station: z.enum(["kitchen", "bar"]).default("kitchen"),
       }).parse(req.body);
 
-      // Verify tenant exists and requester belongs to it
-      const user = (req as unknown as { user: { tenant_id?: string; role?: string } }).user;
-      if (user.tenant_id !== tenant_id) throw new AppError("Forbidden", 403);
+      // Verify requester belongs to this tenant
+      if (req.staff?.tenant_id !== tenant_id) throw new AppError("Forbidden", 403);
 
       // Expire any unused codes for this branch+station
       await prisma.kdsSetupCode.updateMany({
@@ -130,14 +129,58 @@ export async function kdsRoutes(app: FastifyInstance) {
     }
   );
 
+  // GET /api/v1/tenants/:tenant_id/kds/devices  (list paired KDS devices — staff auth)
+  app.get(
+    "/:tenant_id/devices",
+    { preHandler: [authenticateStaff] },
+    async (req, reply) => {
+      const { tenant_id } = req.params as { tenant_id: string };
+      if (req.staff?.tenant_id !== tenant_id) throw new AppError("Forbidden", 403);
+
+      const devices = await prisma.kdsSetupCode.findMany({
+        where: { tenant_id, used_at: { not: null } },
+        orderBy: { used_at: "desc" },
+        take: 50,
+        include: { branch: { select: { id: true, name: true } } },
+      });
+
+      return reply.send({
+        success: true,
+        data: devices.map((d) => ({
+          id: d.id,
+          branch_id: d.branch_id,
+          branch_name: d.branch.name,
+          station: d.station,
+          paired_at: d.used_at,
+        })),
+      });
+    },
+  );
+
+  // DELETE /api/v1/tenants/:tenant_id/kds/devices/:device_id  (unpair — staff auth)
+  app.delete(
+    "/:tenant_id/devices/:device_id",
+    { preHandler: [authenticateStaff] },
+    async (req, reply) => {
+      const { tenant_id, device_id } = req.params as { tenant_id: string; device_id: string };
+      if (req.staff?.tenant_id !== tenant_id) throw new AppError("Forbidden", 403);
+
+      const device = await prisma.kdsSetupCode.findUnique({ where: { id: device_id } });
+      if (!device || device.tenant_id !== tenant_id) {
+        throw new AppError("Device not found", 404);
+      }
+      await prisma.kdsSetupCode.delete({ where: { id: device_id } });
+      return reply.send({ success: true });
+    },
+  );
+
   // GET /api/v1/tenants/:tenant_id/kds/codes  (list recent codes — staff auth)
   app.get(
     "/:tenant_id/codes",
     { preHandler: [authenticateStaff] },
     async (req, reply) => {
       const { tenant_id } = req.params as { tenant_id: string };
-      const user = (req as unknown as { user: { tenant_id?: string } }).user;
-      if (user.tenant_id !== tenant_id) throw new AppError("Forbidden", 403);
+      if (req.staff?.tenant_id !== tenant_id) throw new AppError("Forbidden", 403);
 
       const codes = await prisma.kdsSetupCode.findMany({
         where: { tenant_id, expires_at: { gt: new Date() }, used_at: null },

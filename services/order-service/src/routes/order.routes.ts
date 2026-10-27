@@ -86,7 +86,6 @@ const customerPlaceOrderSchema = z.object({
 
 const updateStatusSchema = z.object({
   status: z.enum([
-    "confirmed",
     "preparing",
     "ready",
     "served",
@@ -361,7 +360,7 @@ export async function orderRoutes(fastify: FastifyInstance): Promise<void> {
           }),
           // Still active orders right now (not yet completed/cancelled)
           prisma.order.findMany({
-            where: { tenant_id, ...branchFilter, status: { in: ["pending", "confirmed", "preparing", "ready"] } },
+            where: { tenant_id, ...branchFilter, status: { in: ["pending", "preparing", "ready"] } },
             select: { id: true, order_number: true, total: true, status: true, created_at: true },
           }),
         ]);

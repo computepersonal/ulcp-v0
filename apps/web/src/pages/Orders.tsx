@@ -1,10 +1,11 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useAppSelector } from '../hooks/redux';
+import { useAppSelector, useAppDispatch } from '../hooks/redux';
 import { apiFetch } from '../lib/apiFetch';
 import { useSocket } from '../hooks/useSocket';
+import { addNotification } from '../store/uiSlice';
 
-type OrderStatus = 'pending' | 'confirmed' | 'preparing' | 'ready' | 'served';
+type OrderStatus = 'pending' | 'preparing' | 'ready' | 'served';
 type PaymentMethod = 'cash' | 'upi' | 'card';
 
 interface KotItem {
@@ -14,6 +15,8 @@ interface KotItem {
   price: number;
   variant_name?: string;
   station?: string;
+  status?: 'pending' | 'preparing' | 'ready' | 'served' | 'cancelled';
+  reject_reason?: string;
 }
 
 interface Kot {
@@ -75,38 +78,33 @@ interface OrderData {
   kots?: Kot[];
 }
 
-const STATUS_ORDER: OrderStatus[] = ['pending', 'confirmed', 'preparing', 'ready', 'served'];
+const STATUS_ORDER: OrderStatus[] = ['pending', 'preparing', 'ready', 'served'];
 const STATUS_LABELS: Record<OrderStatus, string> = {
   pending: 'Pending',
-  confirmed: 'Confirmed',
   preparing: 'Preparing',
   ready: 'Ready',
   served: 'Served'
 };
 const STATUS_NEXT: Record<OrderStatus, OrderStatus | null> = {
-  pending: 'confirmed',
-  confirmed: 'preparing',
+  pending: 'preparing',
   preparing: 'ready',
   ready: 'served',
   served: null
 };
 const STATUS_NEXT_LABEL: Record<OrderStatus, string> = {
-  pending: 'Accept',
-  confirmed: 'Start Preparing',
+  pending: 'Start Preparing',
   preparing: 'Mark Ready',
   ready: 'Mark Served',
   served: ''
 };
 const STATUS_COLORS: Record<OrderStatus, string> = {
   pending: 'border-l-yellow-500',
-  confirmed: 'border-l-blue-500',
   preparing: 'border-l-orange-500',
   ready: 'border-l-green-500',
   served: 'border-l-emerald-600'
 };
 const STATUS_BADGE: Record<OrderStatus, string> = {
   pending: 'bg-yellow-50 text-yellow-700 border-yellow-200',
-  confirmed: 'bg-blue-50 text-blue-700 border-blue-200',
   preparing: 'bg-orange-50 text-orange-700 border-orange-200',
   ready: 'bg-green-50 text-green-700 border-green-200',
   served: 'bg-emerald-50 text-emerald-700 border-emerald-200'
@@ -130,6 +128,7 @@ function fmt(paise: number): string {
 export default function Orders() {
   const navigate = useNavigate();
   const auth = useAppSelector((s) => s.auth);
+  const dispatch = useAppDispatch();
   const [orders, setOrders] = useState<OrderData[]>([]);
   const [fetchError, setFetchError] = useState<string | null>(null);
   const [selectedOrder, setSelectedOrder] = useState<OrderDetail | null>(null);
@@ -173,20 +172,65 @@ export default function Orders() {
         setOrders(prev => prev.filter(o => o.id !== data.order_id));
         setSelectedOrder(prev => prev?.id === data.order_id ? null : prev);
         setCheckoutOrder(prev => prev?.id === data.order_id ? null : prev);
-      } else if (['pending', 'confirmed', 'preparing', 'ready'].includes(data.status)) {
+      } else if (['pending', 'preparing', 'ready'].includes(data.status)) {
         setOrders(prev => prev.map(o =>
           o.id === data.order_id ? { ...o, status: data.status as OrderStatus } : o
         ));
       }
     };
 
+    const onItemRejected = (data: {
+      order_id?: string;
+      kot_number?: string;
+      item_name?: string;
+      reason?: string;
+    }) => {
+      if (!data.order_id) return;
+      const where = data.kot_number ? ` on ${data.kot_number}` : '';
+      const item = data.item_name ?? 'an item';
+      const reason = data.reason ? ` — ${data.reason}` : '';
+      dispatch(addNotification({
+        type: 'warning',
+        message: `Kitchen rejected ${item}${where}${reason}. Inform the table.`,
+      }));
+      // Patch the item in the open detail panel so the waiter sees it struck through
+      setSelectedOrder((prev) => {
+        if (!prev || prev.id !== data.order_id) return prev;
+        return {
+          ...prev,
+          kots: prev.kots.map((k) => ({
+            ...k,
+            items: (k.items ?? []).map((i) =>
+              i.name === data.item_name && i.status !== 'cancelled'
+                ? { ...i, status: 'cancelled' as const, reject_reason: data.reason }
+                : i
+            ),
+          })),
+        };
+      });
+    };
+
+    const onKotRejected = (data: { order_id?: string; kot_number?: string; reason?: string }) => {
+      if (!data.order_id) return;
+      const where = data.kot_number ? ` ${data.kot_number}` : '';
+      const reason = data.reason ? ` — ${data.reason}` : '';
+      dispatch(addNotification({
+        type: 'warning',
+        message: `Kitchen rejected KOT${where}${reason}. Talk to the table.`,
+      }));
+    };
+
     socket.on('order:new', onOrderNew);
     socket.on('order:status:changed', onStatusChanged);
+    socket.on('kot:item:rejected', onItemRejected);
+    socket.on('kot:rejected', onKotRejected);
     return () => {
       socket.off('order:new', onOrderNew);
       socket.off('order:status:changed', onStatusChanged);
+      socket.off('kot:item:rejected', onItemRejected);
+      socket.off('kot:rejected', onKotRejected);
     };
-  }, [socket]);
+  }, [socket, dispatch]);
 
   // Initial load
   useEffect(() => {
@@ -194,7 +238,7 @@ export default function Orders() {
     const load = async () => {
       try {
         const res = await apiFetch(
-          `${orderServiceUrl}/api/v1/orders/${auth.user!.tenant_id}?status=pending,confirmed,preparing,ready,served`,
+          `${orderServiceUrl}/api/v1/orders/${auth.user!.tenant_id}?status=pending,preparing,ready,served`,
           { headers: { Authorization: `Bearer ${auth.token}` } }
         );
         if (!res.ok) {
@@ -204,7 +248,11 @@ export default function Orders() {
         }
         const data = (await res.json()) as { success: boolean; data?: { orders: OrderData[] } };
         setFetchError(null);
-        setOrders(data.data?.orders ?? []);
+        // Legacy: any order still in DB as "confirmed" → render under Pending until KDS bumps it forward
+        const orders = (data.data?.orders ?? []).map((o) =>
+          (o.status as string) === 'confirmed' ? { ...o, status: 'pending' as OrderStatus } : o
+        );
+        setOrders(orders);
       } catch (err) {
         setFetchError(err instanceof Error ? err.message : 'Network error');
       }
@@ -267,12 +315,25 @@ export default function Orders() {
     const tenantId = auth.user?.tenant_id;
     if (!tenantId) return;
     try {
-      await apiFetch(`${orderServiceUrl}/api/v1/orders/${tenantId}/${orderId}/status`, {
+      const res = await apiFetch(`${orderServiceUrl}/api/v1/orders/${tenantId}/${orderId}/status`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${auth.token}` },
         body: JSON.stringify({ status: nextStatus })
       });
-    } catch { /* optimistic update anyway */ }
+      if (!res.ok) {
+        // 409 from kitchen-state guard: KOT(s) not yet acknowledged / not yet ready
+        const body = (await res.json().catch(() => ({}))) as { error?: string };
+        const message = body.error
+          ?? (res.status === 409
+            ? 'Kitchen action required first.'
+            : 'Could not update order.');
+        dispatch(addNotification({ type: 'warning', message }));
+        return;
+      }
+    } catch {
+      dispatch(addNotification({ type: 'error', message: 'Network error — order not updated.' }));
+      return;
+    }
     setOrders(prev => prev.map(o => o.id === orderId ? { ...o, status: nextStatus } : o));
     if (selectedOrder?.id === orderId) {
       setSelectedOrder(prev => prev ? { ...prev, status: nextStatus } : prev);
@@ -555,7 +616,7 @@ export default function Orders() {
             {fetchError}
           </div>
         )}
-        <div className="grid grid-cols-5 gap-4">
+        <div className="grid grid-cols-4 gap-4">
           {STATUS_ORDER.map((status) => {
             // Hide table-bound served orders from the kanban — they're rendered
             // as one consolidated table-tab card below (works for both billing modes).
@@ -723,12 +784,22 @@ export default function Orders() {
                         <span className="text-xs text-gray-400 capitalize">{kot.status}</span>
                       </div>
                       <div className="space-y-1">
-                        {(kot.items ?? []).map(item => (
-                          <div key={item.id} className="flex justify-between text-xs text-gray-600">
-                            <span>{item.quantity}× {item.name}{item.variant_name ? ` (${item.variant_name})` : ''}</span>
-                            <span className="font-mono">{fmt(item.price * item.quantity)}</span>
-                          </div>
-                        ))}
+                        {(kot.items ?? []).map(item => {
+                          const isCancelled = item.status === 'cancelled';
+                          return (
+                            <div key={item.id} className="text-xs">
+                              <div className={`flex justify-between ${isCancelled ? 'text-red-500 line-through' : 'text-gray-600'}`}>
+                                <span>{item.quantity}× {item.name}{item.variant_name ? ` (${item.variant_name})` : ''}</span>
+                                <span className="font-mono">{fmt(item.price * item.quantity)}</span>
+                              </div>
+                              {isCancelled && item.reject_reason && (
+                                <div className="text-[11px] text-red-500 italic mt-0.5">
+                                  Rejected: {item.reject_reason}
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
                       </div>
                     </div>
                   ))}

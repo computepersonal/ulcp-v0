@@ -8,14 +8,12 @@ import {
   findKOTById,
   findKOTsByOrderId,
   updateKOTStatus,
-  updateKOTItems,
   allKotsRejected,
 } from "../repositories/kot.repository";
 import { findOrderById, updateOrderStatus, createStatusHistory } from "../repositories/order.repository";
-import { acknowledgeKot, maybeCompleteIfPrepaid } from "../services/order.service";
+import { acknowledgeKot, maybeCompleteIfPrepaid, setKotItemStatus } from "../services/order.service";
 import { redisPublish } from "../lib/redis";
 import { logger } from "../lib/logger";
-import type { Prisma } from "../generated/prisma";
 
 // ─── Shared schema fragments ──────────────────────────────────────────────────
 
@@ -45,6 +43,7 @@ const kotStatusSchema = z.object({
 
 const itemStatusSchema = z.object({
   status: z.enum(["pending", "preparing", "ready", "served", "cancelled"]),
+  reason: z.string().min(1).max(500).optional(),
 });
 
 // ─── Route params interfaces ──────────────────────────────────────────────────
@@ -342,6 +341,7 @@ export async function kotRoutes(fastify: FastifyInstance): Promise<void> {
           required: ["status"],
           properties: {
             status: { type: "string" as const, enum: ["pending", "preparing", "ready", "served", "cancelled"] },
+            reason: { type: "string" as const, description: "Required when rejecting (status=cancelled) so the waiter can explain to the table" },
           },
         },
         response: { 200: genericOk, ...errResponses },
@@ -355,22 +355,14 @@ export async function kotRoutes(fastify: FastifyInstance): Promise<void> {
       }
 
       const { tenant_id, id, item_id } = req.params;
-      const kot = await findKOTById(id, tenant_id);
-      if (!kot) return reply.code(404).send(apiError("KOT not found"));
 
       try {
-        // Update item status within the JSON items array
-        const items = (
-          kot.items as Array<{ id: string; status?: string }>
-        ).map((item) =>
-          item.id === item_id
-            ? { ...item, status: parsed.data.status }
-            : item
-        );
-
-        const updated = await updateKOTItems(
+        const updated = await setKotItemStatus(
           id,
-          items as unknown as Prisma.InputJsonValue[]
+          tenant_id,
+          item_id,
+          parsed.data.status,
+          parsed.data.reason
         );
         return reply.send(apiSuccess({ kot: updated }));
       } catch (err) {

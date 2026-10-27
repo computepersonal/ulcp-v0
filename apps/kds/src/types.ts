@@ -11,8 +11,9 @@ export interface KotItem {
   id: string;
   name: string;
   quantity: number;
-  status: 'pending' | 'preparing' | 'ready' | 'served';
+  status: 'pending' | 'preparing' | 'ready' | 'served' | 'cancelled';
   notes?: string;
+  reject_reason?: string;
 }
 
 export interface Kot {

@@ -31,10 +31,7 @@ function getElapsedLabel(createdAt: string): string {
 interface KotCardProps {
   kot: Kot;
   targetMins: number;
-  onStatusChange: (kotId: string, status: Kot['status']) => void;
   onItemStatusChange: (kotId: string, itemId: string, status: KotItem['status']) => void;
-  onServed: (kotId: string) => void;
-  onRejected: (kotId: string) => void;
   deviceToken: string;
   tenantId: string;
 }
@@ -42,14 +39,14 @@ interface KotCardProps {
 function KotCard({
   kot,
   targetMins,
-  onStatusChange,
   onItemStatusChange,
-  onServed,
-  onRejected,
   deviceToken,
   tenantId
 }: KotCardProps) {
   const [, setTick] = useState(0);
+  const [pendingItemId, setPendingItemId] = useState<string | null>(null);
+  const [rejectingItem, setRejectingItem] = useState<{ id: string; name: string } | null>(null);
+  const [rejectReason, setRejectReason] = useState('');
 
   useEffect(() => {
     const interval = setInterval(() => setTick(t => t + 1), 30000);
@@ -59,47 +56,69 @@ function KotCard({
   const elapsed = getElapsedMins(kot.created_at);
   const isOverdue = elapsed >= targetMins * 1.5;
   const cardStyle = getCardStyle(kot.created_at, targetMins);
-  const allItemsReady = kot.items.every(i => i.status === 'ready' || i.status === 'served');
   const orderServiceUrl = import.meta.env.VITE_ORDER_SERVICE_URL ?? 'http://localhost:3004';
+  const hasAnyRejection = kot.items.some((it) => it.status === 'cancelled');
+  const inProgressLabel = hasAnyRejection ? 'Preparing' : 'Tap when ready';
 
-  const patchStatus = async (status: Kot['status']) => {
+  const acceptItem = async (itemId: string) => {
+    setPendingItemId(itemId);
     try {
-      const res = await fetch(`${orderServiceUrl}/api/v1/kots/${tenantId}/${kot.id}/status`, {
-        method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${deviceToken}`
-        },
-        body: JSON.stringify({ status })
-      });
-      if (res.ok) {
-        if (status === 'served') {
-          onServed(kot.id);
-        } else {
-          onStatusChange(kot.id, status);
+      const res = await fetch(
+        `${orderServiceUrl}/api/v1/kots/${tenantId}/${kot.id}/items/${itemId}/status`,
+        {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${deviceToken}` },
+          body: JSON.stringify({ status: 'preparing' }),
         }
-      }
+      );
+      if (res.ok) onItemStatusChange(kot.id, itemId, 'preparing');
     } catch {
-      // Network error — swallow silently
+      // swallow
     }
+    setPendingItemId(null);
   };
 
-  const rejectKot = async () => {
-    const reason = window.prompt('Reason for rejection (optional):') ?? 'Kitchen unable to fulfill';
+  const submitItemRejection = async () => {
+    if (!rejectingItem) return;
+    const reason = rejectReason.trim();
+    if (!reason) return;
+    const itemId = rejectingItem.id;
+    setPendingItemId(itemId);
     try {
-      const res = await fetch(`${orderServiceUrl}/api/v1/kots/${tenantId}/${kot.id}/reject`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${deviceToken}` },
-        body: JSON.stringify({ reason })
-      });
-      if (res.ok) onRejected(kot.id);
+      const res = await fetch(
+        `${orderServiceUrl}/api/v1/kots/${tenantId}/${kot.id}/items/${itemId}/status`,
+        {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${deviceToken}` },
+          body: JSON.stringify({ status: 'cancelled', reason }),
+        }
+      );
+      if (res.ok) onItemStatusChange(kot.id, itemId, 'cancelled');
     } catch {
-      // Network error
+      // swallow
     }
+    setPendingItemId(null);
+    setRejectingItem(null);
+    setRejectReason('');
   };
 
-  const patchItemStatus = (itemId: string, status: KotItem['status']) => {
-    onItemStatusChange(kot.id, itemId, status);
+  const markItemReady = async (itemId: string) => {
+    if (kot.status === 'pending') return;
+    setPendingItemId(itemId);
+    try {
+      const res = await fetch(
+        `${orderServiceUrl}/api/v1/kots/${tenantId}/${kot.id}/items/${itemId}/status`,
+        {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${deviceToken}` },
+          body: JSON.stringify({ status: 'ready' }),
+        }
+      );
+      if (res.ok) onItemStatusChange(kot.id, itemId, 'ready');
+    } catch {
+      // swallow
+    }
+    setPendingItemId(null);
   };
 
   return (
@@ -125,80 +144,134 @@ function KotCard({
 
       {/* Items */}
       <div className="flex flex-col gap-1">
-        {kot.items.map((item) => (
-          <button
-            key={item.id}
-            onClick={() => {
-              const nextStatus: KotItem['status'] =
-                item.status === 'pending' ? 'preparing' :
-                item.status === 'preparing' ? 'ready' : 'served';
-              patchItemStatus(item.id, nextStatus);
-            }}
-            className={`flex items-center gap-2 p-2 rounded-lg text-left transition-colors ${
-              item.status === 'ready' || item.status === 'served'
-                ? 'bg-green-900/30 border border-green-700/50 line-through text-gray-500'
-                : item.status === 'preparing'
-                ? 'bg-blue-900/30 border border-blue-700/50 text-white'
-                : 'bg-white/5 border border-gray-700 text-white hover:bg-white/10'
-            }`}
-          >
-            <span className="text-sm font-medium w-6 text-center">{item.quantity}×</span>
-            <span className="text-sm flex-1">{item.name}</span>
-            <span className="text-xs text-gray-400 capitalize">{item.status}</span>
-          </button>
-        ))}
+        {kot.items.map((item) => {
+          const isReady = item.status === 'ready' || item.status === 'served';
+          const isCancelled = item.status === 'cancelled';
+          const isAcceptedPending = kot.status === 'pending' && item.status === 'preparing';
+          const showAcceptReject = kot.status === 'pending' && (!item.status || item.status === 'pending');
+          const isLoading = pendingItemId === item.id;
+
+          if (showAcceptReject) {
+            return (
+              <div
+                key={item.id}
+                className="flex items-center gap-2 p-2 rounded-lg bg-white/5 border border-gray-700"
+              >
+                <span className="text-sm font-medium w-6 text-center text-white">{item.quantity}×</span>
+                <span className="text-sm flex-1 text-white">{item.name}</span>
+                <button
+                  onClick={() => { void acceptItem(item.id); }}
+                  disabled={isLoading}
+                  className="w-8 h-8 flex items-center justify-center bg-green-700/40 hover:bg-green-600/60 border border-green-600/50 rounded-md text-green-200 disabled:opacity-50"
+                  title="Accept"
+                  aria-label="Accept item"
+                >
+                  ✓
+                </button>
+                <button
+                  onClick={() => { setRejectingItem({ id: item.id, name: item.name }); setRejectReason(''); }}
+                  disabled={isLoading}
+                  className="w-8 h-8 flex items-center justify-center bg-red-700/40 hover:bg-red-600/60 border border-red-600/50 rounded-md text-red-200 disabled:opacity-50"
+                  title="Reject"
+                  aria-label="Reject item"
+                >
+                  ✕
+                </button>
+              </div>
+            );
+          }
+
+          if (isCancelled) {
+            return (
+              <div
+                key={item.id}
+                className="flex items-start gap-2 p-2 rounded-lg bg-red-950/30 border border-red-900/50"
+              >
+                <span className="text-sm font-medium w-6 text-center text-red-400 line-through">{item.quantity}×</span>
+                <div className="flex-1 min-w-0">
+                  <div className="text-sm text-red-300 line-through truncate">{item.name}</div>
+                  {item.reject_reason && (
+                    <div className="text-xs text-red-400/80 mt-0.5 italic">Rejected: {item.reject_reason}</div>
+                  )}
+                </div>
+                <span className="text-xs text-red-400">Rejected</span>
+              </div>
+            );
+          }
+
+          return (
+            <button
+              key={item.id}
+              onClick={() => { void markItemReady(item.id); }}
+              disabled={isReady || isLoading || isAcceptedPending}
+              className={`flex items-center gap-2 p-2 rounded-lg text-left transition-colors ${
+                isReady
+                  ? 'bg-green-900/30 border border-green-700/50 line-through text-gray-500 cursor-default'
+                  : isAcceptedPending
+                  ? 'bg-green-900/20 border border-green-700/40 text-green-200 cursor-default'
+                  : 'bg-blue-900/30 border border-blue-700/50 text-white hover:bg-blue-800/40'
+              }`}
+            >
+              <span className="text-sm font-medium w-6 text-center">{item.quantity}×</span>
+              <span className="text-sm flex-1">{item.name}</span>
+              <span className="text-xs text-gray-400 capitalize">
+                {isLoading ? '...' : isReady ? 'Ready' : isAcceptedPending ? 'Accepted' : inProgressLabel}
+              </span>
+            </button>
+          );
+        })}
       </div>
 
-      {/* Action buttons */}
-      <div className="flex gap-2 mt-auto">
-        {kot.status === 'pending' && (
-          <>
-            <button
-              onClick={() => { void patchStatus('acknowledged'); }}
-              className="flex-1 py-2 bg-brand-500 hover:bg-brand-600 text-white text-sm font-semibold rounded-lg transition-colors"
-            >
-              ACKNOWLEDGE
-            </button>
-            <button
-              onClick={() => { void rejectKot(); }}
-              className="py-2 px-3 bg-red-800 hover:bg-red-700 text-white text-sm font-semibold rounded-lg transition-colors"
-              title="Reject KOT"
-            >
-              ✕
-            </button>
-          </>
-        )}
-        {(kot.status === 'acknowledged' || kot.status === 'preparing') && allItemsReady && (
-          <button
-            onClick={() => { void patchStatus('ready'); }}
-            className="flex-1 py-2 bg-green-600 hover:bg-green-700 text-white text-sm font-semibold rounded-lg transition-colors"
-          >
-            ALL READY
-          </button>
-        )}
-        {(kot.status === 'acknowledged' || kot.status === 'preparing') && (
-          <button
-            onClick={() => { void rejectKot(); }}
-            className="py-2 px-3 bg-red-800 hover:bg-red-700 text-white text-sm font-semibold rounded-lg transition-colors"
-            title="Reject KOT"
-          >
-            ✕
-          </button>
-        )}
-        {kot.status === 'ready' && (
-          <button
-            onClick={() => { void patchStatus('served'); }}
-            className="flex-1 py-2 bg-gray-600 hover:bg-gray-700 text-white text-sm font-semibold rounded-lg transition-colors"
-          >
-            SERVED
-          </button>
-        )}
-        {(kot.status === 'acknowledged' || kot.status === 'preparing') && !allItemsReady && (
-          <div className="flex-1 py-2 bg-white/5 text-gray-500 text-sm text-center rounded-lg">
-            Mark items ready
+      {/* Reject reason modal */}
+      {rejectingItem && (
+        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
+          <div className="bg-[#1A1F2E] rounded-2xl p-6 w-full max-w-md border border-gray-700">
+            <h3 className="text-base font-semibold text-white mb-1">Reject item</h3>
+            <p className="text-sm text-gray-400 mb-4">
+              {rejectingItem.name} — the waiter will carry this reason to the table.
+            </p>
+            <textarea
+              value={rejectReason}
+              onChange={(e) => setRejectReason(e.target.value)}
+              autoFocus
+              placeholder="e.g. ingredient unavailable, equipment down…"
+              className="w-full bg-[#0F1117] border border-gray-700 rounded-lg p-3 text-white text-sm h-24 resize-none focus:outline-none focus:border-brand-500"
+            />
+            <div className="flex gap-2 mt-4">
+              <button
+                onClick={() => { setRejectingItem(null); setRejectReason(''); }}
+                className="flex-1 py-2 bg-gray-700 hover:bg-gray-600 text-white text-sm rounded-lg"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => { void submitItemRejection(); }}
+                disabled={!rejectReason.trim() || pendingItemId === rejectingItem.id}
+                className="flex-1 py-2 bg-red-600 hover:bg-red-500 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-semibold rounded-lg"
+              >
+                {pendingItemId === rejectingItem.id ? 'Rejecting…' : 'Reject item'}
+              </button>
+            </div>
           </div>
-        )}
-      </div>
+        </div>
+      )}
+
+      {/* Footer hint */}
+      {kot.status === 'pending' && (
+        <div className="py-2 bg-white/5 text-gray-400 text-xs text-center rounded-lg mt-auto">
+          Accept ✓ or reject ✕ each item
+        </div>
+      )}
+      {(kot.status === 'acknowledged' || kot.status === 'preparing') && (
+        <div className="py-2 bg-white/5 text-gray-400 text-xs text-center rounded-lg mt-auto">
+          Tap each item when ready
+        </div>
+      )}
+      {kot.status === 'ready' && (
+        <div className="py-2 bg-green-900/30 border border-green-700/50 text-green-300 text-sm text-center rounded-lg mt-auto">
+          All items ready — clearing...
+        </div>
+      )}
     </div>
   );
 }
@@ -226,7 +299,7 @@ export default function KdsScreen({ config, onReset }: KdsScreenProps) {
     const fetchKots = async () => {
       try {
         const res = await fetch(
-          `${orderServiceUrl}/api/v1/kots/${config.tenant_id}/${config.branch_id}?status=pending,acknowledged,preparing,ready`,
+          `${orderServiceUrl}/api/v1/kots/${config.tenant_id}/${config.branch_id}?status=pending,acknowledged,preparing`,
           { headers: { Authorization: `Bearer ${config.device_token}` } }
         );
         if (res.ok) {
@@ -266,8 +339,23 @@ export default function KdsScreen({ config, onReset }: KdsScreenProps) {
       });
     });
 
-    socket.on('kot:status:changed', (data: { id: string; status: Kot['status'] }) => {
-      setKots(prev => prev.map(k => k.id === data.id ? { ...k, status: data.status } : k));
+    socket.on('kot:status:changed', (data: { kot_id?: string; id?: string; status: Kot['status'] | 'rejected'; items?: KotItem[] }) => {
+      const kotId = data.kot_id ?? data.id;
+      if (!kotId) return;
+      // ready/served/rejected = kitchen done → drop the card from KDS
+      if (data.status === 'served' || data.status === 'rejected' || data.status === 'ready') {
+        setKots(prev => prev.filter(k => k.id !== kotId));
+        return;
+      }
+      setKots(prev => prev.map(k => k.id === kotId
+        ? { ...k, status: data.status as Kot['status'], ...(data.items ? { items: data.items } : {}) }
+        : k
+      ));
+    });
+
+    socket.on('kot:rejected', (data: { kot_id?: string }) => {
+      if (!data.kot_id) return;
+      setKots(prev => prev.filter(k => k.id !== data.kot_id));
     });
 
     return () => { socket.disconnect(); };
@@ -295,10 +383,6 @@ export default function KdsScreen({ config, onReset }: KdsScreenProps) {
     prevKotsLengthRef.current = kots.length;
   }, [kots.length, soundEnabled]);
 
-  const handleStatusChange = useCallback((kotId: string, status: Kot['status']) => {
-    setKots(prev => prev.map(k => k.id === kotId ? { ...k, status } : k));
-  }, []);
-
   const handleItemStatusChange = useCallback((kotId: string, itemId: string, status: KotItem['status']) => {
     setKots(prev => prev.map(k =>
       k.id === kotId
@@ -307,20 +391,12 @@ export default function KdsScreen({ config, onReset }: KdsScreenProps) {
     ));
   }, []);
 
-  const handleServed = useCallback((kotId: string) => {
-    setKots(prev => prev.filter(k => k.id !== kotId));
-  }, []);
-
-  const handleRejected = useCallback((kotId: string) => {
-    setKots(prev => prev.filter(k => k.id !== kotId));
-  }, []);
-
   const handleReset = () => {
     clearConfig();
     onReset();
   };
 
-  const activeKots = kots.filter(k => k.status !== 'served');
+  const activeKots = kots.filter(k => k.status !== 'served' && k.status !== 'ready');
 
   return (
     <div className="min-h-screen bg-[#0F1117] flex flex-col">
@@ -355,10 +431,7 @@ export default function KdsScreen({ config, onReset }: KdsScreenProps) {
                 key={kot.id}
                 kot={kot}
                 targetMins={targetMins}
-                onStatusChange={handleStatusChange}
                 onItemStatusChange={handleItemStatusChange}
-                onServed={handleServed}
-                onRejected={handleRejected}
                 deviceToken={config.device_token}
                 tenantId={config.tenant_id}
               />

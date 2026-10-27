@@ -24,6 +24,7 @@ const EVENT_CHANNELS = [
   "JUKEBOX_SONG_ENDED",
   "JUKEBOX_QUEUE_UPDATED",
   "KOT_REJECTED",
+  "KOT_ITEM_REJECTED",
   "ORDER_UNBILLED_ALERT",
 ];
 
@@ -110,6 +111,24 @@ function handleEvent(io: SocketServer, channel: string, payload: EventPayload): 
         broadcast(io, `tenant:${tenant_id}:branch:${branch_id}`, "kot:rejected", payload);
         // Also notify tenant room in case manager is on a different branch view
         broadcast(io, `tenant:${tenant_id}`, "kot:rejected", payload);
+      }
+      // Customer tracking page subscribes per-order so they see the cancellation
+      const order_id = payload["order_id"] as string | undefined;
+      if (order_id) {
+        broadcast(io, `order:${order_id}`, "kot:rejected", payload);
+      }
+      break;
+    }
+
+    case "KOT_ITEM_REJECTED": {
+      // Single-item rejection — waiter must walk to the table and explain.
+      if (tenant_id && branch_id) {
+        broadcast(io, `tenant:${tenant_id}:branch:${branch_id}`, "kot:item:rejected", payload);
+        broadcast(io, `tenant:${tenant_id}:owner`, "kot:item:rejected", payload);
+      }
+      const order_id = payload["order_id"] as string | undefined;
+      if (order_id) {
+        broadcast(io, `order:${order_id}`, "kot:item:rejected", payload);
       }
       break;
     }

@@ -53,6 +53,17 @@ export async function updateKOTItems(
   });
 }
 
+export async function updateKOTStatusAndItems(
+  id: string,
+  status: string,
+  items: Prisma.InputJsonValue[]
+) {
+  return prisma.kOT.update({
+    where: { id },
+    data: { status, items: items as Prisma.InputJsonValue },
+  });
+}
+
 export async function findKOTsByOrderId(order_id: string, tenant_id: string) {
   return prisma.kOT.findMany({ where: { order_id, tenant_id } });
 }
