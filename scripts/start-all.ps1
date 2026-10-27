@@ -86,6 +86,12 @@ if ($Stop) {
 # ---------------------------------------------------------------- docker
 Write-Step 'Checking Docker'
 if (-not (Test-DockerEngine)) {
+  # Windows hides the firmware flag once a hypervisor is running, so only both-false means "off".
+  $cpu = Get-CimInstance Win32_Processor | Select-Object -First 1
+  $hv = (Get-CimInstance Win32_ComputerSystem).HypervisorPresent
+  if (-not $cpu.VirtualizationFirmwareEnabled -and -not $hv) {
+    throw 'CPU virtualization (Intel VT-x / AMD SVM) is disabled in BIOS/UEFI - Docker Desktop cannot start its VM. Enable it in BIOS, reboot, and re-run.'
+  }
   $dockerDesktop = 'C:\Program Files\Docker\Docker\Docker Desktop.exe'
   if (-not (Test-Path $dockerDesktop)) { throw "Docker engine not running and Docker Desktop not found at $dockerDesktop" }
   Write-Host '    starting Docker Desktop...'
@@ -144,7 +150,7 @@ $turboArgs = @('exec', 'turbo', 'dev', '--concurrency', '30', '--continue') + $f
 $turbo = Start-Process -FilePath 'pnpm.cmd' -ArgumentList $turboArgs -NoNewWindow -PassThru
 
 # ---------------------------------------------------------------- health table
-$deadline = (Get-Date).AddSeconds(120)
+$deadline = (Get-Date).AddSeconds(300)  # first cold start with tsx can take 3-4 min
 $pending = @{}
 foreach ($k in $Services.Keys) { $pending[$k] = $Services[$k] }
 while ($pending.Count -gt 0 -and (Get-Date) -lt $deadline -and -not $turbo.HasExited) {
