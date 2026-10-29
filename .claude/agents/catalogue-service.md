@@ -181,7 +181,7 @@ pnpm dev
 pnpm build
 pnpm db:migrate
 pnpm db:generate
-docker compose -f docker-compose.dev.yml logs -f catalogue-service
+docker compose -f docker-compose.yml logs -f catalogue-service
 ```
 
 ## Debugging Production Issues

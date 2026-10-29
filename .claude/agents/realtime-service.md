@@ -110,7 +110,7 @@ NODE_ENV=development
 ## Dev Commands
 ```bash
 pnpm dev
-docker compose -f docker-compose.dev.yml logs -f realtime-service
+docker compose -f docker-compose.yml logs -f realtime-service
 # Test Socket.io connection:
 # wscat -c ws://localhost:3008 --header "Authorization: Bearer {token}"
 ```

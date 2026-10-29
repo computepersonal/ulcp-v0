@@ -63,8 +63,8 @@ pnpm dev
 
 ## How to Deploy
 ```bash
-docker compose -f docker-compose.dev.yml up identity-service
-docker compose -f docker-compose.dev.yml logs -f identity-service
+docker compose -f docker-compose.yml up identity-service
+docker compose -f docker-compose.yml logs -f identity-service
 ```
 
 ## Dependencies on Other Services

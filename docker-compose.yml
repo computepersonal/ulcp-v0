@@ -1,0 +1,169 @@
+# ULCP V0 - full stack. Shows up in Docker Desktop as one application named "ulcp".
+#   docker compose up -d --build        # everything; open http://localhost:8000
+#   docker compose up -d postgres redis # infra only (used by `pnpm start` hybrid dev)
+# Local-dev secrets below are NOT for production; Kubernetes uses Secrets instead.
+name: ulcp
+
+x-secrets: &secrets
+  JWT_SECRET: dev_jwt_secret_must_be_32_chars_long!!
+  JWT_REFRESH_SECRET: dev_refresh_secret_32_chars_long!!
+  JWT_CUSTOMER_SECRET: dev_customer_secret_32_chars_!!
+  JWT_KDS_SECRET: dev_kds_secret_must_be_32chars!!
+  INTERNAL_API_SECRET: dev_internal_secret_ulcp_services
+
+x-service: &service
+  restart: unless-stopped
+  labels:
+    # picked up by the shared observability stack (Alloy) as the product label
+    observability.product: ulcp
+  environment: &service-env
+    <<: *secrets
+    NODE_ENV: production
+    REDIS_URL: redis://redis:6379
+    ALLOWED_ORIGIN: http://localhost:8000
+  depends_on: &service-deps
+    postgres: { condition: service_healthy }
+    redis: { condition: service_healthy }
+
+x-app: &app
+  restart: unless-stopped
+  labels:
+    observability.product: ulcp
+
+services:
+  postgres:
+    container_name: ulcp-postgres
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ulcp_user
+      POSTGRES_PASSWORD: ulcp_pass
+      POSTGRES_DB: ulcp
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ulcp_user -d ulcp"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    container_name: ulcp-redis
+    image: redis:7-alpine
+    restart: unless-stopped
+    ports:
+      - "6380:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  identity-service:
+    <<: *service
+    build: { context: ., dockerfile: docker/service.Dockerfile, args: { SERVICE: identity-service } }
+    image: ulcp/identity-service:v0
+    environment:
+      <<: *service-env
+      PORT: 3001
+      DATABASE_URL: postgresql://ulcp_user:ulcp_pass@postgres:5432/ulcp?schema=identity
+    healthcheck: &svc-health
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:$$PORT/health >/dev/null || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+
+  tenant-service:
+    <<: *service
+    build: { context: ., dockerfile: docker/service.Dockerfile, args: { SERVICE: tenant-service } }
+    image: ulcp/tenant-service:v0
+    environment:
+      <<: *service-env
+      PORT: 3002
+      DATABASE_URL: postgresql://ulcp_user:ulcp_pass@postgres:5432/ulcp?schema=tenant
+      IDENTITY_SERVICE_URL: http://identity-service:3001
+      WEB_APP_URL: http://localhost:8000
+    depends_on:
+      <<: *service-deps
+      identity-service: { condition: service_healthy }
+    healthcheck: *svc-health
+
+  catalogue-service:
+    <<: *service
+    build: { context: ., dockerfile: docker/service.Dockerfile, args: { SERVICE: catalogue-service } }
+    image: ulcp/catalogue-service:v0
+    environment:
+      <<: *service-env
+      PORT: 3003
+      DATABASE_URL: postgresql://ulcp_user:ulcp_pass@postgres:5432/ulcp?schema=catalogue
+      TENANT_SERVICE_URL: http://tenant-service:3002
+    healthcheck: *svc-health
+
+  order-service:
+    <<: *service
+    build: { context: ., dockerfile: docker/service.Dockerfile, args: { SERVICE: order-service } }
+    image: ulcp/order-service:v0
+    environment:
+      <<: *service-env
+      PORT: 3004
+      DATABASE_URL: postgresql://ulcp_user:ulcp_pass@postgres:5432/ulcp?schema=order_svc
+      CATALOGUE_SERVICE_URL: http://catalogue-service:3003
+      TENANT_SERVICE_URL: http://tenant-service:3002
+      COMMISSION_FREE: 3
+      COMMISSION_STARTER: 2
+      COMMISSION_PRO: 1.5
+    healthcheck: *svc-health
+
+  realtime-service:
+    <<: *service
+    build: { context: ., dockerfile: docker/service.Dockerfile, args: { SERVICE: realtime-service } }
+    image: ulcp/realtime-service:v0
+    environment:
+      <<: *service-env
+      PORT: 3008
+      CORS_ORIGINS: http://localhost:8000
+    depends_on:
+      redis: { condition: service_healthy }
+    healthcheck: *svc-health
+
+  web:
+    <<: *app
+    build: { context: ., dockerfile: docker/app.Dockerfile, args: { APP: web } }
+    image: ulcp/web:v0
+
+  onboarding:
+    <<: *app
+    build: { context: ., dockerfile: docker/app.Dockerfile, args: { APP: onboarding, BASE_PATH: /onboarding } }
+    image: ulcp/onboarding:v0
+
+  kds:
+    <<: *app
+    build: { context: ., dockerfile: docker/app.Dockerfile, args: { APP: kds, BASE_PATH: /kds } }
+    image: ulcp/kds:v0
+
+  gateway:
+    <<: *app
+    image: caddy:2-alpine
+    ports:
+      - "8000:80"
+    volumes:
+      - ./docker/Caddyfile.gateway:/etc/caddy/Caddyfile:ro
+    depends_on:
+      - identity-service
+      - tenant-service
+      - catalogue-service
+      - order-service
+      - realtime-service
+      - web
+      - onboarding
+      - kds
+
+volumes:
+  postgres_data:
+  redis_data:

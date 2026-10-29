@@ -94,8 +94,8 @@ pnpm dev
 
 ## How to Deploy
 ```bash
-docker compose -f docker-compose.dev.yml up realtime-service
-docker compose -f docker-compose.dev.yml logs -f realtime-service
+docker compose -f docker-compose.yml up realtime-service
+docker compose -f docker-compose.yml logs -f realtime-service
 ```
 
 ## Dependencies on Other Services

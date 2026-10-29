@@ -21,7 +21,7 @@ param(
 $ErrorActionPreference = 'Continue'
 $Root = Split-Path -Parent $PSScriptRoot
 Set-Location $Root
-$Compose = Join-Path $Root 'docker-compose.dev.yml'
+$Compose = Join-Path $Root 'docker-compose.yml'
 
 # V0 production scope only (see docs/V0_PRODUCTION.md): 5 services + 3 apps.
 $Services = [ordered]@{

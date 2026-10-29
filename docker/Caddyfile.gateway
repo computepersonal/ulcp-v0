@@ -1,0 +1,47 @@
+# ULCP V0 gateway inside Docker / Kubernetes: one origin for UIs and APIs.
+# Upstreams are service names (Docker DNS now, Kubernetes Services later).
+:80 {
+	encode gzip
+
+	handle /api/v1/auth/* {
+		reverse_proxy identity-service:3001
+	}
+	handle /api/v1/tenants/* {
+		reverse_proxy tenant-service:3002
+	}
+	handle /api/v1/onboarding/* {
+		reverse_proxy tenant-service:3002
+	}
+	handle /api/v1/staff-invite/* {
+		reverse_proxy tenant-service:3002
+	}
+	handle /api/v1/catalogue/* {
+		reverse_proxy catalogue-service:3003
+	}
+	handle /api/v1/orders/* {
+		reverse_proxy order-service:3004
+	}
+	handle /api/v1/kots/* {
+		reverse_proxy order-service:3004
+	}
+	handle /socket.io/* {
+		reverse_proxy realtime-service:3008
+	}
+	handle /api/v1/realtime/* {
+		reverse_proxy realtime-service:3008
+	}
+
+	handle /health {
+		respond "ok" 200
+	}
+
+	handle /onboarding* {
+		reverse_proxy onboarding:80
+	}
+	handle /kds* {
+		reverse_proxy kds:80
+	}
+	handle {
+		reverse_proxy web:80
+	}
+}

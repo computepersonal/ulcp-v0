@@ -188,7 +188,7 @@ if ($SkipDocker) {
     Write-Section "Docker infra (skipped)"
 } else {
     Write-Section "Starting Postgres + Redis"
-    docker compose -f docker-compose.dev.yml up -d postgres redis
+    docker compose -f docker-compose.yml up -d postgres redis
     if ($LASTEXITCODE -ne 0) {
         Write-Fail "docker compose up failed"
         exit 1
@@ -249,5 +249,5 @@ Write-Host "Next steps:" -ForegroundColor White
 Write-Host "  1. Start everything:    " -NoNewline; Write-Host "pnpm dev" -ForegroundColor Yellow
 Write-Host "  2. Start one service:   " -NoNewline; Write-Host "pnpm --filter @ulcp/identity-service dev" -ForegroundColor Yellow
 Write-Host "  3. Start one app:       " -NoNewline; Write-Host "pnpm --filter @ulcp/web dev" -ForegroundColor Yellow
-Write-Host "  4. Stop containers:     " -NoNewline; Write-Host "docker compose -f docker-compose.dev.yml down" -ForegroundColor Yellow
+Write-Host "  4. Stop containers:     " -NoNewline; Write-Host "docker compose -f docker-compose.yml down" -ForegroundColor Yellow
 Write-Host ""

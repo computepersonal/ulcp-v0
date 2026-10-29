@@ -879,7 +879,7 @@ export async function addLineItem(input: AddLineItemInput) {
       const allItems = [...existingItems, lineItem] as OrderItem[];
       const bill = calculateBill(allItems);
 
-      const updated = await appendItemsToOrder(
+      await appendItemsToOrder(
         order.id,
         existingItems,
         [lineItem],

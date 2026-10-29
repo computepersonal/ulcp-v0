@@ -204,7 +204,7 @@ Recently viewed:            30 days (key: recently_viewed:CUST:TENANT)
 ulcp/
 ├── CLAUDE.md
 ├── PROGRESS.md
-├── docker-compose.dev.yml
+├── docker-compose.yml
 ├── docker-compose.prod.yml
 ├── kong.yml
 ├── turbo.json

@@ -67,8 +67,8 @@ pnpm dev
 
 ## How to Deploy
 ```bash
-docker compose -f docker-compose.dev.yml up tenant-service
-docker compose -f docker-compose.dev.yml logs -f tenant-service
+docker compose -f docker-compose.yml up tenant-service
+docker compose -f docker-compose.yml logs -f tenant-service
 ```
 
 ## Dependencies on Other Services

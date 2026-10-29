@@ -3,7 +3,6 @@ import { z } from "zod";
 import {
   apiSuccess,
   apiError,
-  AppError,
   PLANS,
   ADDONS,
   ADDON_IDS,

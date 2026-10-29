@@ -1,6 +1,6 @@
 import { FastifyInstance } from "fastify";
 import { z } from "zod";
-import { apiSuccess, apiError, AppError, NotFoundError } from "@ulcp/shared";
+import { apiSuccess, apiError, AppError } from "@ulcp/shared";
 import { formatZodError } from "../lib/zodError";
 import { authenticateStaff } from "../middleware/authenticate";
 import {

@@ -51,7 +51,7 @@ Flags:
 
 `pnpm dev` runs `turbo dev --concurrency 30`, which spawns the `dev` script in every workspace. Services start on ports 3001–3015; apps start on 5173+.
 
-To stop everything: `Ctrl+C` in the `pnpm dev` terminal, then `docker compose -f docker-compose.dev.yml down` to stop the databases.
+To stop everything: `Ctrl+C` in the `pnpm dev` terminal, then `docker compose -f docker-compose.yml down` to stop the databases.
 
 ### Day-to-day: one-shot start / stop
 
@@ -80,7 +80,7 @@ Get-ChildItem services -Recurse -Filter .env.example | ForEach-Object {
 }
 
 # 4. Bring up Postgres + Redis in Docker
-docker compose -f docker-compose.dev.yml up -d postgres redis
+docker compose -f docker-compose.yml up -d postgres redis
 
 # 5. Push Prisma schemas for every service that has one (first time only)
 pnpm --filter @ulcp/identity-service    db:push
@@ -165,7 +165,7 @@ For the mobile apps you'll additionally need the Expo tooling — see https://do
 
 ## Environment files
 
-`.env` files are **gitignored**. Every runnable service has a committed `.env.example` next to it (`services/<svc>/.env.example`) with dev defaults that match `docker-compose.dev.yml`'s host-port mapping (Postgres 5433, Redis 6380).
+`.env` files are **gitignored**. Every runnable service has a committed `.env.example` next to it (`services/<svc>/.env.example`) with dev defaults that match `docker-compose.yml`'s host-port mapping (Postgres 5433, Redis 6380).
 
 `setup.ps1` copies every example to `.env` automatically (skipping any `.env` that already exists; use `-Force` to overwrite). To do it by hand:
 
@@ -188,8 +188,8 @@ Get-ChildItem services -Recurse -Filter .env.example | ForEach-Object {
 pnpm install
 
 # Bring infra up / down
-docker compose -f docker-compose.dev.yml up -d postgres redis
-docker compose -f docker-compose.dev.yml down
+docker compose -f docker-compose.yml up -d postgres redis
+docker compose -f docker-compose.yml down
 
 # Start everything
 pnpm dev
@@ -223,7 +223,7 @@ ulpc/
 │   ├── BUILD_ORDER.md         # phase-by-phase build sequence
 │   ├── CHANGELOG.md           # full project history
 │   └── prd/                   # per-service PRDs
-├── docker-compose.dev.yml     # Postgres + Redis + containerized service builds
+├── docker-compose.yml     # Postgres + Redis + containerized service builds
 ├── docker-compose.prod.yml    # production compose (Kong gateway etc.)
 ├── kong.yml                   # API gateway declarative config
 ├── turbo.json
@@ -264,13 +264,13 @@ services/<svc>/
 Those packages have native build steps; they're allowlisted in the root `package.json` under `pnpm.onlyBuiltDependencies`. If install still fails, ensure you're on Node 22 (`node --version`) and re-run `pnpm install`.
 
 **Service starts but immediately errors with `ECONNREFUSED ::1:5433`**
-Postgres isn't up. Run `docker compose -f docker-compose.dev.yml up -d postgres redis` and confirm with `docker ps`.
+Postgres isn't up. Run `docker compose -f docker-compose.yml up -d postgres redis` and confirm with `docker ps`.
 
 **Service starts but errors with `P2021: table does not exist`**
 You skipped `prisma db push` for that service. Run `pnpm --filter @ulcp/<svc> db:push`.
 
 **Port already in use on 5433 or 6380**
-You have native Postgres/Redis running on those ports. Either stop them, or change the host port in `docker-compose.dev.yml` and update every service's `.env` accordingly.
+You have native Postgres/Redis running on those ports. Either stop them, or change the host port in `docker-compose.yml` and update every service's `.env` accordingly.
 
 **Tenant onboarding fails because identity-service can't reach tenant-service (or vice versa)**
 Both services must be running. Confirm with `curl http://localhost:3001/health` and `http://localhost:3002/health`. Internal service-to-service calls require the matching `INTERNAL_API_SECRET` in both `.env` files.

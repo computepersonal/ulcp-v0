@@ -70,7 +70,7 @@ commission recorded, loyalty points awarded, stock deducted via recipes.
 | `apps/customer-web` — customer PWA | 5180 | ✅ |
 | `apps/superadmin`, `mobile`, `customer-mobile`, `customer-pwa`, `merchant-dashboard` | — | ❌ empty (package.json only) |
 
-**Infra:** `docker-compose.dev.yml` (Postgres 16 on **5433**, Redis 7 on **6380**, + 11 services).
+**Infra:** `docker-compose.yml` (Postgres 16 on **5433**, Redis 7 on **6380**, + 11 services).
 `kong.yml` and `docker-compose.prod.yml` **do not exist** yet. No CI. Not deployed.
 
 ---

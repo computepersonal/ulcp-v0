@@ -63,12 +63,12 @@ const STEP_SCHEMAS: Record<number, z.ZodSchema> = {
 
 // ─── Setup tasks (post-onboarding checklist) ─────────────────────────────────
 
-export interface SetupTasks {
+export type SetupTasks = {
   catalogue: boolean;
   tables: boolean;
   staff: boolean;
   qr: boolean;
-}
+};
 
 const DEFAULT_SETUP_TASKS: SetupTasks = {
   catalogue: false,

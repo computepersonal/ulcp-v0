@@ -90,8 +90,8 @@ pnpm dev
 
 ## How to Deploy
 ```bash
-docker compose -f docker-compose.dev.yml up catalogue-service
-docker compose -f docker-compose.dev.yml logs -f catalogue-service
+docker compose -f docker-compose.yml up catalogue-service
+docker compose -f docker-compose.yml logs -f catalogue-service
 ```
 
 ## Dependencies on Other Services

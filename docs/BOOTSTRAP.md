@@ -64,9 +64,9 @@ Bootstrap Phase 1 of the Universal Local Commerce Platform:
    - src/middleware: authenticate.ts (JWT guard)
    - src/routes: auth.routes.ts (register, login, refresh, logout, /me)
    - src/index.ts: Fastify app with helmet, cors, rate-limit
-5. Create docker-compose.dev.yml with postgres:16-alpine and redis:7-alpine
+5. Create docker-compose.yml with postgres:16-alpine and redis:7-alpine
 6. Run: pnpm install
-7. Start Docker databases: docker compose -f docker-compose.dev.yml up -d postgres redis
+7. Start Docker databases: docker compose -f docker-compose.yml up -d postgres redis
 8. Run Prisma migration (name it "init")
 9. Start the identity service and confirm it is running on port 3001
 10. Test /health endpoint and show the response
@@ -102,7 +102,7 @@ Then let's continue with [Phase X / feature name].
 Read CLAUDE.md fully. Build Phase 1:
 - Monorepo: pnpm workspaces + Turborepo
 - packages/shared: types, errors, constants, utils, appConfig (env-driven)
-- docker-compose.dev.yml: postgres:16 + redis:7
+- docker-compose.yml: postgres:16 + redis:7
 - services/identity-service: Fastify + Prisma + JWT + bcrypt + Redis refresh tokens
   Routes: POST /register /login /refresh /logout GET /me
 - Start Postgres + Redis via Docker
@@ -144,7 +144,7 @@ Read CLAUDE.md, PROGRESS.md, and services/tenant-service/CLAUDE.md. Build Phase 
    - Table session management
    - Redis events for real-time updates
 
-Add each service to docker-compose.dev.yml.
+Add each service to docker-compose.yml.
 Follow all CLAUDE.md conventions. TypeScript strict.
 ```
 

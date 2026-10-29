@@ -104,8 +104,8 @@ pnpm db:generate                # regenerate Prisma client
 pnpm db:studio                  # open Prisma Studio on browser
 
 # Docker (from repo root)
-docker compose -f docker-compose.dev.yml up identity-service
-docker compose -f docker-compose.dev.yml logs -f identity-service
+docker compose -f docker-compose.yml up identity-service
+docker compose -f docker-compose.yml logs -f identity-service
 ```
 
 ## Debugging Production Issues

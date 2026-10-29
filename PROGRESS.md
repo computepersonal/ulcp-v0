@@ -30,7 +30,7 @@ Last updated: 2026-04-28
 - Prisma schema: User, RefreshToken, PlatformCustomer, OtpCode, KdsDevice, SecurityLog
 
 ### Infrastructure
-- `docker-compose.dev.yml` — postgres:16 (port **5433**) + redis:7 (port 6379)
+- `docker-compose.yml` — postgres:16 (port **5433**) + redis:7 (port 6379)
 - pnpm workspaces + Turborepo monorepo
 - PostgreSQL schemas: identity, tenant, catalogue (all applied via `prisma db push`)
 
@@ -447,7 +447,7 @@ Last updated: 2026-04-28
     - `PATCH /malls/:id` — update name/radius
     - `POST /malls/:id/tenants` — add tenant to mall
 - **Ad placement golden rule:** NEVER on catalogue, cart, checkout form, OTP, login, or any staff screen; ONLY on 7 approved placements
-- **Docker:** ads-service container added to docker-compose.dev.yml (port 3015, schema=ads, DEV_MODE=true)
+- **Docker:** ads-service container added to docker-compose.yml (port 3015, schema=ads, DEV_MODE=true)
 - **TypeScript:** strict, clean compile
 
 ---
