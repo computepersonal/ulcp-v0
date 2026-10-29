@@ -1,58 +1,112 @@
 # V0 Production Plan
 
-> Goal: a real, testable production environment — enough to onboard early customers for
-> testing — built on hardware you already own. Not the final scale-out architecture; the
-> minimum slice of ULCP that delivers: shop onboarding → catalog → order → KOT →
-> PDF invoice, running on a real Kubernetes cluster you can debug and extend.
+> Goal: a real, testable production environment — enough to onboard early customers —
+> built on hardware you already own. The slice of ULCP that delivers: shop onboarding →
+> catalogue → **customer places an order from their phone (QR) or staff takes it** → KOT to
+> the kitchen → **pay (cash / Razorpay)** → **PDF invoice** → **owner dashboards**, plus
+> aggregator orders via **UrbanPiper**, running on a real Kubernetes cluster you can debug.
 
-Last updated: 2026-08-26
+Last updated: 2026-10-29 (scope widened — see "Scope change" below)
+
+Repo: https://github.com/computepersonal/ulcp-v0 (`main` = what gets deployed).
+Day-to-day feature work by other developers happens in the original `ulcp` repo; anything V0
+needs is brought across by cherry-pick/PR.
+
+---
+
+## 0. Status snapshot
+
+**Done and running in Docker (`docker compose up -d --build`, open http://localhost:8000):**
+
+- 5 services (identity, tenant, catalogue, order, realtime) + Postgres 16 + Redis 7
+- 3 web apps: staff POS (`/`), **onboarding (`/onboarding/`, split out of the POS)**, KDS (`/kds/`)
+- Caddy gateway, single origin; service-name upstreams (same names work in Kubernetes)
+- One Dockerfile for all services (`docker/service.Dockerfile`), one for all apps
+  (`docker/app.Dockerfile`; Caddy serves static files, no Node at runtime)
+- Compose project named `ulcp`; containers labelled `observability.product=ulcp`
+- Frontends built with empty `VITE_*` URLs → relative `/api/v1/...`, so the same image runs
+  behind any domain
+
+**Not done yet:** browser smoke test, everything marked *To build* in Section 1, logging
+slice, CI/registry, Kubernetes manifests, backups, domain/TLS, VPS standby.
 
 ---
 
 ## 1. V0 Scope
 
-### Required services (5 — all already built)
+### Scope change (2026-10-29)
 
-| Service | Port | Role in this flow |
-|---|---|---|
-| identity-service | 3001 | Owner + staff auth, JWT, RBAC/permissions |
-| tenant-service | 3002 | Shop creation, onboarding wizard, branches, staff invite (manual link, no email), floor map, KDS pairing codes |
-| catalogue-service | 3003 | Product/menu catalog |
-| order-service | 3004 | Orders, KOT generation + routing (auto/kds/printer modes), GST calc, **manual/cash payment recording only** |
-| realtime-service | 3008 | Pushes KOT live to the KDS terminal via Socket.io |
+V0 was originally *cash only, staff-operated, no customer app*. After discussion, these are
+**now V0 basics**:
 
-### Frontend apps (2 — both built)
+1. Customer app — customers place orders themselves
+2. PDF invoice
+3. Razorpay payments
+4. UrbanPiper integration
+5. Dashboards and graphs
 
-- **apps/web** — Staff POS: onboarding, floor map, orders, catalogue builder, staff mgmt, settings
-- **apps/kds** — the KOT terminal display itself
+Consequence: V0 is larger than the first plan (more components, two of them not built), so
+the first production date moves out accordingly.
 
-### Explicitly excluded from V0
+### Services
 
-inventory, delivery, notification, media, loyalty, analytics, superadmin, procurement, ads,
-jukebox, customer-web, customer-mobile. None are required for owner-onboards-shop →
-catalog → staff-takes-order → KOT-to-kitchen → PDF-invoice.
+| Service | Port | In V0 | Role |
+|---|---|---|---|
+| identity-service | 3001 | ✅ built | Staff + **customer OTP login**, JWT, RBAC |
+| tenant-service | 3002 | ✅ built | Shops, onboarding wizard, branches, staff invites, floor map, KDS pairing, **QR/slug → shop resolve for the customer app** |
+| catalogue-service | 3003 | ✅ built | Menu/catalogue |
+| order-service | 3004 | ✅ built, extend | Orders, KOT, GST, cash payments. **To add:** PDF invoice, Razorpay (+ refunds), UrbanPiper inbound orders |
+| realtime-service | 3008 | ✅ built | Live KOT to KDS, **order tracking for customers** |
+| notification-service | 3007 | ⬜ bring across | **Required** to deliver the customer OTP by SMS (MSG91). Later: order-status messages / WhatsApp invoice |
+| analytics-service | 3009 | ⬜ **stub — to build** | Dashboards and graphs (revenue, orders, top items, hourly, payment mix) |
+
+Postgres 16 and Redis 7 are infrastructure, not services. In Kubernetes they become
+StatefulSets with persistent volumes.
+
+### Frontend apps
+
+| App | Path | In V0 | Notes |
+|---|---|---|---|
+| Staff POS (`apps/web`) | `/` | ✅ built | Floor map, orders, catalogue builder, staff, settings. **To add:** Dashboard/Reports screens fed by analytics-service |
+| Onboarding (`apps/onboarding`) | `/onboarding/` | ✅ built | Register, wizard, staff-invite acceptance. Separate app/server so sign-up traffic never touches the POS |
+| KDS (`apps/kds`) | `/kds/` | ✅ built | Kitchen display |
+| Customer app (`apps/customer-web`) | path TBD | ⬜ bring across + trim | PWA: scan QR → menu → cart → checkout → order tracking → order history |
+
+### Work items and owners
+
+| # | Item | Owner | Status | Notes |
+|---|---|---|---|---|
+| A | PDF invoice `GET /orders/:tenant_id/:id/invoice.pdf` | developer 1 | To build | In order-service, puppeteer. The slim Alpine image has no Chromium — add it to the order-service image only. Keep the generator separable from the route, because WhatsApp/SMS delivery later needs a hosted URL (media-service/R2) |
+| B | UrbanPiper integration | developer 2 | To build | Public webhook route through the gateway (signature-verified), per-shop credential storage, mapping aggregator orders → ULCP orders → KOT. Decide: module in order-service vs separate integration service |
+| C | Razorpay | unassigned | **Port, don't rewrite** | `feat/payments-gateway` in the original repo already has Razorpay + mock gateway, prepaid-order holds until captured, refunds, and a GST/plan fix. Cherry-pick, then review and test in Docker. Needs a webhook route + key storage |
+| D | Dashboards and graphs | developer 3 | To build | analytics-service has no source today. Decide first: new service (as designed) or read-models inside order-service. Charts in the POS (`recharts` is already a dependency of apps/web) |
+| E | Customer app in V0 | us | To trim + integrate | See below |
+| F | Customer OTP SMS delivery | us | **Blocker** | In production the OTP is generated and stored but **never sent** (`identity-service` `auth.routes.ts`: "In production: send via MSG91. For now log it"). Wire MSG91 via notification-service. The Docker stack runs `NODE_ENV=production`, so the OTP there is random and not logged — customer login can't be tested until F is done (or a documented non-production test-phone bypass is added) |
+
+### Customer app (E) — what is in and out
+
+In: QR/slug landing → catalogue → item detail → cart → checkout (cash / Razorpay) → order
+tracking (live via realtime) → order history.
+
+Out for V0 (must be hidden or disabled, not left as dead links): rewards/loyalty, explore
+feed, ads, jukebox, social room, places/campus/food-court. These call services that are not
+in V0.
+
+Open: **item images.** Customers will expect photos; media-service (image upload, R2) is not
+in V0. Decide: launch without images, or add media-service + R2.
 
 ### Decisions locked in for V0
 
-- **Invoice:** PDF generation required now (customer sees a real invoice). WhatsApp/SMS
-  delivery of that PDF is an explicit *future* goal, not V0 — see Known Gaps below for why
-  that pulls in a storage dependency later.
-- **Payments:** manual/cash recording only. No Razorpay integration in V0.
-- **Staff invites:** owner copies the invite link/token from the dashboard and shares it
-  manually (WhatsApp/SMS themselves). No notification-service dependency in V0.
-
-### Known Gap — PDF invoice generation (not built yet)
-
-order-service currently only has `GET /orders/:tenant_id/:id/bill` (JSON bill data). No PDF
-export exists there — puppeteer-based PDF export currently only lives inside
-analytics-service, gated to Pro+ reports, and pulling in all of analytics-service just for
-one document is overkill. **Plan: add `GET /orders/:tenant_id/:id/invoice.pdf` directly to
-order-service**, puppeteer-based (matches the project's existing PDF tool choice).
-
-**Forward-compat note:** when WhatsApp/SMS invoice delivery is built later, Interakt (WhatsApp)
-needs a *hosted URL* for document attachments, not raw PDF bytes — that's when media-service
-(R2 storage) becomes a real dependency. Not needed for V0; just don't design the invoice
-endpoint in a way that makes adding persistence later painful.
+- **Payments:** cash + Razorpay (after item C). Prepaid orders are held until the payment is
+  captured; refunds supported.
+- **Invoice:** PDF generated on demand by order-service. WhatsApp/SMS delivery of the PDF is
+  still a future goal.
+- **Staff invites:** manual link copied by the owner (no email). Invite URLs are
+  `/onboarding/invite/:token`.
+- **One origin:** UIs and APIs sit behind one gateway origin so the POS and onboarding apps
+  share the login (localStorage `staff_auth`).
+- **Excluded from V0:** inventory, delivery, loyalty, procurement, ads, jukebox, superadmin,
+  customer-mobile, places/campus. Their menu entries in the POS must be hidden (they 404).
 
 ---
 
@@ -150,7 +204,7 @@ using them:
 - **apps/web and apps/kds have no Dockerfile yet at all.** Build one each: Vite build stage
   (`vite build` → static `dist/`) → static-serve stage (nginx or Caddy serving `dist/`).
 
-Do this for all 5 core services + 2 frontend apps = 7 images total.
+Do this for every V0 service and app (today 5 services + 3 apps = 8 images; the final V0 adds notification, analytics and the customer app). The Dockerfiles already exist: `docker/service.Dockerfile` and `docker/app.Dockerfile`.
 
 ### Step 1 — Push images to a registry both machines can reach
 
@@ -303,13 +357,37 @@ the setup each time.
 
 ---
 
-## 7. Known Gaps Before Real Customer Onboarding
+## 7. Backlog Before Real Customer Onboarding
 
-- [ ] Fix the broken per-service `Dockerfile` (prod) — see Step 0.
-- [ ] Build production Dockerfiles for apps/web and apps/kds — none exist yet.
-- [ ] Build the PDF invoice endpoint in order-service (Section 1 gap).
-- [ ] Replace apps/web's hardcoded `localhost:PORT` fallbacks with real env-configured
-  service URLs for the cluster (see `apps/web/AGENT_CONTEXT.md`).
-- [ ] Decide when to move Postgres/Redis off single-node `local-path` storage onto
-  something that survives a node failure (Longhorn, or managed DB).
-- [ ] Add a 3rd node before this needs real HA guarantees.
+### Done
+- [x] Production Dockerfiles for all 5 services (`docker/service.Dockerfile`)
+- [x] Production images for web, onboarding, kds (`docker/app.Dockerfile`)
+- [x] Hardcoded `localhost:PORT` fallbacks neutralised (empty `VITE_*` → relative URLs)
+- [x] Onboarding split into its own app
+- [x] V0 repo split (`ulcp-v0`), compose project `ulcp`, gateway
+
+### Feature work (Section 1)
+- [ ] A — PDF invoice (developer 1)
+- [ ] B — UrbanPiper (developer 2)
+- [ ] C — Razorpay (port from `feat/payments-gateway`)
+- [ ] D — Analytics service + dashboards (developer 3)
+- [ ] E — Customer app trimmed, built into an image, routed through the gateway
+- [ ] F — Customer OTP over SMS (MSG91) — blocks customer login
+- [ ] Item images decision (media-service or none)
+- [ ] Hide POS pages for services not in V0 (Inventory, Procurement, loyalty parts)
+
+### Platform
+- [ ] Browser smoke test of the whole flow in Docker (staff path and customer path)
+- [ ] Logging: shared nine-field logger, CorrelationId/ServiceRequestId, verified in Grafana
+- [ ] CI: build and push the images to a registry on every merge to `main`
+- [ ] Secrets out of `docker-compose.yml` into `.env` / Kubernetes Secrets
+- [ ] Slim the service images (410–630 MB today)
+- [ ] Kubernetes manifests: base + home overlay, Postgres/Redis StatefulSets, Traefik ingress
+- [ ] Postgres backups to Cloudflare R2 and a tested restore
+- [ ] Domain, TLS, Cloudflare tunnel; VPS standby cluster
+- [ ] Decide when to move Postgres/Redis off single-node `local-path` storage
+- [ ] Third node before this needs real HA guarantees
+
+### Process
+- [ ] Protect `main` on `ulcp-v0`; developers push a branch per feature and merge by PR
+- [ ] Each change is its own commit(s), pushed when done
