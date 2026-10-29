@@ -214,16 +214,19 @@ export async function updateTenantPlan(
 
 // ─── QR code ─────────────────────────────────────────────────────────────────
 
+/** The link a customer opens after scanning: the customer app at <public origin>/c/place/<slug>. */
+export function customerPlaceUrl(slug: string, table_id?: string): string {
+  const origin = (process.env["PUBLIC_APP_URL"] ?? "http://localhost:8000").replace(/\/+$/, "");
+  const url = `${origin}/c/place/${encodeURIComponent(slug)}`;
+  return table_id ? `${url}?table=${encodeURIComponent(table_id)}` : url;
+}
+
 export async function generateQrCode(
   slug: string,
-  branch_id?: string,
+  _branch_id?: string, // the customer app resolves the branch from the slug
   table_id?: string
 ): Promise<string> {
-  let url = `https://app.ulcp.in/t/${slug}`;
-  if (branch_id) url += `/b/${branch_id}`;
-  if (table_id) url += `/table/${table_id}`;
-
-  return QRCode.toDataURL(url, {
+  return QRCode.toDataURL(customerPlaceUrl(slug, table_id), {
     width: 400,
     margin: 2,
     color: { dark: "#000000", light: "#FFFFFF" },

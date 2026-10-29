@@ -1,5 +1,4 @@
 import { randomUUID } from "crypto";
-import QRCode from "qrcode";
 import { NotFoundError } from "@ulcp/shared";
 import {
   createTable,
@@ -9,6 +8,8 @@ import {
   deleteTable,
 } from "../repositories/table.repository";
 import { findBranchById } from "../repositories/branch.repository";
+import { findTenantById } from "../repositories/tenant.repository";
+import { generateQrCode } from "./tenant.service";
 
 export type CreateTableInput = {
   name: string;
@@ -22,16 +23,11 @@ export type UpdateTableInput = Omit<Partial<CreateTableInput>, "section_id"> & {
   section_id?: string | null; // null = remove from section
 };
 
-async function generateTableQr(
-  tenant_id: string,
-  branch_id: string,
-  table_id: string
-): Promise<string> {
-  return QRCode.toDataURL(JSON.stringify({ tenant_id, branch_id, table_id }), {
-    width: 400,
-    margin: 2,
-    color: { dark: "#000000", light: "#FFFFFF" },
-  });
+// The QR opens the customer app at this place and table (see customerPlaceUrl)
+async function generateTableQr(tenant_id: string, table_id: string): Promise<string> {
+  const tenant = await findTenantById(tenant_id);
+  if (!tenant) throw new NotFoundError("Tenant not found");
+  return generateQrCode(tenant.slug, undefined, table_id);
 }
 
 export async function createTableForBranch(
@@ -54,7 +50,7 @@ export async function createTableForBranch(
     ...(input.section_id ? { section: { connect: { id: input.section_id } } } : {}),
   });
 
-  const qr_code = await generateTableQr(tenant_id, branch_id, table.id);
+  const qr_code = await generateTableQr(tenant_id, table.id);
   return updateTable(table.id, { qr_code });
 }
 
