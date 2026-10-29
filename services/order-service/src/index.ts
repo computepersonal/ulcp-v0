@@ -5,7 +5,7 @@ import fastifyRateLimit from "@fastify/rate-limit";
 import fastifySwagger from "@fastify/swagger";
 import fastifySwaggerUi from "@fastify/swagger-ui";
 import cron from "node-cron";
-import { appConfig, AppError } from "@ulcp/shared";
+import { appConfig, AppError, createRequestLogHooks, installFetchCorrelation } from "@ulcp/shared";
 import { logger } from "./lib/logger";
 import { prisma, connectPrisma } from "./lib/prisma";
 import { redis } from "./lib/redis";
@@ -23,6 +23,11 @@ async function buildApp() {
   const app = Fastify({ logger: false, trustProxy: true });
 
   // ─── Plugins ───────────────────────────────────────────────────────────────
+  installFetchCorrelation();
+  const requestLogHooks = createRequestLogHooks(logger);
+  app.addHook("onRequest", requestLogHooks.onRequest);
+  app.addHook("onResponse", requestLogHooks.onResponse);
+
   await app.register(fastifyHelmet, { contentSecurityPolicy: false });
 
   await app.register(fastifyCors, {

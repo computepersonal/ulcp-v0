@@ -29,3 +29,8 @@ export * from "./utils/slugify";
 
 // Events
 export * from "./events/eventBus";
+
+// Logging (central nine-field schema)
+export * from "./logging/context";
+export * from "./logging/logger";
+export * from "./logging/http";

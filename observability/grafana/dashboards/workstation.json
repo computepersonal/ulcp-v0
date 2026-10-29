@@ -1,0 +1,291 @@
+{
+  "refresh": "15s",
+  "uid": "workstation-overview",
+  "version": 1,
+  "tags": [
+    "workstation",
+    "observability"
+  ],
+  "time": {
+    "from": "now-30m",
+    "to": "now"
+  },
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "panels": [
+    {
+      "gridPos": {
+        "w": 12,
+        "y": 0,
+        "h": 8,
+        "x": 0
+      },
+      "options": {},
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent"
+        },
+        "overrides": []
+      },
+      "type": "timeseries",
+      "id": 1,
+      "title": "Windows CPU usage",
+      "targets": [
+        {
+          "expr": "100 * (1 - avg by (host) (rate(windows_cpu_time_total{mode=\"idle\"}[2m])))",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "gridPos": {
+        "w": 12,
+        "y": 0,
+        "h": 8,
+        "x": 12
+      },
+      "options": {},
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes"
+        },
+        "overrides": []
+      },
+      "type": "timeseries",
+      "id": 2,
+      "title": "Available Windows memory",
+      "targets": [
+        {
+          "expr": "windows_memory_available_bytes",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "gridPos": {
+        "w": 12,
+        "y": 8,
+        "h": 8,
+        "x": 0
+      },
+      "options": {},
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent"
+        },
+        "overrides": []
+      },
+      "type": "timeseries",
+      "id": 3,
+      "title": "Disk space used",
+      "targets": [
+        {
+          "expr": "100 * (1 - windows_logical_disk_free_bytes / windows_logical_disk_size_bytes)",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "gridPos": {
+        "w": 12,
+        "y": 8,
+        "h": 8,
+        "x": 12
+      },
+      "options": {},
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "type": "timeseries",
+      "id": 4,
+      "title": "Collector and storage availability",
+      "targets": [
+        {
+          "expr": "up",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "gridPos": {
+        "w": 12,
+        "y": 16,
+        "h": 8,
+        "x": 0
+      },
+      "options": {
+        "sortOrder": "Descending",
+        "enableLogDetails": true,
+        "wrapLogMessage": true,
+        "showTime": true
+      },
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none"
+        },
+        "overrides": []
+      },
+      "type": "logs",
+      "id": 5,
+      "title": "FrontDeskAI application logs",
+      "targets": [
+        {
+          "expr": "{service_name=\"frontdeskai\"}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "gridPos": {
+        "w": 12,
+        "y": 16,
+        "h": 8,
+        "x": 12
+      },
+      "options": {
+        "sortOrder": "Descending",
+        "enableLogDetails": true,
+        "wrapLogMessage": true,
+        "showTime": true
+      },
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none"
+        },
+        "overrides": []
+      },
+      "type": "logs",
+      "id": 6,
+      "title": "Windows application and system events",
+      "targets": [
+        {
+          "expr": "{job=\"windows_events\"}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "gridPos": {
+        "w": 12,
+        "y": 24,
+        "h": 8,
+        "x": 0
+      },
+      "options": {
+        "sortOrder": "Descending",
+        "enableLogDetails": true,
+        "wrapLogMessage": true,
+        "showTime": true
+      },
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none"
+        },
+        "overrides": []
+      },
+      "type": "logs",
+      "id": 7,
+      "title": "FrontDeskAI errors",
+      "targets": [
+        {
+          "expr": "{service_name=\"frontdeskai\"} | json | Severity=~\"Error|Critical\"",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "gridPos": {
+        "w": 12,
+        "y": 24,
+        "h": 8,
+        "x": 12
+      },
+      "options": {},
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes"
+        },
+        "overrides": []
+      },
+      "type": "timeseries",
+      "id": 8,
+      "title": "Persistent log queue usage (bytes)",
+      "targets": [
+        {
+          "expr": "otelcol_exporter_queue_size{data_type=\"logs\"}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "gridPos": {
+        "w": 12,
+        "y": 32,
+        "h": 8,
+        "x": 0
+      },
+      "options": {
+        "sortOrder": "Descending",
+        "enableLogDetails": true,
+        "wrapLogMessage": true,
+        "showTime": true
+      },
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none"
+        },
+        "overrides": []
+      },
+      "type": "logs",
+      "id": 9,
+      "title": "Docker runtime and PostgreSQL logs",
+      "targets": [
+        {
+          "expr": "{job=\"docker\"}",
+          "refId": "A"
+        }
+      ]
+    }
+  ],
+  "title": "Workstation — logs and health",
+  "editable": false
+}

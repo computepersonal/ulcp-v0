@@ -1,3 +1,4 @@
+import { createRequestLogHooks, installFetchCorrelation } from "@ulcp/shared";
 import "dotenv/config";
 import Fastify from "fastify";
 import cors from "@fastify/cors";
@@ -25,6 +26,11 @@ const app = Fastify({
 });
 
 async function bootstrap(): Promise<void> {
+  installFetchCorrelation();
+  const requestLogHooks = createRequestLogHooks(logger);
+  app.addHook("onRequest", requestLogHooks.onRequest);
+  app.addHook("onResponse", requestLogHooks.onResponse);
+
   await app.register(cors, {
     origin: CORS_ORIGINS,
     credentials: true,

@@ -1,0 +1,78 @@
+logging {
+  level = "warn"
+  format = "json"
+}
+discovery.docker "local" {
+  host = "unix:///var/run/docker.sock"
+  refresh_interval = "5s"
+}
+discovery.relabel "containers" {
+  targets = discovery.docker.local.targets
+  rule {
+    source_labels = ["__meta_docker_container_name"]
+    regex = "/(.*)"
+    target_label = "container"
+  }
+  rule {
+    source_labels = ["__meta_docker_container_label_com_docker_compose_project"]
+    target_label = "project"
+  }
+  rule {
+    source_labels = ["__meta_docker_container_label_com_docker_compose_service"]
+    target_label = "service_name"
+  }
+  rule {
+    target_label = "job"
+    replacement = "docker"
+  }
+}
+loki.source.docker "local" {
+  host = "unix:///var/run/docker.sock"
+  targets = discovery.relabel.containers.output
+  forward_to = [otelcol.receiver.loki.bridge.receiver]
+  refresh_interval = "5s"
+}
+otelcol.receiver.loki "bridge" {
+  output {
+    logs = [otelcol.processor.transform.labels.input]
+  }
+}
+otelcol.processor.transform "labels" {
+  error_mode = "propagate"
+  log_statements {
+    context = "log"
+    statements = [
+      `set(resource.attributes["service.name"], attributes["service_name"]) where attributes["service_name"] != nil`,
+      `set(resource.attributes["job"], attributes["job"]) where attributes["job"] != nil`,
+      `set(resource.attributes["host"], attributes["host"]) where attributes["host"] != nil`,
+      `set(resource.attributes["channel"], attributes["channel"]) where attributes["channel"] != nil`,
+      `set(resource.attributes["container"], attributes["container"]) where attributes["container"] != nil`,
+      `set(resource.attributes["project"], attributes["project"]) where attributes["project"] != nil`,
+    ]
+  }
+  output {
+    logs = [otelcol.exporter.otlphttp.central.input]
+  }
+}
+otelcol.storage.file "queue" {
+  fsync = true
+}
+otelcol.exporter.otlphttp "central" {
+  client {
+    endpoint = "http://loki:3100/otlp"
+  }
+  sending_queue {
+    enabled = true
+    storage = otelcol.storage.file.queue.handler
+    sizer = "bytes"
+    queue_size = 268435456
+    num_consumers = 2
+    block_on_overflow = true
+  }
+  retry_on_failure {
+    enabled = true
+    initial_interval = "1s"
+    max_interval = "30s"
+    max_elapsed_time = "0s"
+  }
+}

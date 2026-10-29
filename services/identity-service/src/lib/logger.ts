@@ -1,10 +1,5 @@
-import pino from "pino";
-import { appConfig } from "@ulcp/shared";
+import { createLogger } from "@ulcp/shared";
 
-export const logger = pino({
-  level: appConfig.isProduction ? "info" : "debug",
-  transport: appConfig.isDevelopment
-    ? { target: "pino-pretty", options: { colorize: true } }
-    : undefined,
-  redact: ["req.headers.authorization", "body.password", "body.passwordHash"],
-});
+// One JSON line per event in the central nine-field schema, written to stdout
+// (see docs/observability/LOGGING.md). LOG_LEVEL overrides the default level.
+export const logger = createLogger("identity-service");

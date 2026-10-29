@@ -21,6 +21,9 @@ x-service: &service
     NODE_ENV: production
     REDIS_URL: redis://redis:6379
     ALLOWED_ORIGIN: http://localhost:8000
+    # Real host for the MachineName log field (containers must not report their container id).
+    # Linux/macOS: export LOG_HOST_NAME=<hostname> first. Kubernetes: inject the node name.
+    LOG_HOST_NAME: "${LOG_HOST_NAME:-${COMPUTERNAME:-}}"
   depends_on: &service-deps
     postgres: { condition: service_healthy }
     redis: { condition: service_healthy }

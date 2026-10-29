@@ -1,5 +1,6 @@
 import Redis from "ioredis";
 import { EventName } from "../constants/events";
+import { getLogContext, runInNewOperation } from "../logging/context";
 
 type EventHandler = (payload: unknown) => Promise<void> | void;
 
@@ -11,9 +12,16 @@ export function initEventBus(redisUrl: string): void {
   subscriber = new Redis(redisUrl);
 }
 
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
 export async function publish(event: EventName, payload: unknown): Promise<void> {
   if (!publisher) throw new Error("EventBus not initialized");
-  await publisher.publish(event, JSON.stringify(payload));
+  // Carry the flow's CorrelationId to subscribers (additive field; existing consumers ignore it)
+  const correlationId = getLogContext()?.CorrelationId;
+  const body = correlationId && isPlainObject(payload) ? { ...payload, correlation_id: correlationId } : payload;
+  await publisher.publish(event, JSON.stringify(body));
 }
 
 export function subscribe(event: EventName, handler: EventHandler): void {
@@ -23,7 +31,12 @@ export function subscribe(event: EventName, handler: EventHandler): void {
     if (channel === event) {
       try {
         const payload: unknown = JSON.parse(message);
-        void handler(payload);
+        const correlationId = isPlainObject(payload) ? payload["correlation_id"] : undefined;
+        // Each handled event is its own service operation inside the publisher's flow
+        void runInNewOperation(
+          () => handler(payload),
+          typeof correlationId === "string" ? correlationId : undefined
+        );
       } catch {
         // ignore parse errors
       }

@@ -1,11 +1,5 @@
-import pino from "pino";
+import { createLogger } from "@ulcp/shared";
 
-export const logger = pino({
-  level: process.env.LOG_LEVEL ?? "info",
-  transport:
-    process.env.NODE_ENV !== "production"
-      ? { target: "pino-pretty", options: { colorize: true } }
-      : undefined,
-  base: { service: "realtime-service" },
-  redact: ["*.token", "*.secret"],
-});
+// One JSON line per event in the central nine-field schema, written to stdout
+// (see docs/observability/LOGGING.md). LOG_LEVEL overrides the default level.
+export const logger = createLogger("realtime-service");

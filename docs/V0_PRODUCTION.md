@@ -24,6 +24,7 @@ needs is brought across by cherry-pick/PR.
 - One Dockerfile for all services (`docker/service.Dockerfile`), one for all apps
   (`docker/app.Dockerfile`; Caddy serves static files, no Node at runtime)
 - Compose project named `ulcp`; containers labelled `observability.product=ulcp`
+- **Central logging:** every service logs the nine-field JSON schema to stdout with CorrelationId / ServiceRequestId propagated over HTTP and Redis events; collected by the shared Loki/Grafana stack ([docs/observability/LOGGING.md](../docs/observability/LOGGING.md), config copy in [observability/](../observability/README.md))
 - Frontends built with empty `VITE_*` URLs → relative `/api/v1/...`, so the same image runs
   behind any domain
 
@@ -378,7 +379,7 @@ the setup each time.
 
 ### Platform
 - [ ] Browser smoke test of the whole flow in Docker (staff path and customer path)
-- [ ] Logging: shared nine-field logger, CorrelationId/ServiceRequestId, verified in Grafana
+- [x] Logging: shared nine-field logger, CorrelationId/ServiceRequestId, verified in central Loki — see [docs/observability/LOGGING.md](../docs/observability/LOGGING.md) (still open: ship browser errors, Kubernetes collector)
 - [ ] CI: build and push the images to a registry on every merge to `main`
 - [ ] Secrets out of `docker-compose.yml` into `.env` / Kubernetes Secrets
 - [ ] Slim the service images (410–630 MB today)

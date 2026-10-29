@@ -6,7 +6,7 @@ import fastifyCookie from "@fastify/cookie";
 import fastifySwagger from "@fastify/swagger";
 import fastifySwaggerUi from "@fastify/swagger-ui";
 import cron from "node-cron";
-import { appConfig, AppError } from "@ulcp/shared";
+import { appConfig, AppError, createRequestLogHooks, installFetchCorrelation } from "@ulcp/shared";
 import { logger } from "./lib/logger";
 import { prisma } from "./lib/prisma";
 import { redis } from "./lib/redis";
@@ -85,6 +85,11 @@ async function buildApp() {
   });
 
   // ─── Plugins ───────────────────────────────────────────────────────────────
+  installFetchCorrelation();
+  const requestLogHooks = createRequestLogHooks(logger);
+  app.addHook("onRequest", requestLogHooks.onRequest);
+  app.addHook("onResponse", requestLogHooks.onResponse);
+
   await app.register(fastifyHelmet);
 
   await app.register(fastifyCors, {

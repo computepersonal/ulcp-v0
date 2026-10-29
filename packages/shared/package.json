@@ -7,10 +7,12 @@
   "scripts": {
     "build": "tsc",
     "dev": "tsc --watch",
-    "lint": "tsc --noEmit"
+    "lint": "tsc --noEmit",
+    "test": "node --import tsx --test src/logging/logger.test.ts src/logging/http.test.ts"
   },
   "dependencies": {
     "ioredis": "^5.3.2",
+    "pino": "^9.2.0",
     "jsonwebtoken": "^9.0.2",
     "zod": "^3.22.4"
   },
