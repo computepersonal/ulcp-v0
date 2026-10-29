@@ -76,12 +76,33 @@ services:
       <<: *service-env
       PORT: 3001
       DATABASE_URL: postgresql://ulcp_user:ulcp_pass@postgres:5432/ulcp?schema=identity
+      NOTIFICATION_SERVICE_URL: http://notification-service:3007
+    depends_on:
+      <<: *service-deps
+      notification-service: { condition: service_healthy }
     healthcheck: &svc-health
       test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:$$PORT/health >/dev/null || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 12
       start_period: 30s
+
+  notification-service:
+    container_name: ulcp-notification-service
+    <<: *service
+    build: { context: ., dockerfile: docker/service.Dockerfile, args: { SERVICE: notification-service } }
+    image: ulcp/notification-service:v0
+    environment:
+      <<: *service-env
+      PORT: 3007
+      # log = nothing is sent, OTPs are written to the log (local testing only).
+      # msg91 = real SMS; set MSG91_AUTH_KEY and MSG91_OTP_TEMPLATE_ID (see docs/V0_PRODUCTION.md).
+      SMS_PROVIDER: "${SMS_PROVIDER:-log}"
+      MSG91_AUTH_KEY: "${MSG91_AUTH_KEY:-}"
+      MSG91_OTP_TEMPLATE_ID: "${MSG91_OTP_TEMPLATE_ID:-}"
+    depends_on:
+      redis: { condition: service_healthy }
+    healthcheck: *svc-health
 
   tenant-service:
     container_name: ulcp-tenant-service
@@ -94,6 +115,8 @@ services:
       DATABASE_URL: postgresql://ulcp_user:ulcp_pass@postgres:5432/ulcp?schema=tenant
       IDENTITY_SERVICE_URL: http://identity-service:3001
       WEB_APP_URL: http://localhost:8000
+      # Origin printed in QR codes (customers scan these). Set to the public https URL in production.
+      PUBLIC_APP_URL: http://localhost:8000
     depends_on:
       <<: *service-deps
       identity-service: { condition: service_healthy }
@@ -158,6 +181,12 @@ services:
     build: { context: ., dockerfile: docker/app.Dockerfile, args: { APP: kds, BASE_PATH: /kds } }
     image: ulcp/kds:v0
 
+  customer:
+    container_name: ulcp-customer
+    <<: *app
+    build: { context: ., dockerfile: docker/app.Dockerfile, args: { APP: customer-web, BASE_PATH: /c } }
+    image: ulcp/customer:v0
+
   gateway:
     container_name: ulcp-gateway
     <<: *app
@@ -175,6 +204,7 @@ services:
       - web
       - onboarding
       - kds
+      - customer
 
 volumes:
   postgres_data:

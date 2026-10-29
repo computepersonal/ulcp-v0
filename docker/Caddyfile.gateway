@@ -38,6 +38,9 @@
 	handle /onboarding* {
 		reverse_proxy onboarding:80
 	}
+	handle /c* {
+		reverse_proxy customer:80
+	}
 	handle /kds* {
 		reverse_proxy kds:80
 	}

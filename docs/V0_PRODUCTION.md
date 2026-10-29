@@ -18,8 +18,9 @@ needs is brought across by cherry-pick/PR.
 
 **Done and running in Docker (`docker compose up -d --build`, open http://localhost:8000):**
 
-- 5 services (identity, tenant, catalogue, order, realtime) + Postgres 16 + Redis 7
-- 3 web apps: staff POS (`/`), **onboarding (`/onboarding/`, split out of the POS)**, KDS (`/kds/`)
+- 6 services (identity, tenant, catalogue, order, realtime, **notification**) + Postgres 16 + Redis 7
+- 4 web apps: staff POS (`/`), **onboarding (`/onboarding/`, split out of the POS)**, KDS (`/kds/`), **customer app (`/c/`; QR codes open `/c/place/<slug>?table=<id>`)**
+- **Customer login by OTP SMS:** identity-service generates/stores/verifies, notification-service sends (MSG91). Verified in Docker with `SMS_PROVIDER=log`: send → verify → place order → track, one CorrelationId across identity and notification. **Real SMS needs a MSG91 account — see F below**
 - Caddy gateway, single origin; service-name upstreams (same names work in Kubernetes)
 - One Dockerfile for all services (`docker/service.Dockerfile`), one for all apps
   (`docker/app.Dockerfile`; Caddy serves static files, no Node at runtime)
@@ -58,7 +59,7 @@ the first production date moves out accordingly.
 | catalogue-service | 3003 | ✅ built | Menu/catalogue |
 | order-service | 3004 | ✅ built, extend | Orders, KOT, GST, cash payments. **To add:** PDF invoice, Razorpay (+ refunds), UrbanPiper inbound orders |
 | realtime-service | 3008 | ✅ built | Live KOT to KDS, **order tracking for customers** |
-| notification-service | 3007 | ⬜ bring across | **Required** to deliver the customer OTP by SMS (MSG91). Later: order-status messages / WhatsApp invoice |
+| notification-service | 3007 | ✅ built, in Docker | Delivers the customer OTP SMS (MSG91). Email / push / WhatsApp / non-OTP SMS are **not implemented** (they fail loudly rather than pretend). Later: order-status messages / WhatsApp invoice |
 | analytics-service | 3009 | ⬜ **stub — to build** | Dashboards and graphs (revenue, orders, top items, hourly, payment mix) |
 
 Postgres 16 and Redis 7 are infrastructure, not services. In Kubernetes they become
@@ -71,7 +72,7 @@ StatefulSets with persistent volumes.
 | Staff POS (`apps/web`) | `/` | ✅ built | Floor map, orders, catalogue builder, staff, settings. **To add:** Dashboard/Reports screens fed by analytics-service |
 | Onboarding (`apps/onboarding`) | `/onboarding/` | ✅ built | Register, wizard, staff-invite acceptance. Separate app/server so sign-up traffic never touches the POS |
 | KDS (`apps/kds`) | `/kds/` | ✅ built | Kitchen display |
-| Customer app (`apps/customer-web`) | path TBD | ⬜ bring across + trim | PWA: scan QR → menu → cart → checkout → order tracking → order history |
+| Customer app (`apps/customer-web`) | `/c/` | ✅ trimmed, in Docker; **browser flow not yet tested** | PWA: scan QR → menu → cart → checkout → order tracking → order history |
 
 ### Work items and owners
 
@@ -81,8 +82,8 @@ StatefulSets with persistent volumes.
 | B | UrbanPiper integration | developer 2 | To build | Public webhook route through the gateway (signature-verified), per-shop credential storage, mapping aggregator orders → ULCP orders → KOT. Decide: module in order-service vs separate integration service |
 | C | Razorpay | unassigned | **Port, don't rewrite** | `feat/payments-gateway` in the original repo already has Razorpay + mock gateway, prepaid-order holds until captured, refunds, and a GST/plan fix. Cherry-pick, then review and test in Docker. Needs a webhook route + key storage |
 | D | Dashboards and graphs | developer 3 | To build | analytics-service has no source today. Decide first: new service (as designed) or read-models inside order-service. Charts in the POS (`recharts` is already a dependency of apps/web) |
-| E | Customer app in V0 | us | To trim + integrate | See below |
-| F | Customer OTP SMS delivery | us | **Blocker** | In production the OTP is generated and stored but **never sent** (`identity-service` `auth.routes.ts`: "In production: send via MSG91. For now log it"). Wire MSG91 via notification-service. The Docker stack runs `NODE_ENV=production`, so the OTP there is random and not logged — customer login can't be tested until F is done (or a documented non-production test-phone bypass is added) |
+| E | Customer app in V0 | us | Done (needs browser test) | Trimmed: social room, jukebox, ads, explore, rewards/loyalty, coupon box, email/bio/preferences profile, PWA caching removed. Served at `/c/`. |
+| F | Customer OTP SMS delivery | us | Code done; **needs MSG91 account** | Set `SMS_PROVIDER=msg91`, `MSG91_AUTH_KEY`, `MSG91_OTP_TEMPLATE_ID` (DLT-registered OTP template; notification-service refuses to start if they are missing). Default `SMS_PROVIDER=log` writes the OTP to the notification-service log for local testing. Limits: 5 sends/phone/hour, 30/IP/hour; Indian numbers only (`+91[6-9]xxxxxxxxx`). The MSG91 request itself is untested against the real API |
 
 ### Customer app (E) — what is in and out
 
@@ -205,7 +206,7 @@ using them:
 - **apps/web and apps/kds have no Dockerfile yet at all.** Build one each: Vite build stage
   (`vite build` → static `dist/`) → static-serve stage (nginx or Caddy serving `dist/`).
 
-Do this for every V0 service and app (today 5 services + 3 apps = 8 images; the final V0 adds notification, analytics and the customer app). The Dockerfiles already exist: `docker/service.Dockerfile` and `docker/app.Dockerfile`.
+Do this for every V0 service and app (today 6 services + 4 apps = 10 images; the final V0 adds notification, analytics and the customer app). The Dockerfiles already exist: `docker/service.Dockerfile` and `docker/app.Dockerfile`.
 
 ### Step 1 — Push images to a registry both machines can reach
 
@@ -372,8 +373,8 @@ the setup each time.
 - [ ] B — UrbanPiper (developer 2)
 - [ ] C — Razorpay (port from `feat/payments-gateway`)
 - [ ] D — Analytics service + dashboards (developer 3)
-- [ ] E — Customer app trimmed, built into an image, routed through the gateway
-- [ ] F — Customer OTP over SMS (MSG91) — blocks customer login
+- [x] E — Customer app trimmed, built into an image, routed through the gateway (`/c/`); QR codes now point at it
+- [ ] F — Customer OTP over SMS (MSG91): code done and tested with the log provider; **to finish: MSG91 account, DLT template, test with a real phone**
 - [ ] Item images decision (media-service or none)
 - [ ] Hide POS pages for services not in V0 (Inventory, Procurement, loyalty parts)
 

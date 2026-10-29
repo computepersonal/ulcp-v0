@@ -40,6 +40,10 @@
 	handle /onboarding* {
 		reverse_proxy localhost:5174
 	}
+	# Customer app (QR landing: /c/place/<slug>)
+	handle /c* {
+		reverse_proxy localhost:5180
+	}
 	# Everything else: staff POS
 	handle {
 		reverse_proxy localhost:5173
