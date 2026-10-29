@@ -2,8 +2,6 @@ import { Provider } from 'react-redux';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { store } from './store';
 import Login from './pages/Login';
-import Register from './pages/Register';
-import Onboard from './pages/Onboard';
 import Setup from './pages/Setup';
 import Layout from './components/Layout';
 import ProtectedRoute from './components/ProtectedRoute';
@@ -19,7 +17,6 @@ import ActivityLog from './pages/ActivityLog';
 import Customers from './pages/Customers';
 import NewOrder from './pages/NewOrder';
 import Inventory from './pages/Inventory';
-import InviteAccept from './pages/InviteAccept';
 import ToastContainer from './components/ToastContainer';
 
 function AppRoutes() {
@@ -27,11 +24,7 @@ function AppRoutes() {
     <Routes>
       {/* Public */}
       <Route path="/login" element={<Login />} />
-      <Route path="/register" element={<Register />} />
-      <Route path="/invite/:token" element={<InviteAccept />} />
 
-      {/* Requires auth (any role) — onboarding wizard */}
-      <Route path="/onboard" element={<Onboard />} />
 
       {/* Setup checklist — owner only */}
       <Route path="/setup" element={<ProtectedRoute ownerOnly><Setup /></ProtectedRoute>} />

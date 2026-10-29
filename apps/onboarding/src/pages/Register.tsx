@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
+import { goToPos, POS } from '../lib/posLinks';
 import { useAppDispatch, useAppSelector } from '../hooks/redux';
 import { setAuth, clearAuth } from '../store/authSlice';
 
@@ -44,9 +45,9 @@ export default function Register() {
         const data = (await res.json()) as MeResponse;
         const currentRole = data.data?.user.role ?? role;
         if (currentRole === 'pending_onboarding') {
-          navigate('/onboard', { replace: true });
+          navigate('/', { replace: true });
         } else {
-          navigate('/floor-map', { replace: true });
+          goToPos(POS.floorMap);
         }
       } catch {
         dispatch(clearAuth());
@@ -109,7 +110,7 @@ function RegisterForm({
         refreshToken: data.data.refresh_token,
         user: data.data.user,
       }));
-      navigate('/onboard');
+      navigate('/');
     } catch {
       setError('Unable to connect. Please check your connection.');
     } finally {
@@ -193,9 +194,9 @@ function RegisterForm({
 
         <p className="text-center text-sm text-gray-500 mt-6">
           Already have an account?{' '}
-          <Link to="/login" className="text-brand-500 font-medium hover:underline">
+          <a href="/login" className="text-brand-500 font-medium hover:underline">
             Sign in
-          </Link>
+          </a>
         </p>
       </div>
     </div>

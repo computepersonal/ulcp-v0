@@ -47,7 +47,7 @@ export async function inviteStaff(
 
   // Build invite URL for frontend
   const webUrl = process.env.WEB_APP_URL ?? "http://localhost:5173";
-  const inviteUrl = `${webUrl}/invite/${invite_token}`;
+  const inviteUrl = `${webUrl}/onboarding/invite/${invite_token}`;
 
   logger.info({ email: data.email, role: data.role, inviteUrl }, "Staff invite created");
 

@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useAppSelector } from '../hooks/redux';
 import { apiFetch } from '../lib/apiFetch';
 import SetupReturnBanner from '../components/SetupReturnBanner';
@@ -964,7 +964,7 @@ function JukeboxTab({ tenantId, token }: { tenantId: string; token: string }) {
 
   // Config
   const [config, setConfig] = useState<JukeboxConfigData | null>(null);
-  const [configSaving, setConfigSaving] = useState(false);
+  const [, setConfigSaving] = useState(false);
   const [configSaved, setConfigSaved] = useState(false);
 
   // Add song form

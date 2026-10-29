@@ -23,31 +23,20 @@ $Root = Split-Path -Parent $PSScriptRoot
 Set-Location $Root
 $Compose = Join-Path $Root 'docker-compose.dev.yml'
 
-# Packages with real code. Stubs (delivery/analytics/superadmin services, superadmin/mobile/
-# customer-mobile/customer-pwa/merchant-dashboard apps) are left out - their dev scripts fail.
+# V0 production scope only (see docs/V0_PRODUCTION.md): 5 services + 3 apps.
 $Services = [ordered]@{
   'identity-service'     = 3001
   'tenant-service'       = 3002
   'catalogue-service'    = 3003
   'order-service'        = 3004
-  'inventory-service'    = 3005
-  'notification-service' = 3007
   'realtime-service'     = 3008
-  'media-service'        = 3010
-  'loyalty-service'      = 3011
-  'procurement-service'  = 3013
-  'jukebox-service'      = 3014
-  'ads-service'          = 3015
 }
 $Apps = [ordered]@{
   'web'            = 5173
-  'vendor-portal'  = 5176
+  'onboarding'     = 5174
   'kds'            = 5177
-  'jukebox-player' = 5178
-  'customer-web'   = 5180
 }
-$PrismaServices = @('identity-service','tenant-service','catalogue-service','order-service',
-                    'inventory-service','loyalty-service','procurement-service','jukebox-service','ads-service')
+$PrismaServices = @('identity-service','tenant-service','catalogue-service','order-service')
 
 function Write-Step($msg) { Write-Host "`n==> $msg" -ForegroundColor Cyan }
 
@@ -69,7 +58,7 @@ function Test-DockerEngine {
   return ($LASTEXITCODE -eq 0)
 }
 
-$AllPorts = @($Services.Values) + @($Apps.Values) + @(5174, 5175, 5179)
+$AllPorts = @($Services.Values) + @($Apps.Values)
 
 # ---------------------------------------------------------------- stop
 if ($Stop) {

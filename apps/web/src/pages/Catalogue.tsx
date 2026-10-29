@@ -1,11 +1,10 @@
-import { useState, useEffect, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useState, useEffect } from 'react';
 import { useAppSelector } from '../hooks/redux';
+import { goToOnboarding } from '../lib/onboardingLinks';
 import SetupReturnBanner from '../components/SetupReturnBanner';
 import { apiFetch } from '../lib/apiFetch';
 
 function OnboardReturnBanner() {
-  const navigate = useNavigate();
   if (!localStorage.getItem('onboarding_catalogue_return')) return null;
   return (
     <div className="bg-indigo-600 text-white px-4 py-2.5 flex items-center justify-between text-sm">
@@ -13,7 +12,7 @@ function OnboardReturnBanner() {
       <button
         onClick={() => {
           localStorage.removeItem('onboarding_catalogue_return');
-          navigate('/onboard');
+          goToOnboarding();
         }}
         className="flex items-center gap-1.5 bg-white text-indigo-600 font-semibold px-3 py-1 rounded-lg text-xs hover:bg-indigo-50 transition-colors"
       >
@@ -1930,8 +1929,8 @@ function ItemCard({
           )}
           <div className="text-brand-600 font-semibold text-sm mt-1.5 font-mono">
             ₹{(item.price / 100).toFixed(0)}
-            {item.mrp > 0 && item.mrp > item.price && (
-              <span className="ml-1.5 line-through text-gray-400 font-normal text-xs">₹{(item.mrp / 100).toFixed(0)}</span>
+            {(item.mrp ?? 0) > 0 && (item.mrp ?? 0) > item.price && (
+              <span className="ml-1.5 line-through text-gray-400 font-normal text-xs">₹{((item.mrp ?? 0) / 100).toFixed(0)}</span>
             )}
           </div>
           {typeof item.calories === 'number' && item.calories > 0 && (
@@ -2100,7 +2099,7 @@ function ItemDetailModal({
             </span>
             {savings > 0 && item.mrp && (
               <>
-                <span className="text-base line-through text-gray-400 font-mono">₹{(item.mrp / 100).toFixed(0)}</span>
+                <span className="text-base line-through text-gray-400 font-mono">₹{((item.mrp ?? 0) / 100).toFixed(0)}</span>
                 <span className="text-xs font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full">
                   Save ₹{(savings / 100).toFixed(0)}
                 </span>

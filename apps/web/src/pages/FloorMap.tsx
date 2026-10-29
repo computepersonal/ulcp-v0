@@ -1,11 +1,11 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAppSelector } from '../hooks/redux';
+import { goToOnboarding } from '../lib/onboardingLinks';
 import SetupReturnBanner from '../components/SetupReturnBanner';
 import { apiFetch } from '../lib/apiFetch';
 
 function OnboardReturnBanner() {
-  const navigate = useNavigate();
   if (!localStorage.getItem('onboarding_floormap_return')) return null;
   return (
     <div className="bg-indigo-600 text-white px-4 py-2.5 flex items-center justify-between text-sm">
@@ -13,7 +13,7 @@ function OnboardReturnBanner() {
       <button
         onClick={() => {
           localStorage.removeItem('onboarding_floormap_return');
-          navigate('/onboard');
+          goToOnboarding();
         }}
         className="flex items-center gap-1.5 bg-white text-indigo-600 font-semibold px-3 py-1 rounded-lg text-xs hover:bg-indigo-50 transition-colors"
       >

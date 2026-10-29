@@ -7,5 +7,11 @@ export default defineConfig({
     tailwindcss(),
     react()
   ],
-  server: { port: 5173, allowedHosts: ['app.ulcplatform.com'] }
+  server: {
+    port: 5173,
+    allowedHosts: ['app.ulcplatform.com'],
+    // Onboarding is a separate app (port 5174) served under /onboarding/. Proxying it here keeps
+    // POS and onboarding on one origin in dev, so they share the staff_auth login in localStorage.
+    proxy: { '/onboarding': { target: 'http://localhost:5174', ws: true } }
+  }
 })

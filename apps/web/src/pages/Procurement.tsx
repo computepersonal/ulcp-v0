@@ -132,9 +132,9 @@ export default function Procurement() {
         ))}
       </div>
 
-      {tab === 'pos' && <POTab pos={pos} procurementUrl={procurementUrl} tenant={tenant} headers={headers} onChanged={() => void refresh()} />}
-      {tab === 'grn' && <GRNTab grns={grns} pos={pos} procurementUrl={procurementUrl} tenant={tenant} headers={headers} onChanged={() => void refresh()} />}
-      {tab === 'bills' && <BillsTab bills={bills} filter={billsFilter} setFilter={setBillsFilter} procurementUrl={procurementUrl} tenant={tenant} headers={headers} onChanged={() => void refresh()} />}
+      {tab === 'pos' && <POTab pos={pos} procurementUrl={procurementUrl} tenant={tenant ?? undefined} headers={headers} onChanged={() => void refresh()} />}
+      {tab === 'grn' && <GRNTab grns={grns} pos={pos} procurementUrl={procurementUrl} tenant={tenant ?? undefined} headers={headers} onChanged={() => void refresh()} />}
+      {tab === 'bills' && <BillsTab bills={bills} filter={billsFilter} setFilter={setBillsFilter} procurementUrl={procurementUrl} tenant={tenant ?? undefined} headers={headers} onChanged={() => void refresh()} />}
       {tab === 'vendors' && <VendorsTab vendors={vendors} />}
       {tab === 'spend' && <SpendTab spend={spend} />}
       {tab === 'bids' && <div className="text-sm text-gray-500">Bid management coming soon — view requests in market view.</div>}

@@ -17,26 +17,14 @@ $services = @(
     @{ Port = 3002; Name = "tenant-service" },
     @{ Port = 3003; Name = "catalogue-service" },
     @{ Port = 3004; Name = "order-service" },
-    @{ Port = 3005; Name = "inventory-service" },
-    @{ Port = 3006; Name = "delivery-service" },
-    @{ Port = 3007; Name = "notification-service" },
     @{ Port = 3008; Name = "realtime-service" },
-    @{ Port = 3009; Name = "analytics-service" },
-    @{ Port = 3010; Name = "media-service" },
-    @{ Port = 3011; Name = "loyalty-service" },
-    @{ Port = 3012; Name = "superadmin-service" },
-    @{ Port = 3013; Name = "procurement-service" },
-    @{ Port = 3014; Name = "jukebox-service" },
-    @{ Port = 3015; Name = "ads-service" },
     @{ Port = 8000; Name = "caddy (reverse proxy)" }
 )
 
 $apps = @(
     @{ Port = 5173; Name = "web (staff POS)" },
-    @{ Port = 5176; Name = "vendor-portal" },
-    @{ Port = 5177; Name = "kds (kitchen display)" },
-    @{ Port = 5178; Name = "jukebox-player" },
-    @{ Port = 5180; Name = "customer-web (PWA)" }
+    @{ Port = 5174; Name = "onboarding" },
+    @{ Port = 5177; Name = "kds (kitchen display)" }
 )
 
 $docker = @(

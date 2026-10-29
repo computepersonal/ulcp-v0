@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { goToPos, POS } from '../lib/posLinks';
 import { useAppDispatch, useAppSelector } from '../hooks/redux';
 import { setAuth, setOnboardingStatus, clearAuth } from '../store/authSlice';
 
@@ -81,7 +81,6 @@ const TOTAL_STEPS = 7;
 // ─── Wizard ───────────────────────────────────────────────────────────────────
 
 export default function Onboard() {
-  const navigate = useNavigate();
   const dispatch = useAppDispatch();
   const reduxToken = useAppSelector((s) => s.auth.token);
   const reduxRefreshToken = useAppSelector((s) => s.auth.refreshToken);
@@ -195,7 +194,7 @@ export default function Onboard() {
 
               // Already completed — go to dashboard
               if (obData.data.onboarding_completed) {
-                navigate('/floor-map', { replace: true });
+                goToPos(POS.floorMap);
                 return;
               }
 
@@ -234,12 +233,12 @@ export default function Onboard() {
           <p className="text-sm text-gray-500 mb-6">
             Your session has expired. Please sign in again to continue setting up your business.
           </p>
-          <Link
-            to="/login"
+          <a
+            href="/login"
             className="block w-full py-3 bg-brand-500 hover:bg-brand-600 text-white font-semibold rounded-xl transition-colors"
           >
             Back to sign in
-          </Link>
+          </a>
         </div>
       </div>
     );
@@ -477,7 +476,7 @@ export default function Onboard() {
       }
 
       dispatch(setOnboardingStatus({ completed: true, step: 7 }));
-      navigate('/setup');
+      goToPos(POS.setup);
     } catch {
       setError('Unable to connect. Please check your connection.');
     } finally {
@@ -495,7 +494,7 @@ export default function Onboard() {
         <div className="max-w-2xl mx-auto px-4 py-4 flex items-center justify-between">
           <span className="text-xl font-bold text-brand-500">ULCP</span>
           <button
-            onClick={() => { dispatch(clearAuth()); navigate('/login'); }}
+            onClick={() => { dispatch(clearAuth()); goToPos(POS.login); }}
             className="text-xs text-gray-400 hover:text-gray-600 transition-colors"
           >
             Sign Out
@@ -863,13 +862,13 @@ function Step4Catalogue({
         <p className="text-xs text-brand-600 mb-4">
           This step is optional during onboarding. You'll be able to add items, sections, prices, and photos from the Catalogue page in your dashboard.
         </p>
-        <Link
-          to="/catalogue"
+        <a
+          href="/catalogue"
           onClick={() => localStorage.setItem('onboarding_catalogue_return', 'true')}
           className="inline-flex items-center gap-2 px-4 py-2 bg-brand-500 hover:bg-brand-600 text-white text-sm font-semibold rounded-xl transition-colors"
         >
           Add your catalogue →
-        </Link>
+        </a>
       </div>
 
       <div className="flex justify-between mt-8">
@@ -924,13 +923,13 @@ function Step5Operations({
             : 'Configure your delivery radius, pricing, and zones. You can set this up from Settings after onboarding.'}
         </p>
         {isDineIn && (
-          <Link
-            to="/floor-map"
+          <a
+            href="/floor-map"
             onClick={() => localStorage.setItem('onboarding_floormap_return', 'true')}
             className="inline-flex items-center gap-2 px-4 py-2 bg-brand-500 hover:bg-brand-600 text-white text-sm font-semibold rounded-xl transition-colors"
           >
             Set up floor map →
-          </Link>
+          </a>
         )}
       </div>
 
@@ -972,13 +971,13 @@ function Step6Staff({
         <p className="text-xs text-gray-500 mb-4">
           Each staff member gets their own login. You can set their role and permissions from the Staff page.
         </p>
-        <Link
-          to="/staff"
+        <a
+          href="/staff"
           onClick={() => localStorage.setItem('onboarding_staff_return', 'true')}
           className="inline-flex items-center gap-2 px-4 py-2 bg-brand-500 hover:bg-brand-600 text-white text-sm font-semibold rounded-xl transition-colors"
         >
           Invite staff members →
-        </Link>
+        </a>
       </div>
 
       <div className="flex justify-between mt-8">

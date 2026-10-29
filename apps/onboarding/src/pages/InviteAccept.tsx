@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams } from 'react-router-dom';
+import { goToPos, POS } from '../lib/posLinks';
 
 interface InviteInfo {
   email: string;
@@ -10,7 +11,6 @@ interface InviteInfo {
 
 export default function InviteAccept() {
   const { token } = useParams<{ token: string }>();
-  const navigate = useNavigate();
   const tenantServiceUrl = import.meta.env.VITE_TENANT_SERVICE_URL ?? 'http://localhost:3002';
 
   const [invite, setInvite] = useState<InviteInfo | null>(null);
@@ -102,7 +102,7 @@ export default function InviteAccept() {
             You can now log in with <span className="font-medium text-gray-700">{invite?.email}</span> and the password you just set.
           </p>
           <button
-            onClick={() => navigate('/login')}
+            onClick={() => goToPos(POS.login)}
             className="w-full py-3 bg-brand-500 hover:bg-brand-600 text-white font-semibold rounded-xl transition-colors"
           >
             Go to Login
@@ -124,7 +124,7 @@ export default function InviteAccept() {
             {error ?? 'This invite link is invalid or has expired. Ask your manager to send a new one.'}
           </p>
           <button
-            onClick={() => navigate('/login')}
+            onClick={() => goToPos(POS.login)}
             className="w-full py-3 border border-gray-200 text-gray-600 font-medium rounded-xl hover:bg-gray-50 transition-colors"
           >
             Go to Login
@@ -215,7 +215,7 @@ export default function InviteAccept() {
 
         <p className="text-xs text-gray-400 text-center mt-4">
           Already have an account?{' '}
-          <button onClick={() => navigate('/login')} className="text-brand-500 hover:text-brand-600 font-medium">
+          <button onClick={() => goToPos(POS.login)} className="text-brand-500 hover:text-brand-600 font-medium">
             Log in
           </button>
         </p>

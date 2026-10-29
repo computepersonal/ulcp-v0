@@ -1,11 +1,10 @@
 import { useState, useEffect, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { useAppSelector } from '../hooks/redux';
 import { apiFetch } from '../lib/apiFetch';
+import { ONBOARDING, goToOnboarding } from '../lib/onboardingLinks';
 import SetupReturnBanner from '../components/SetupReturnBanner';
 
 function OnboardReturnBanner() {
-  const navigate = useNavigate();
   if (!localStorage.getItem('onboarding_staff_return')) return null;
   return (
     <div className="bg-indigo-600 text-white px-4 py-2.5 flex items-center justify-between text-sm">
@@ -13,7 +12,7 @@ function OnboardReturnBanner() {
       <button
         onClick={() => {
           localStorage.removeItem('onboarding_staff_return');
-          navigate('/onboard');
+          goToOnboarding();
         }}
         className="flex items-center gap-1.5 bg-white text-indigo-600 font-semibold px-3 py-1 rounded-lg text-xs hover:bg-indigo-50 transition-colors"
       >
@@ -175,7 +174,7 @@ export default function Staff() {
   const [profileData, setProfileData] = useState<Partial<StaffProfile>>({});
   const [profileSaving, setProfileSaving] = useState(false);
   const [profileSaved, setProfileSaved] = useState(false);
-  const [profileError, setProfileError] = useState<string | null>(null);
+  const [, setProfileError] = useState<string | null>(null);
 
   const identityServiceUrl = import.meta.env.VITE_IDENTITY_SERVICE_URL ?? 'http://localhost:3001';
   const tenantServiceUrl = import.meta.env.VITE_TENANT_SERVICE_URL ?? 'http://localhost:3002';
@@ -291,7 +290,7 @@ export default function Staff() {
       if (data.success && data.data?.invite) {
         const invite = data.data.invite;
         const webUrl = import.meta.env.VITE_WEB_APP_URL ?? 'http://localhost:5173';
-        const url = invite.invite_url ?? `${webUrl}/invite/${invite.invite_token}`;
+        const url = invite.invite_url ?? `${webUrl}${ONBOARDING.invite(invite.invite_token)}`;
         setInviteSuccess({ url, email: inviteEmail });
         void loadInvites(); // refresh list
       } else {
@@ -318,7 +317,7 @@ export default function Staff() {
   // ─── Copy invite link ──────────────────────────────────────────────────
   const handleCopyLink = async (invite: StaffInvite) => {
     const webUrl = import.meta.env.VITE_WEB_APP_URL ?? 'http://localhost:5173';
-    const url = `${webUrl}/invite/${invite.invite_token}`;
+    const url = `${webUrl}${ONBOARDING.invite(invite.invite_token)}`;
     await navigator.clipboard.writeText(url);
     setCopiedId(invite.id);
     setTimeout(() => setCopiedId(null), 2000);

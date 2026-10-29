@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
+import { ONBOARDING, goToOnboarding } from '../lib/onboardingLinks';
 import { useAppDispatch } from '../hooks/redux';
 import { setAuth, setOnboardingStatus } from '../store/authSlice';
 
@@ -81,7 +82,7 @@ export default function Login() {
 
       // pending_onboarding → hasn't created a business yet
       if (loggedInUser.role === 'pending_onboarding') {
-        navigate('/onboard');
+        goToOnboarding();
         return;
       }
 
@@ -104,7 +105,7 @@ export default function Login() {
               }));
               const ownerRoles = new Set(['tenant_owner', 'primary_owner', 'managing_partner', 'platform_superadmin']);
               if (!obData.data.onboarding_completed && ownerRoles.has(loggedInUser.role)) {
-                navigate('/onboard');
+                goToOnboarding();
                 return;
               }
             }
@@ -224,9 +225,9 @@ export default function Login() {
 
         <p className="text-center text-sm text-gray-500 mt-6">
           New to ULCP?{' '}
-          <Link to="/register" className="text-brand-500 font-medium hover:underline">
+          <a href={ONBOARDING.register} className="text-brand-500 font-medium hover:underline">
             Set up your business
-          </Link>
+          </a>
         </p>
       </div>
     </div>
