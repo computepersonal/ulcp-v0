@@ -65,6 +65,7 @@ services:
       retries: 5
 
   identity-service:
+    container_name: ulcp-identity-service
     <<: *service
     build: { context: ., dockerfile: docker/service.Dockerfile, args: { SERVICE: identity-service } }
     image: ulcp/identity-service:v0
@@ -80,6 +81,7 @@ services:
       start_period: 30s
 
   tenant-service:
+    container_name: ulcp-tenant-service
     <<: *service
     build: { context: ., dockerfile: docker/service.Dockerfile, args: { SERVICE: tenant-service } }
     image: ulcp/tenant-service:v0
@@ -95,6 +97,7 @@ services:
     healthcheck: *svc-health
 
   catalogue-service:
+    container_name: ulcp-catalogue-service
     <<: *service
     build: { context: ., dockerfile: docker/service.Dockerfile, args: { SERVICE: catalogue-service } }
     image: ulcp/catalogue-service:v0
@@ -106,6 +109,7 @@ services:
     healthcheck: *svc-health
 
   order-service:
+    container_name: ulcp-order-service
     <<: *service
     build: { context: ., dockerfile: docker/service.Dockerfile, args: { SERVICE: order-service } }
     image: ulcp/order-service:v0
@@ -121,6 +125,7 @@ services:
     healthcheck: *svc-health
 
   realtime-service:
+    container_name: ulcp-realtime-service
     <<: *service
     build: { context: ., dockerfile: docker/service.Dockerfile, args: { SERVICE: realtime-service } }
     image: ulcp/realtime-service:v0
@@ -133,21 +138,25 @@ services:
     healthcheck: *svc-health
 
   web:
+    container_name: ulcp-web
     <<: *app
     build: { context: ., dockerfile: docker/app.Dockerfile, args: { APP: web } }
     image: ulcp/web:v0
 
   onboarding:
+    container_name: ulcp-onboarding
     <<: *app
     build: { context: ., dockerfile: docker/app.Dockerfile, args: { APP: onboarding, BASE_PATH: /onboarding } }
     image: ulcp/onboarding:v0
 
   kds:
+    container_name: ulcp-kds
     <<: *app
     build: { context: ., dockerfile: docker/app.Dockerfile, args: { APP: kds, BASE_PATH: /kds } }
     image: ulcp/kds:v0
 
   gateway:
+    container_name: ulcp-gateway
     <<: *app
     image: caddy:2-alpine
     ports:
