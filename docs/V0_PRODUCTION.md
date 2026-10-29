@@ -379,7 +379,19 @@ the setup each time.
 - [ ] Hide POS pages for services not in V0 (Inventory, Procurement, loyalty parts)
 
 ### Platform
-- [ ] Browser smoke test of the whole flow in Docker (staff path and customer path)
+- [ ] Browser smoke test of the whole flow in Docker (staff path and customer path)  (manual round: owner, 2026-10-29; replaced by the automated suite below)
+- [ ] **G — Automated end-to-end tests (Playwright)** against the Docker stack at http://localhost:8000, so nobody re-tests by hand:
+  - flows: owner sign-up → onboarding wizard → menu + tables → QR link → customer OTP login → order → KDS sees KOT → staff completes → customer tracking → order history
+  - runs headless with one command (`pnpm e2e`), screenshots/video/trace on failure
+  - OTP: the stack runs `SMS_PROVIDER=log`; the test reads the code from the notification-service log (or a test-only hook), never from production SMS
+  - a fresh tenant per run so tests don't depend on each other's data
+  - later: run on every merge in CI (with the image build), block the merge on failure
+- [ ] **H — Scale / load testing (k6)**: find how many customers V0 can serve
+  - scenarios: customers browsing the menu (the QR-scan hot path), placing orders, tracking via Socket.IO; staff/KDS live updates; OTP sends
+  - ramp until p95 latency or errors break the target; record the limit and the bottleneck (which service, Postgres, Redis, gateway)
+  - run it against the Docker stack first, then on the real k3s home cluster (numbers differ)
+  - output: a documented capacity figure ("N concurrent customers / M orders per minute on this hardware") and what to scale first
+  - watch it in Grafana/Loki while it runs; do not point it at real MSG91 (SMS costs money)
 - [x] Logging: shared nine-field logger, CorrelationId/ServiceRequestId, verified in central Loki — see [docs/observability/LOGGING.md](../docs/observability/LOGGING.md) (still open: ship browser errors, Kubernetes collector)
 - [ ] CI: build and push the images to a registry on every merge to `main`
 - [ ] Secrets out of `docker-compose.yml` into `.env` / Kubernetes Secrets
