@@ -1,0 +1,13 @@
+node_modules
+**/node_modules
+**/dist
+**/.turbo
+.turbo
+.git
+.vscode
+**/.env
+**/.env.local
+docs
+insomnia
+*.md
+**/*.md

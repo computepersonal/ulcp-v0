@@ -1,0 +1,78 @@
+:8000 {
+	# Identity service
+	handle /api/v1/auth/* {
+		reverse_proxy localhost:3001
+	}
+
+	# Tenant service
+	handle /api/v1/tenants/* {
+		reverse_proxy localhost:3002
+	}
+	handle /api/v1/onboarding/* {
+		reverse_proxy localhost:3002
+	}
+	handle /api/v1/staff-invite/* {
+		reverse_proxy localhost:3002
+	}
+
+	# Catalogue service
+	handle /api/v1/catalogue/* {
+		reverse_proxy localhost:3003
+	}
+
+	# Order service
+	handle /api/v1/orders/* {
+		reverse_proxy localhost:3004
+	}
+	handle /api/v1/kots/* {
+		reverse_proxy localhost:3004
+	}
+
+	# Inventory service
+	handle /api/v1/inventory/* {
+		reverse_proxy localhost:3005
+	}
+
+	# Realtime service (Socket.io — WebSocket proxied automatically by Caddy)
+	handle /socket.io/* {
+		reverse_proxy localhost:3008
+	}
+	handle /api/v1/realtime/* {
+		reverse_proxy localhost:3008
+	}
+
+	# Media service
+	handle /api/v1/media/* {
+		reverse_proxy localhost:3010
+	}
+
+	# Loyalty service
+	handle /api/v1/loyalty/* {
+		reverse_proxy localhost:3011
+	}
+
+	# Procurement service
+	handle /api/v1/procurement/* {
+		reverse_proxy localhost:3013
+	}
+
+	# Jukebox service
+	handle /api/v1/jukebox/* {
+		reverse_proxy localhost:3014
+	}
+
+	# Ads service
+	handle /api/v1/ads/* {
+		reverse_proxy localhost:3015
+	}
+
+	# Notification service
+	handle /api/v1/notify/* {
+		reverse_proxy localhost:3007
+	}
+
+	# Health check
+	handle /health {
+		respond "ok" 200
+	}
+}
