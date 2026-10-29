@@ -15,8 +15,22 @@ import { storeOtp, verifyOtp } from "../repositories/otp.repository";
 import { logger } from "../lib/logger";
 import { signCustomerToken, verifyCustomerToken } from "../lib/jwt";
 import { prisma } from "../lib/prisma";
+import { redis } from "../lib/redis";
+import { randomInt } from "crypto";
+import { deliverOtpSms } from "../services/otpDelivery";
 
 const INTERNAL_SECRET = process.env["INTERNAL_API_SECRET"] ?? "";
+
+const CUSTOMER_PHONE = /^\+91[6-9]\d{9}$/;
+const OTP_SENDS_PER_PHONE_PER_HOUR = 5;
+const OTP_SENDS_PER_IP_PER_HOUR = 30;
+
+/** Counts one hit against `key` (1h window); true when the count is over `max`. */
+async function overLimit(key: string, max: number): Promise<boolean> {
+  const count = await redis.incr(key);
+  if (count === 1) await redis.expire(key, 3600);
+  return count > max;
+}
 
 // ─── Zod schemas ─────────────────────────────────────────────────────────────
 
@@ -541,18 +555,28 @@ export async function authRoutes(fastify: FastifyInstance): Promise<void> {
     },
     async (req, reply) => {
       const { phone } = req.body;
-      if (!phone) return reply.code(400).send(apiError("phone is required"));
+      if (!CUSTOMER_PHONE.test(phone ?? "")) {
+        return reply.code(400).send(apiError("Enter a valid Indian mobile number"));
+      }
 
-      // Generate 6-digit OTP (in dev: fixed "123456")
+      // SMS costs money and OTPs are a brute-force target: limit per phone and per client IP.
+      if (await overLimit(`otp:send:phone:${phone}`, OTP_SENDS_PER_PHONE_PER_HOUR) ||
+          await overLimit(`otp:send:ip:${req.ip}`, OTP_SENDS_PER_IP_PER_HOUR)) {
+        return reply.code(429).send(apiError("Too many OTP requests. Please try again later."));
+      }
+
+      // Outside production a fixed code keeps local testing easy; in production it is random.
       const otp = process.env["NODE_ENV"] === "production"
-        ? String(Math.floor(100000 + Math.random() * 900000))
+        ? String(randomInt(100000, 1000000))
         : "123456";
 
       await storeOtp(phone, otp);
 
-      // In production: send via MSG91. For now log it.
-      if (process.env["NODE_ENV"] !== "production") {
-        logger.info({ phone }, `[DEV] OTP: ${otp}`);
+      try {
+        await deliverOtpSms(phone, otp);
+      } catch (err) {
+        logger.error({ err }, "Could not deliver customer OTP");
+        return reply.code(502).send(apiError("Could not send the OTP. Please try again."));
       }
 
       return reply.send(apiSuccess({ message: "OTP sent" }));
