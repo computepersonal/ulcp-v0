@@ -3,31 +3,46 @@
 :80 {
 	encode gzip
 
-	handle /api/v1/auth/* {
+	# One JSON access log line per request (stdout -> Loki). First place to look when a screen
+	# fails: it shows what the browser asked for and what came back.
+	log {
+		output stdout
+		format json
+	}
+
+	@auth path /api/v1/auth /api/v1/auth/*
+	handle @auth {
 		reverse_proxy identity-service:3001
 	}
-	handle /api/v1/tenants/* {
+	@tenants path /api/v1/tenants /api/v1/tenants/*
+	handle @tenants {
 		reverse_proxy tenant-service:3002
 	}
-	handle /api/v1/onboarding/* {
+	@onboarding path /api/v1/onboarding /api/v1/onboarding/*
+	handle @onboarding {
 		reverse_proxy tenant-service:3002
 	}
-	handle /api/v1/staff-invite/* {
+	@staff_invite path /api/v1/staff-invite /api/v1/staff-invite/*
+	handle @staff_invite {
 		reverse_proxy tenant-service:3002
 	}
-	handle /api/v1/catalogue/* {
+	@catalogue path /api/v1/catalogue /api/v1/catalogue/*
+	handle @catalogue {
 		reverse_proxy catalogue-service:3003
 	}
-	handle /api/v1/orders/* {
+	@orders path /api/v1/orders /api/v1/orders/*
+	handle @orders {
 		reverse_proxy order-service:3004
 	}
-	handle /api/v1/kots/* {
+	@kots path /api/v1/kots /api/v1/kots/*
+	handle @kots {
 		reverse_proxy order-service:3004
 	}
 	handle /socket.io/* {
 		reverse_proxy realtime-service:3008
 	}
-	handle /api/v1/realtime/* {
+	@realtime path /api/v1/realtime /api/v1/realtime/*
+	handle @realtime {
 		reverse_proxy realtime-service:3008
 	}
 

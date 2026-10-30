@@ -132,6 +132,24 @@ you get that request's lines from every service, in order.
 14 days in Loki (`retention_period: 336h` in `observability/loki.yml`). Old data is deleted
 asynchronously by the compactor.
 
+### Debugging a failing screen (worked example)
+
+Symptom: onboarding "Create business" shows *Unable to connect*. Steps:
+
+1. **Browser first.** DevTools → Network → click the red request. Note the URL, method and status.
+   Here: `POST /api/v1/tenants` → **405** with an HTML body. An HTML answer to an API call means the
+   request never reached a service.
+2. **Gateway log** (`{project="ulcp", service_name="gateway"}` in Loki, or
+   `docker logs ulcp-gateway`). Every request is one JSON line: `request.uri`, `status`, `duration`.
+   Look at what answered: the web app (static files) instead of tenant-service = no gateway route.
+3. **Service log.** If the request did reach a service, search by the `X-Correlation-ID` response
+   header (Network tab → Response headers): `{project="ulcp"} |= "<id>"` shows every service it touched.
+   No service line at all = the problem is before the service (step 2).
+4. **Errors only:** `{project="ulcp"} | json | Severity=~"Error|Critical"`.
+
+(Cause in that case: the gateway matched `/api/v1/tenants/*` but not the bare `/api/v1/tenants`.
+Routes now match both.)
+
 ## 4. Running the central stack
 
 The stack is shared infrastructure (Grafana, Loki, Prometheus, Alloy). A reference copy of its
