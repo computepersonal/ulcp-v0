@@ -35,6 +35,10 @@ export default function Checkout() {
       setShowOtp(true);
       return;
     }
+    if (!cart.table_id) {
+      setError('Please scan the QR code on your table to place a dine-in order.');
+      return;
+    }
     setLoading(true);
     setError('');
     try {

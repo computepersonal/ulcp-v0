@@ -69,6 +69,9 @@ const placeOrderSchema = z.object({
   discount_amount: z.number().int().min(0).optional(),
   tip_amount: z.number().int().min(0).optional(),
   notes: z.string().optional(),
+}).refine((o) => o.type !== "dine_in" || !!o.table_id, {
+  message: "A table is required for dine-in orders",
+  path: ["table_id"],
 });
 
 const customerPlaceOrderSchema = z.object({
@@ -82,6 +85,9 @@ const customerPlaceOrderSchema = z.object({
   payment_method: z.enum(["upi", "card", "cod", "cash", "online"]).optional(),
   items: z.array(orderItemSchema).min(1),
   notes: z.string().optional(),
+}).refine((o) => o.type !== "dine_in" || !!o.table_id, {
+  message: "A table is required for dine-in orders",
+  path: ["table_id"],
 });
 
 const updateStatusSchema = z.object({

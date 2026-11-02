@@ -258,6 +258,7 @@ export default function NewOrder() {
     return cart.find((c) => c.id === itemId)?.quantity ?? 0;
   };
 
+  const needsTable = type === 'dine_in' && !tableId;
   const cartTotal = cart.reduce((sum, c) => sum + c.price * c.quantity, 0);
   const cartCount = cart.reduce((sum, c) => sum + c.quantity, 0);
 
@@ -265,6 +266,7 @@ export default function NewOrder() {
 
   const handleSubmit = async () => {
     if (cart.length === 0 || !branchId || !businessType) return;
+    if (needsTable) { setSubmitError('Select a table before placing a dine-in order.'); return; }
     setSubmitting(true);
     setSubmitError('');
 
@@ -648,6 +650,12 @@ export default function NewOrder() {
                 </div>
               </div>
 
+              {needsTable && cart.length > 0 && !submitError && (
+                <div className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+                  Select a table to place a dine-in order.
+                </div>
+              )}
+
               {submitError && (
                 <div className="text-xs text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
                   {submitError}
@@ -656,7 +664,8 @@ export default function NewOrder() {
 
               <button
                 onClick={() => { void handleSubmit(); }}
-                disabled={submitting || cart.length === 0}
+                disabled={submitting || cart.length === 0 || needsTable}
+                title={needsTable ? 'Select a table first' : undefined}
                 className="w-full py-3 bg-brand-500 hover:bg-brand-600 disabled:opacity-50 text-white font-bold rounded-xl text-sm transition-colors flex items-center justify-center gap-2"
               >
                 {submitting ? (
