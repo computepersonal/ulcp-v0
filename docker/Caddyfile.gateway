@@ -50,13 +50,16 @@
 		respond "ok" 200
 	}
 
-	handle /onboarding* {
+	@onboarding_app path /onboarding /onboarding/*
+	handle @onboarding_app {
 		reverse_proxy onboarding:80
 	}
-	handle /c* {
+	@customer path /c /c/*
+	handle @customer {
 		reverse_proxy customer:80
 	}
-	handle /kds* {
+	@kds path /kds /kds/*
+	handle @kds {
 		reverse_proxy kds:80
 	}
 	handle {

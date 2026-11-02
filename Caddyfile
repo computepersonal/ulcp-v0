@@ -45,11 +45,13 @@
 
 	# --- Frontends ---
 	# Onboarding app: separate app, so sign-up/setup traffic never touches the POS server.
-	handle /onboarding* {
+	@onboarding_app path /onboarding /onboarding/*
+	handle @onboarding_app {
 		reverse_proxy localhost:5174
 	}
 	# Customer app (QR landing: /c/place/<slug>)
-	handle /c* {
+	@customer path /c /c/*
+	handle @customer {
 		reverse_proxy localhost:5180
 	}
 	# Everything else: staff POS
